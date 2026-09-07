@@ -1,0 +1,357 @@
+import { Grid } from './engine/Grid.js';
+import { Simulation } from './engine/Simulation.js';
+import { Renderer } from './engine/Renderer.js';
+import { ZONE, TERRAIN, PRODUCER_TYPE, PRODUCER_CONFIG, COSTS, TILE_SIZE, RESIDENTIAL_CAPACITY, JOBS_PROVIDED, FOREST_POLLUTION_ABSORPTION, FOREST_DESIRABILITY_RADIUS } from './config.js';
+
+class GameApp {
+  constructor() {
+    this.canvas = document.getElementById('game-canvas');
+    this.grid = new Grid();
+    this.simulation = new Simulation(this.grid);
+    this.renderer = new Renderer(this.canvas, this.grid);
+
+    this.treasury = 10000;
+    this.activeTool = 'inspect';
+    this.isMouseDown = false;
+    this.isRightMouseDown = false;
+    this.lastMouseX = 0;
+    this.lastMouseY = 0;
+
+    this.simInterval = null;
+
+    this.initCanvasSize();
+    this.bindUIEvents();
+    this.bindCanvasEvents();
+
+    this.setSpeed(1);
+    this.startRenderLoop();
+  }
+
+  initCanvasSize() {
+    const resize = () => {
+      this.canvas.width = this.canvas.parentElement.clientWidth;
+      this.canvas.height = this.canvas.parentElement.clientHeight;
+    };
+    window.addEventListener('resize', resize);
+    resize();
+  }
+
+  bindUIEvents() {
+    document.querySelectorAll('.tool-btn').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        document.querySelectorAll('.tool-btn').forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        this.activeTool = btn.dataset.tool;
+        this.renderer.highlightWaterAdjacent =
+          this.activeTool === 'producer_water' || this.activeTool === 'producer_sewage';
+      });
+    });
+
+    document.querySelectorAll('.overlay-btn').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        document.querySelectorAll('.overlay-btn').forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        this.renderer.setOverlayMode(btn.dataset.mode);
+      });
+    });
+
+    document.getElementById('btn-pause').addEventListener('click', () => this.setSpeed(0));
+    document.getElementById('btn-speed-1').addEventListener('click', () => this.setSpeed(1));
+    document.getElementById('btn-speed-2').addEventListener('click', () => this.setSpeed(2));
+    document.getElementById('btn-speed-5').addEventListener('click', () => this.setSpeed(5));
+
+    const taxSlider = document.getElementById('tax-slider');
+    if (taxSlider) {
+      taxSlider.addEventListener('input', (e) => {
+        const val = parseInt(e.target.value, 10);
+        this.simulation.taxRate = val;
+        document.getElementById('tax-rate-val').textContent = val;
+        this.simulation.computeStats();
+        this.updateHUD();
+      });
+    }
+
+    const regenBtn = document.getElementById('btn-regen-map');
+    if (regenBtn) {
+      regenBtn.addEventListener('click', () => {
+        this.grid.randomizeGrid();
+        this.simulation.tickCount = 0;
+        this.simulation.computeStats();
+        this.renderer.selectedTile = null;
+        this.renderer.hoverTile = null;
+        this.updateHUD();
+      });
+    }
+  }
+
+  setSpeed(speed) {
+    document.querySelectorAll('.speed-controls .btn-icon').forEach((b) => b.classList.remove('active'));
+    if (speed === 0) {
+      document.getElementById('btn-pause').classList.add('active');
+      this.simulation.isPaused = true;
+      if (this.simInterval) clearInterval(this.simInterval);
+      this.simInterval = null;
+    } else {
+      const id = speed === 1 ? 'btn-speed-1' : speed === 2 ? 'btn-speed-2' : 'btn-speed-5';
+      document.getElementById(id).classList.add('active');
+      this.simulation.isPaused = false;
+      this.simulation.speed = speed;
+      if (this.simInterval) clearInterval(this.simInterval);
+      this.simInterval = setInterval(() => this.simTick(), 1000 / speed);
+    }
+  }
+
+  simTick() {
+    if (this.simulation.isPaused) return;
+    const income = this.simulation.tick();
+    this.treasury += income;
+    this.updateHUD();
+    if (this.renderer.selectedTile) {
+      this.updateInspector(this.renderer.selectedTile);
+    }
+  }
+
+  updateHUD() {
+    document.getElementById('stat-pop').textContent = this.simulation.stats.population.toLocaleString();
+    document.getElementById('stat-cash').textContent = `$${this.treasury.toLocaleString()}`;
+    document.getElementById('stat-income').textContent = `+$${this.simulation.stats.incomePerTick.toLocaleString()}`;
+    document.getElementById('stat-tick').textContent = this.simulation.tickCount;
+
+    const stats = this.simulation.stats;
+
+    const jobsAvailEl = document.getElementById('stat-jobs-avail');
+    if (jobsAvailEl) jobsAvailEl.textContent = stats.jobsAvailable.toLocaleString();
+
+    const empRateEl = document.getElementById('stat-emp-rate');
+    if (empRateEl) empRateEl.textContent = `${Math.round(stats.employmentRate * 100)}%`;
+
+    this.updateMeter('meter-power-text', 'meter-power-fill', stats.powerDemand, stats.powerCapacity);
+    this.updateMeter('meter-water-text', 'meter-water-fill', stats.waterDemand, stats.waterCapacity);
+    this.updateMeter('meter-sewage-text', 'meter-sewage-fill', stats.sewageDemand, stats.sewageCapacity);
+
+    const pollEl = document.getElementById('meter-pollution-text');
+    if (pollEl) pollEl.textContent = `Avg ${stats.avgPollution} / Max ${stats.maxPollution}`;
+    const pollFill = document.getElementById('meter-pollution-fill');
+    if (pollFill) {
+      const pct = stats.maxPollution > 0 ? Math.min(100, Math.round((stats.avgPollution / Math.max(stats.maxPollution, 1)) * 100)) : 0;
+      pollFill.style.width = `${pct}%`;
+    }
+  }
+
+  updateMeter(textId, fillId, demand, capacity) {
+    document.getElementById(textId).textContent = `${demand} / ${capacity}`;
+    const pct = capacity > 0 ? Math.min(100, Math.round((demand / capacity) * 100)) : 0;
+    const fillEl = document.getElementById(fillId);
+    fillEl.style.width = `${pct}%`;
+    fillEl.style.backgroundColor = demand > capacity ? '#ef4444' : '';
+  }
+
+  bindCanvasEvents() {
+    this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+    this.canvas.addEventListener('mousedown', (e) => {
+      if (e.button === 2) {
+        this.isRightMouseDown = true;
+      } else if (e.button === 0) {
+        this.isMouseDown = true;
+        this.handleCanvasClick(e);
+      }
+      this.lastMouseX = e.clientX;
+      this.lastMouseY = e.clientY;
+    });
+
+    window.addEventListener('mouseup', (e) => {
+      if (e.button === 2) this.isRightMouseDown = false;
+      if (e.button === 0) this.isMouseDown = false;
+    });
+
+    this.canvas.addEventListener('mousemove', (e) => {
+      const rect = this.canvas.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+
+      if (this.isRightMouseDown) {
+        const dx = e.clientX - this.lastMouseX;
+        const dy = e.clientY - this.lastMouseY;
+        this.renderer.setCamera(this.renderer.cameraX + dx, this.renderer.cameraY + dy);
+      } else {
+        const tile = this.screenToTile(mouseX, mouseY);
+        this.renderer.hoverTile = tile;
+        if (this.isMouseDown && this.activeTool !== 'inspect') {
+          this.handleCanvasClick(e);
+        }
+      }
+
+      this.lastMouseX = e.clientX;
+      this.lastMouseY = e.clientY;
+    });
+
+    this.canvas.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
+      this.renderer.setCamera(this.renderer.cameraX, this.renderer.cameraY, this.renderer.zoom * zoomFactor);
+    });
+  }
+
+  screenToTile(screenX, screenY) {
+    const mapPixelWidth = this.grid.width * TILE_SIZE;
+    const mapPixelHeight = this.grid.height * TILE_SIZE;
+    const startX = -mapPixelWidth / 2;
+    const startY = -mapPixelHeight / 2;
+
+    const worldX = (screenX - this.canvas.width / 2 - this.renderer.cameraX) / this.renderer.zoom - startX;
+    const worldY = (screenY - this.canvas.height / 2 - this.renderer.cameraY) / this.renderer.zoom - startY;
+
+    const tileX = Math.floor(worldX / TILE_SIZE);
+    const tileY = Math.floor(worldY / TILE_SIZE);
+
+    return this.grid.getTile(tileX, tileY);
+  }
+
+  handleCanvasClick(e) {
+    const rect = this.canvas.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+    const tile = this.screenToTile(mouseX, mouseY);
+
+    if (!tile) return;
+
+    if (this.activeTool === 'inspect') {
+      this.renderer.selectedTile = tile;
+      this.updateInspector(tile);
+      return;
+    }
+
+    let success = false;
+    let cost = 0;
+
+    if (this.activeTool === 'road') {
+      cost = COSTS.ROAD;
+      if (this.treasury >= cost && this.grid.placeRoad(tile.x, tile.y)) {
+        success = true;
+      }
+    } else if (this.activeTool === 'zone_r') {
+      cost = COSTS.ZONE;
+      if (this.treasury >= cost && this.grid.placeZone(tile.x, tile.y, ZONE.RESIDENTIAL)) {
+        success = true;
+      }
+    } else if (this.activeTool === 'zone_c') {
+      cost = COSTS.ZONE;
+      if (this.treasury >= cost && this.grid.placeZone(tile.x, tile.y, ZONE.COMMERCIAL)) {
+        success = true;
+      }
+    } else if (this.activeTool === 'zone_i') {
+      cost = COSTS.ZONE;
+      if (this.treasury >= cost && this.grid.placeZone(tile.x, tile.y, ZONE.INDUSTRIAL)) {
+        success = true;
+      }
+    } else if (this.activeTool.startsWith('producer_')) {
+      const typeKey = this.activeTool.replace('producer_', '').toUpperCase();
+      const pType = PRODUCER_TYPE[typeKey] || PRODUCER_TYPE[`${typeKey}_PLANT`] || PRODUCER_TYPE[`${typeKey}_TOWER` ];
+      const config = PRODUCER_CONFIG[pType];
+      if (config && this.treasury >= config.cost) {
+        if (this.grid.placeProducer(tile.x, tile.y, pType, config.capacity)) {
+          cost = config.cost;
+          success = true;
+        }
+      }
+    } else if (this.activeTool === 'bulldoze') {
+      cost = COSTS.BULLDOZE;
+      if (this.treasury >= cost && this.grid.bulldoze(tile.x, tile.y)) {
+        success = true;
+      }
+    }
+
+    if (success) {
+      this.treasury -= cost;
+      const income = this.simulation.tick();
+      this.treasury += income;
+      this.updateHUD();
+      if (this.renderer.selectedTile) {
+        this.updateInspector(this.renderer.selectedTile);
+      }
+    }
+
+  }
+
+  updateInspector(tile) {
+    document.getElementById('inspect-coord').textContent = `(${tile.x}, ${tile.y})`;
+    document.getElementById('inspect-terrain').textContent = tile.terrain;
+
+    const effectRow = document.getElementById('terrain-effect-row');
+    const effectVal = document.getElementById('inspect-terrain-effect');
+    if (tile.terrain === TERRAIN.FOREST) {
+      effectRow.style.display = '';
+      effectVal.textContent = `-${FOREST_POLLUTION_ABSORPTION} Pollution Absorption / +1 Nearby Residential Growth`;
+    } else {
+      effectRow.style.display = 'none';
+    }
+    document.getElementById('inspect-road').textContent = tile.hasRoad ? 'Yes' : 'No';
+    document.getElementById('inspect-zone').textContent = tile.zone;
+    document.getElementById('inspect-density').textContent = tile.zone !== ZONE.NONE ? tile.density : 'N/A';
+
+    const popJobsEl = document.getElementById('inspect-pop-jobs');
+    if (popJobsEl) {
+      if (tile.zone === ZONE.RESIDENTIAL) {
+        const cur = (tile.population || 0).toLocaleString();
+        const max = (tile.maxPopulation || RESIDENTIAL_CAPACITY[tile.density] || 0).toLocaleString();
+        popJobsEl.textContent = `${cur} / ${max} residents`;
+      } else if (tile.zone === ZONE.COMMERCIAL || tile.zone === ZONE.INDUSTRIAL) {
+        const filled = (tile.filledJobs || 0).toLocaleString();
+        const total = (tile.totalJobs || JOBS_PROVIDED[tile.zone]?.[tile.density] || 0).toLocaleString();
+        popJobsEl.textContent = `${filled} / ${total} jobs filled`;
+      } else {
+        popJobsEl.textContent = 'N/A';
+      }
+    }
+
+    document.getElementById('inspect-growth').textContent = tile.zone !== ZONE.NONE ? tile.growthScore : 'N/A';
+    document.getElementById('inspect-pollution').textContent = tile.pollution;
+
+    const isConnected = this.grid.isRoadAdjacent(tile.x, tile.y);
+    document.getElementById('inspect-connected').textContent = isConnected ? 'Yes' : 'No';
+
+    const formatUtil = (key) => {
+      const d = tile.distanceToProducer[key];
+      if (d === Infinity) {
+        if (!isConnected) return 'No Local Road';
+        const typeStr = key === 'power' ? 'power_plant' : key === 'water' ? 'water_tower' : 'sewage_plant';
+        const prods = this.grid.producers.filter((p) => p.type === typeStr);
+        if (prods.length === 0) return 'No Producer Built';
+        const prodHasRoad = prods.some((p) => this.grid.isRoadAdjacent(p.x, p.y));
+        if (!prodHasRoad) return 'Producer Needs Road!';
+        return 'Unconnected Road Network!';
+      }
+      return tile.shortfall[key] ? `Dist ${d} (Plant Full!)` : `Dist ${d} (Serviced)`;
+    };
+
+    document.getElementById('inspect-power').textContent = formatUtil('power');
+    document.getElementById('inspect-water').textContent = formatUtil('water');
+    document.getElementById('inspect-sewage').textContent = formatUtil('sewage');
+
+    const prodPanel = document.getElementById('producer-details');
+    if (tile.producer) {
+      prodPanel.style.display = 'block';
+      const config = PRODUCER_CONFIG[tile.producer.type];
+      const prodHasRoad = this.grid.isRoadAdjacent(tile.producer.x, tile.producer.y);
+      const roadStatusStr = prodHasRoad ? '' : ' ⚠️ (Needs Road!)';
+      const contaminatedStr = tile.producer.contaminated ? ' ☣️ Contaminated!' : '';
+      document.getElementById('inspect-producer-type').textContent = (config ? config.name : tile.producer.type) + roadStatusStr + contaminatedStr;
+      document.getElementById('inspect-producer-cap').textContent = `${tile.producer.usedCapacity} / ${tile.producer.capacity}`;
+    } else {
+      prodPanel.style.display = 'none';
+    }
+  }
+
+  startRenderLoop() {
+    const loop = () => {
+      this.renderer.render(this.simulation);
+      requestAnimationFrame(loop);
+    };
+    requestAnimationFrame(loop);
+  }
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+  window.app = new GameApp();
+});
