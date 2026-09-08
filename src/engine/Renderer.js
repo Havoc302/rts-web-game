@@ -1,4 +1,4 @@
-import { TERRAIN, ZONE, DENSITY, PRODUCER_TYPE, TILE_SIZE } from '../config.js';
+import { TERRAIN, ZONE, DENSITY, PRODUCER_TYPE, TILE_SIZE, ORE_CONFIG } from '../config.js';
 
 export class Renderer {
   constructor(canvas, grid) {
@@ -16,6 +16,9 @@ export class Renderer {
     this.highlightWaterAdjacent = false;
 
     this.animTime = 0;
+    this.lastRenderTime = 0;
+    this.terrainCache = null;
+    this.terrainCacheVersion = -1;
   }
 
   setCamera(x, y, zoom = this.zoom) {
@@ -29,7 +32,12 @@ export class Renderer {
   }
 
   render(simulation) {
-    this.animTime += 0.05;
+    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    if (this.zoom < 0.7 && this.lastRenderTime > 0 && now - this.lastRenderTime < 33) return;
+    const elapsed = this.lastRenderTime > 0 ? Math.min(0.1, (now - this.lastRenderTime) / 1000) : 0;
+    this.lastRenderTime = now;
+    this.animTime += elapsed;
+
     const ctx = this.ctx;
     const width = this.canvas.width;
     const height = this.canvas.height;
@@ -45,16 +53,58 @@ export class Renderer {
     const mapPixelHeight = this.grid.height * TILE_SIZE;
     const startX = -mapPixelWidth / 2;
     const startY = -mapPixelHeight / 2;
+    const lowDetail = this.zoom < 0.7;
 
-    for (let y = 0; y < this.grid.height; y++) {
-      for (let x = 0; x < this.grid.width; x++) {
-        const tile = this.grid.getTile(x, y);
+    // Only visit tiles whose world-space bounds intersect the viewport.
+    const visibleLeft = (-width / 2 - this.cameraX) / this.zoom;
+    const visibleTop = (-height / 2 - this.cameraY) / this.zoom;
+    const visibleRight = (width / 2 - this.cameraX) / this.zoom;
+    const visibleBottom = (height / 2 - this.cameraY) / this.zoom;
+    const startTileX = Math.max(0, Math.floor((visibleLeft - startX) / TILE_SIZE) - 1);
+    const startTileY = Math.max(0, Math.floor((visibleTop - startY) / TILE_SIZE) - 1);
+    const endTileX = Math.min(this.grid.width - 1, Math.ceil((visibleRight - startX) / TILE_SIZE) + 1);
+    const endTileY = Math.min(this.grid.height - 1, Math.ceil((visibleBottom - startY) / TILE_SIZE) + 1);
+
+    const terrainCacheReady = !lowDetail && this.ensureTerrainCache(mapPixelWidth, mapPixelHeight);
+    if (terrainCacheReady) {
+      const sourceX = startTileX * TILE_SIZE;
+      const sourceY = startTileY * TILE_SIZE;
+      const sourceWidth = (endTileX - startTileX + 1) * TILE_SIZE;
+      const sourceHeight = (endTileY - startTileY + 1) * TILE_SIZE;
+      ctx.drawImage(
+        this.terrainCache,
+        sourceX,
+        sourceY,
+        sourceWidth,
+        sourceHeight,
+        startX + sourceX,
+        startY + sourceY,
+        sourceWidth,
+        sourceHeight,
+      );
+    }
+
+    for (let y = startTileY; y <= endTileY; y++) {
+      for (let x = startTileX; x <= endTileX; x++) {
+        const tile = this.grid.tiles[y][x];
         const px = startX + x * TILE_SIZE;
         const py = startY + y * TILE_SIZE;
 
-        this.renderTerrainTile(ctx, tile, px, py);
+        if (!terrainCacheReady) {
+          this.renderLowDetailTile(ctx, tile, px, py);
+          continue;
+        }
 
-        if (tile.hasRoad) {
+        if (lowDetail) {
+          this.renderLowDetailTile(ctx, tile, px, py);
+          continue;
+        }
+
+        if (tile.terrain === TERRAIN.WATER) {
+          this.renderTerrainTile(ctx, tile, px, py);
+        }
+
+        if (tile.hasRoad && !tile.hasBridge) {
           this.renderRoadTile(ctx, tile, px, py);
         }
 
@@ -64,6 +114,10 @@ export class Renderer {
 
         if (tile.producer) {
           this.renderProducerTile(ctx, tile, px, py);
+        }
+
+        if (tile.oreDiscovered || tile.surveyingBy) {
+          this.renderSurveyStatus(ctx, tile, px, py);
         }
 
         if (this.overlayMode !== 'normal') {
@@ -103,13 +157,68 @@ export class Renderer {
     ctx.restore();
   }
 
-  renderTerrainTile(ctx, tile, px, py) {
+  ensureTerrainCache(width, height) {
+    if (this.terrainCache && this.terrainCacheVersion === this.grid.terrainVersion) return true;
+
+    if (!this.terrainCache || this.terrainBuildVersion !== this.grid.terrainVersion) {
+      this.terrainCache = document.createElement('canvas');
+      this.terrainCache.width = width;
+      this.terrainCache.height = height;
+      this.terrainCacheContext = this.terrainCache.getContext('2d');
+      this.terrainBuildVersion = this.grid.terrainVersion;
+      this.terrainBuildIndex = 0;
+    }
+
+    const cacheContext = this.terrainCacheContext;
+    const totalTiles = this.grid.width * this.grid.height;
+    const buildBudget = 1200;
+    const endIndex = Math.min(totalTiles, this.terrainBuildIndex + buildBudget);
+    for (; this.terrainBuildIndex < endIndex; this.terrainBuildIndex++) {
+      const x = this.terrainBuildIndex % this.grid.width;
+      const y = Math.floor(this.terrainBuildIndex / this.grid.width);
+      const tile = this.grid.tiles[y][x];
+      this.renderTerrainTile(cacheContext, tile, x * TILE_SIZE, y * TILE_SIZE, false);
+      cacheContext.strokeStyle = 'rgba(255, 255, 255, 0.04)';
+      cacheContext.lineWidth = 1;
+      cacheContext.strokeRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+    }
+
+    if (this.terrainBuildIndex < totalTiles) return false;
+    this.terrainCacheVersion = this.grid.terrainVersion;
+    return true;
+  }
+
+  renderLowDetailTile(ctx, tile, px, py) {
+    if (tile.terrain === TERRAIN.WATER) {
+      ctx.fillStyle = tile.isPolluted ? '#3f6212' : '#0369a1';
+    } else if (tile.terrain === TERRAIN.FOREST) {
+      ctx.fillStyle = '#064e3b';
+    } else if (tile.terrain === TERRAIN.MOUNTAIN) {
+      ctx.fillStyle = '#334155';
+    } else {
+      ctx.fillStyle = (tile.x + tile.y) % 2 === 0 ? '#5b4636' : '#463326';
+    }
+    ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+
+    if (tile.zone !== ZONE.NONE) {
+      ctx.fillStyle = tile.zone === ZONE.RESIDENTIAL ? '#10b98188' : tile.zone === ZONE.COMMERCIAL ? '#3b82f688' : '#f59e0b88';
+      ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+    } else if (tile.hasRoad) {
+      ctx.fillStyle = '#475569';
+      ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+    } else if (tile.producer) {
+      ctx.fillStyle = '#f59e0b';
+      ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+    }
+  }
+
+  renderTerrainTile(ctx, tile, px, py, animateWater = true) {
     if (tile.terrain === TERRAIN.FLAT) {
       const isAlt = (tile.x + tile.y) % 2 === 0;
-      ctx.fillStyle = isAlt ? '#1e293b' : '#172033';
+      ctx.fillStyle = isAlt ? '#5b4636' : '#463326';
       ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
 
-      ctx.fillStyle = isAlt ? '#24334a' : '#1d2a3f';
+      ctx.fillStyle = isAlt ? '#6b5440' : '#533d2d';
       ctx.fillRect(px + 4, py + 4, 3, 3);
       ctx.fillRect(px + 18, py + 22, 2, 2);
     } else if (tile.terrain === TERRAIN.MOUNTAIN) {
@@ -153,10 +262,13 @@ export class Renderer {
       const isPollutedWater = tile.isPolluted === true;
       const dir = tile.riverFlowDir || { x: 0, y: 1 };
       const flowPos = tile.x * dir.x + tile.y * dir.y;
-      const wave = Math.sin(this.animTime * 3 - flowPos * 1.5) * 0.1;
+      const wave = animateWater ? Math.sin(this.animTime * 3 - flowPos * 1.5) * 0.1 : 0;
       
       if (isPollutedWater) {
-        ctx.fillStyle = wave > 0 ? '#4d7c0f' : '#3f6212';
+        const pollutionLevel = Math.min(1, (tile.riverPollution || 0) / 30);
+        ctx.fillStyle = pollutionLevel > 0.5
+          ? (wave > 0 ? '#4d7c0f' : '#3f6212')
+          : (wave > 0 ? '#65a30d' : '#4d7c0f');
       } else {
         ctx.fillStyle = wave > 0 ? '#0284c7' : '#0369a1';
       }
@@ -168,7 +280,9 @@ export class Renderer {
 
       const flowSpeed = 20;
       const spatialOffset = Math.abs(tile.x * 13 + tile.y * 17);
-      const phase = ((this.animTime * flowSpeed + spatialOffset) % TILE_SIZE + TILE_SIZE) % TILE_SIZE;
+      const phase = animateWater
+        ? ((this.animTime * flowSpeed + spatialOffset) % TILE_SIZE + TILE_SIZE) % TILE_SIZE
+        : spatialOffset % TILE_SIZE;
       const posOffset = phase - TILE_SIZE / 2;
 
       const ax = cx + dir.x * posOffset;
@@ -185,6 +299,63 @@ export class Renderer {
       ctx.lineTo(ax + dir.x * 4, ay + dir.y * 4);
       ctx.lineTo(ax - dir.x * 3 - perpX * 5, ay - dir.y * 3 - perpY * 5);
       ctx.stroke();
+
+      if (tile.hasBridge) {
+        this.renderBridgeTile(ctx, tile, px, py);
+      }
+    }
+  }
+
+  renderBridgeTile(ctx, tile, px, py) {
+    const n = this.grid.getTile(tile.x, tile.y - 1)?.hasRoad;
+    const e = this.grid.getTile(tile.x + 1, tile.y)?.hasRoad;
+    const s = this.grid.getTile(tile.x, tile.y + 1)?.hasRoad;
+    const w = this.grid.getTile(tile.x - 1, tile.y)?.hasRoad;
+
+    // Structural base (concrete/steel frame)
+    ctx.fillStyle = '#1e293b';
+    ctx.fillRect(px + 8, py + 8, 16, 16);
+    if (n) ctx.fillRect(px + 8, py, 16, 8);
+    if (e) ctx.fillRect(px + 24, py + 8, 8, 16);
+    if (s) ctx.fillRect(px + 8, py + 24, 16, 8);
+    if (w) ctx.fillRect(px, py + 8, 8, 16);
+
+    // Asphalt deck
+    ctx.fillStyle = '#475569';
+    ctx.fillRect(px + 10, py + 10, 12, 12);
+    if (n) ctx.fillRect(px + 10, py, 12, 10);
+    if (e) ctx.fillRect(px + 22, py + 10, 10, 12);
+    if (s) ctx.fillRect(px + 10, py + 22, 12, 10);
+    if (w) ctx.fillRect(px, py + 10, 10, 12);
+
+    // Guardrails / Metal caps
+    ctx.fillStyle = '#cbd5e1';
+    if ((n || s) && !e && !w) {
+      // N-S Vertical Bridge Railings
+      ctx.fillRect(px + 7, py, 3, TILE_SIZE);
+      ctx.fillRect(px + 22, py, 3, TILE_SIZE);
+    } else if ((e || w) && !n && !s) {
+      // E-W Horizontal Bridge Railings
+      ctx.fillRect(px, py + 7, TILE_SIZE, 3);
+      ctx.fillRect(px, py + 22, TILE_SIZE, 3);
+    } else {
+      // Corner/Junction Railing Pillars
+      if (!n) ctx.fillRect(px + 7, py + 7, 18, 3);
+      if (!s) ctx.fillRect(px + 7, py + 22, 18, 3);
+      if (!w) ctx.fillRect(px + 7, py + 7, 3, 18);
+      if (!e) ctx.fillRect(px + 22, py + 7, 3, 18);
+    }
+
+    // Yellow centerline
+    ctx.fillStyle = '#fef08a';
+    if ((n || s) && !e && !w) {
+      ctx.fillRect(px + 15, py + 4, 2, 6);
+      ctx.fillRect(px + 15, py + 22, 2, 6);
+    } else if ((e || w) && !n && !s) {
+      ctx.fillRect(px + 4, py + 15, 6, 2);
+      ctx.fillRect(px + 22, py + 15, 6, 2);
+    } else {
+      ctx.fillRect(px + 15, py + 15, 2, 2);
     }
   }
 
@@ -349,6 +520,11 @@ export class Renderer {
 
   renderProducerTile(ctx, tile, px, py) {
     const prod = tile.producer;
+    const serviceScale = prod.density === DENSITY.HIGH ? 1.18 : prod.density === DENSITY.MEDIUM ? 1.08 : 1;
+    ctx.save();
+    ctx.translate(px + TILE_SIZE / 2, py + TILE_SIZE / 2);
+    ctx.scale(serviceScale, serviceScale);
+    ctx.translate(-(px + TILE_SIZE / 2), -(py + TILE_SIZE / 2));
     if (prod.type === PRODUCER_TYPE.POWER_PLANT) {
       ctx.fillStyle = '#d97706';
       ctx.fillRect(px + 2, py + 2, 28, 28);
@@ -401,7 +577,96 @@ export class Renderer {
       ctx.fillRect(px + 17, py + 6, 9, 9);
       ctx.fillRect(px + 6, py + 17, 9, 9);
       ctx.fillRect(px + 17, py + 17, 9, 9);
+    } else if (prod.type === PRODUCER_TYPE.POLICE_STATION) {
+      ctx.fillStyle = '#1e3a8a';
+      ctx.fillRect(px + 2, py + 2, 28, 28);
+      ctx.fillStyle = '#3b82f6';
+      ctx.fillRect(px + 6, py + 6, 20, 20);
+
+      const isRed = Math.floor(this.animTime * 6) % 2 === 0;
+      ctx.fillStyle = isRed ? '#ef4444' : '#38bdf8';
+      ctx.fillRect(px + 13, py + 11, 6, 4);
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 9px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('POL', px + 16, py + 20);
+    } else if (prod.type === PRODUCER_TYPE.FIRE_STATION) {
+      ctx.fillStyle = '#991b1b';
+      ctx.fillRect(px + 2, py + 2, 28, 28);
+      ctx.fillStyle = '#ef4444';
+      ctx.fillRect(px + 5, py + 5, 22, 22);
+
+      ctx.fillStyle = '#fef08a';
+      ctx.fillRect(px + 8, py + 18, 6, 9);
+      ctx.fillRect(px + 18, py + 18, 6, 9);
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 9px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('FIRE', px + 16, py + 11);
+    } else if (prod.type === PRODUCER_TYPE.HOSPITAL) {
+      ctx.fillStyle = '#065f46';
+      ctx.fillRect(px + 2, py + 2, 28, 28);
+      ctx.fillStyle = '#ecfdf5';
+      ctx.fillRect(px + 5, py + 5, 22, 22);
+
+      ctx.fillStyle = '#ef4444';
+      ctx.fillRect(px + 14, py + 9, 4, 14);
+      ctx.fillRect(px + 9, py + 14, 14, 4);
+    } else if (prod.type === PRODUCER_TYPE.SCHOOL) {
+      ctx.fillStyle = '#9a3412';
+      ctx.fillRect(px + 2, py + 2, 28, 28);
+      ctx.fillStyle = '#f59e0b';
+      ctx.fillRect(px + 6, py + 6, 20, 20);
+
+      ctx.fillStyle = '#78350f';
+      ctx.fillRect(px + 13, py + 3, 6, 8);
+      ctx.fillStyle = '#fef08a';
+      ctx.fillRect(px + 15, py + 5, 2, 2);
+    } else if (prod.type === PRODUCER_TYPE.LIBRARY) {
+      ctx.fillStyle = '#4c1d95';
+      ctx.fillRect(px + 2, py + 2, 28, 28);
+      ctx.fillStyle = '#8b5cf6';
+      ctx.fillRect(px + 5, py + 5, 22, 22);
+
+      ctx.fillStyle = '#ddd6fe';
+      ctx.fillRect(px + 8, py + 9, 3, 14);
+      ctx.fillRect(px + 14, py + 9, 3, 14);
+      ctx.fillRect(px + 20, py + 9, 3, 14);
+    } else if (prod.type === PRODUCER_TYPE.CITY_HALL) {
+      ctx.fillStyle = '#854d0e';
+      ctx.fillRect(px + 2, py + 2, 28, 28);
+      ctx.fillStyle = '#eab308';
+      ctx.fillRect(px + 4, py + 4, 24, 24);
+
+      ctx.fillStyle = '#fef08a';
+      ctx.beginPath();
+      ctx.arc(px + 16, py + 14, 7, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = '#38bdf8';
+      ctx.fillRect(px + 15, py + 2, 2, 8);
+      ctx.fillStyle = '#ef4444';
+      ctx.fillRect(px + 17, py + 2, 4, 3);
+    } else if (prod.type === PRODUCER_TYPE.SURVEY_STATION) {
+      ctx.fillStyle = '#0f766e';
+      ctx.fillRect(px + 2, py + 2, 28, 28);
+      ctx.fillStyle = '#14b8a6';
+      ctx.fillRect(px + 6, py + 15, 20, 11);
+      ctx.fillStyle = '#ccfbf1';
+      ctx.fillRect(px + 14, py + 6, 4, 14);
+      ctx.beginPath();
+      ctx.arc(px + 16, py + 6, 5, Math.PI, 0);
+      ctx.strokeStyle = '#ccfbf1';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
     }
+
+    ctx.restore();
 
     const hasRoad = this.grid.isRoadAdjacent(tile.x, tile.y);
     if (!hasRoad) {
@@ -412,7 +677,33 @@ export class Renderer {
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText('!', px + 7, py + 7);
+    } else if (prod.type === PRODUCER_TYPE.SURVEY_STATION && !prod.operational) {
+      ctx.fillStyle = '#f59e0b';
+      ctx.fillRect(px + 2, py + 2, 10, 10);
+      ctx.fillStyle = '#1c1917';
+      ctx.font = 'bold 8px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('U', px + 7, py + 7);
     }
+  }
+
+  renderSurveyStatus(ctx, tile, px, py) {
+    if (tile.surveyingBy) {
+      const progress = tile.surveyRequired > 0 ? tile.surveyProgress / tile.surveyRequired : 0;
+      ctx.fillStyle = 'rgba(20, 184, 166, 0.85)';
+      ctx.fillRect(px + 3, py + 26, (TILE_SIZE - 6) * progress, 3);
+      return;
+    }
+
+    ctx.strokeStyle = '#ef4444';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(px + 25, py + 3);
+    ctx.lineTo(px + 29, py + 7);
+    ctx.moveTo(px + 29, py + 3);
+    ctx.lineTo(px + 25, py + 7);
+    ctx.stroke();
   }
 
   renderShortfallIndicators(ctx, tile, px, py) {
@@ -485,6 +776,24 @@ export class Renderer {
     } else if (this.overlayMode === 'sewage') {
       dist = tile.distanceToProducer.sewage;
       color = '168, 85, 247';
+    } else if (this.overlayMode === 'police') {
+      dist = tile.serviceDistances?.police ?? Infinity;
+      color = '59, 130, 246';
+    } else if (this.overlayMode === 'fire') {
+      dist = tile.serviceDistances?.fire ?? Infinity;
+      color = '239, 68, 68';
+    } else if (this.overlayMode === 'hospital') {
+      dist = tile.serviceDistances?.hospital ?? Infinity;
+      color = '16, 185, 129';
+    } else if (this.overlayMode === 'school') {
+      dist = tile.serviceDistances?.school ?? Infinity;
+      color = '245, 158, 11';
+    } else if (this.overlayMode === 'library') {
+      dist = tile.serviceDistances?.library ?? Infinity;
+      color = '139, 92, 246';
+    } else if (this.overlayMode === 'city_hall') {
+      dist = tile.serviceDistances?.cityHall ?? Infinity;
+      color = '234, 179, 8';
     }
 
     if (dist < Infinity) {

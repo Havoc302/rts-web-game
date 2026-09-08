@@ -79,6 +79,7 @@ export class PollutionManager {
         const tile = grid.tiles[y][x];
         if (tile.terrain === TERRAIN.WATER) {
           tile.isPolluted = false;
+          tile.riverPollution = 0;
         }
       }
     }
@@ -87,21 +88,33 @@ export class PollutionManager {
     const sewagePlants = grid.producers.filter((p) => p.type === PRODUCER_TYPE.SEWAGE_PLANT);
     if (sewagePlants.length === 0) return;
 
-    const queue = [];
-    const visited = new Set();
+    const sourceStrengths = new Map();
+    const addSourceStrength = (tile, strength) => {
+      if (strength <= 0) return;
+      const key = `${tile.x},${tile.y}`;
+      sourceStrengths.set(key, (sourceStrengths.get(key) || 0) + strength);
+    };
 
     for (const plant of sewagePlants) {
+      const discharge = plant.usedCapacity || 0;
+      if (discharge <= 0) continue;
       const neighbors = grid.getNeighbors(plant.x, plant.y);
       for (const n of neighbors) {
         if (n.terrain === TERRAIN.WATER) {
-          const key = `${n.x},${n.y}`;
-          if (!visited.has(key)) {
-            visited.add(key);
-            n.isPolluted = true;
-            queue.push(n);
-          }
+          addSourceStrength(n, discharge);
         }
       }
+    }
+
+    const queue = [];
+    const visited = new Set();
+    for (const [key, strength] of sourceStrengths) {
+      const [x, y] = key.split(',').map(Number);
+      const tile = grid.getTile(x, y);
+      tile.riverPollution = strength;
+      tile.isPolluted = true;
+      visited.add(key);
+      queue.push({ tile, strength });
     }
 
     // 3. BFS downstream flow traversal
@@ -111,7 +124,9 @@ export class PollutionManager {
     ];
 
     while (queue.length > 0) {
-      const curr = queue.shift();
+      const { tile: curr, strength } = queue.shift();
+      const nextStrength = strength - POLLUTION_CONFIG.RIVER_SEWAGE_FALLOFF;
+      if (nextStrength <= 0) continue;
 
       for (const [dx, dy] of offsets) {
         const nx = curr.x + dx;
@@ -120,28 +135,22 @@ export class PollutionManager {
         const neighbor = grid.getTile(nx, ny);
         if (!neighbor || neighbor.terrain !== TERRAIN.WATER) continue;
 
-        const key = `${nx},${ny}`;
-        if (visited.has(key)) continue;
-
         // Check if step (dx, dy) is in downstream flow direction
         const dist = Math.sqrt(dx * dx + dy * dy);
         const ndx = dx / dist;
         const ndy = dy / dist;
 
-        let isDownstream = false;
-        if (curr.riverFlowDir) {
-          const dotCurr = ndx * curr.riverFlowDir.x + ndy * curr.riverFlowDir.y;
-          if (dotCurr > 0.05) isDownstream = true;
-        }
-        if (!isDownstream && neighbor.riverFlowDir) {
-          const dotNeighbor = ndx * neighbor.riverFlowDir.x + ndy * neighbor.riverFlowDir.y;
-          if (dotNeighbor > 0.05) isDownstream = true;
-        }
+        const isDownstream = curr.riverFlowDir
+          ? ndx * curr.riverFlowDir.x + ndy * curr.riverFlowDir.y > 0.5
+          : false;
 
         if (isDownstream) {
-          visited.add(key);
+          const neighborKey = `${neighbor.x},${neighbor.y}`;
+          if (visited.has(neighborKey)) continue;
+          visited.add(neighborKey);
+          neighbor.riverPollution = nextStrength;
           neighbor.isPolluted = true;
-          queue.push(neighbor);
+          queue.push({ tile: neighbor, strength: nextStrength });
         }
       }
     }

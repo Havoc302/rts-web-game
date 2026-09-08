@@ -25,11 +25,19 @@
         </div>
         <div class="stat-item">
           <span class="label">TREASURY</span>
-          <span class="value" id="stat-cash">$10,000</span>
+            <span class="value" id="stat-cash">$25,000</span>
         </div>
         <div class="stat-item">
           <span class="label">INCOME / TICK</span>
           <span class="value" id="stat-income">+$0</span>
+        </div>
+        <div class="stat-item">
+          <span class="label">SERVICE COST / TICK</span>
+          <span class="value" id="stat-service-expenses">-$0</span>
+        </div>
+        <div class="stat-item">
+          <span class="label">ROAD COST / TICK</span>
+          <span class="value" id="stat-road-expenses">-$0</span>
         </div>
         <div class="stat-item">
           <span class="label">JOBS AVAIL</span>
@@ -40,8 +48,8 @@
           <span class="value" id="stat-emp-rate">0%</span>
         </div>
         <div class="stat-item tax-control">
-          <span class="label">TAX RATE (<span id="tax-rate-val">100</span>%)</span>
-          <input type="range" id="tax-slider" min="0" max="200" value="100" step="5" />
+          <span class="label">TAX RATE (<span id="tax-rate-val">0</span>%)</span>
+          <input type="range" id="tax-slider" min="0" max="100" value="0" step="5" />
         </div>
         <div class="stat-item">
           <span class="label">SIM TICK</span>
@@ -51,11 +59,17 @@
 
 
       <div class="speed-controls">
-        <button class="btn-icon" id="btn-pause" title="Pause">⏸</button>
-        <button class="btn-icon active" id="btn-speed-1" title="1x Speed">▶</button>
+        <button class="btn-icon active" id="btn-pause" title="Pause">⏸</button>
+        <button class="btn-icon" id="btn-speed-1" title="1x Speed">▶</button>
         <button class="btn-icon" id="btn-speed-2" title="2x Speed">⏩</button>
         <button class="btn-icon" id="btn-speed-5" title="5x Speed">⚡</button>
-        <button class="btn-icon" id="btn-regen-map" title="Regenerate Map">🎲</button>
+
+        <div class="seed-control" title="Map Seed">
+          <span class="seed-label">SEED</span>
+          <input type="number" id="seed-input" min="1" max="9999999" value="12345" />
+        </div>
+        <button class="btn-icon" id="btn-reset-map" title="Reset Map (Current Seed)">🔄</button>
+        <button class="btn-icon" id="btn-regen-map" title="Randomize Seed & Regenerate">🎲</button>
       </div>
 
     </header>
@@ -104,6 +118,14 @@
           </div>
           <div class="progress-bar"><div class="fill sewage" id="meter-pollution-fill"></div></div>
         </div>
+        <div class="service-budgets">
+          <h3>Service Budgets</h3>
+          <label>Police <input type="range" min="0" max="100" step="5" value="100" data-service-budget="police_station"><span id="police_station-budget-value">100%</span></label>
+          <label>Fire <input type="range" min="0" max="100" step="5" value="100" data-service-budget="fire_station"><span id="fire_station-budget-value">100%</span></label>
+          <label>Hospital <input type="range" min="0" max="100" step="5" value="100" data-service-budget="hospital"><span id="hospital-budget-value">100%</span></label>
+          <label>School <input type="range" min="0" max="100" step="5" value="100" data-service-budget="school"><span id="school-budget-value">100%</span></label>
+          <label>Library <input type="range" min="0" max="100" step="5" value="100" data-service-budget="library"><span id="library-budget-value">100%</span></label>
+        </div>
       </div>
 
       <!-- Left Tools Drawer -->
@@ -116,7 +138,15 @@
           </button>
           <button class="tool-btn" data-tool="road">
             <span class="icon">🛣️</span>
-            <span class="name">Road ($10)</span>
+            <span class="name">Road ($100)</span>
+          </button>
+          <button class="tool-btn" data-tool="bridge">
+            <span class="icon">🌉</span>
+            <span class="name">Bridge ($500)</span>
+          </button>
+          <button class="tool-btn danger" data-tool="bulldoze">
+            <span class="icon">🚜</span>
+            <span class="name">Bulldoze ($50)</span>
           </button>
         </div>
 
@@ -124,15 +154,15 @@
           <span class="group-title">ZONING</span>
           <button class="tool-btn" data-tool="zone_r">
             <span class="icon">🏡</span>
-            <span class="name">Residential ($20)</span>
+            <span class="name">Residential ($200)</span>
           </button>
           <button class="tool-btn" data-tool="zone_c">
             <span class="icon">🏢</span>
-            <span class="name">Commercial ($20)</span>
+            <span class="name">Commercial ($200)</span>
           </button>
           <button class="tool-btn" data-tool="zone_i">
             <span class="icon">🏭</span>
-            <span class="name">Industrial ($20)</span>
+            <span class="name">Industrial ($300)</span>
           </button>
         </div>
 
@@ -140,25 +170,58 @@
           <span class="group-title">UTILITY PRODUCERS</span>
           <button class="tool-btn" data-tool="producer_power">
             <span class="icon">⚡</span>
-            <span class="name">Power Plant ($500)</span>
+            <span class="name">Power Plant ($5,000)</span>
           </button>
           <button class="tool-btn" data-tool="producer_water">
             <span class="icon">💧</span>
-            <span class="name">Water Tower ($300)</span>
+            <span class="name">Water Pump ($3,000)</span>
           </button>
           <button class="tool-btn" data-tool="producer_sewage">
             <span class="icon">☣️</span>
-            <span class="name">Sewage Plant ($400)</span>
+            <span class="name">Sewage Plant ($4,000)</span>
           </button>
         </div>
 
         <div class="tool-group">
-          <span class="group-title">DEMOLITION</span>
-          <button class="tool-btn danger" data-tool="bulldoze">
-            <span class="icon">🚜</span>
-            <span class="name">Bulldoze ($5)</span>
+          <span class="group-title">CIVIC SERVICES</span>
+          <button class="tool-btn" data-tool="producer_police_station">
+            <span class="icon">🚓</span>
+            <span class="name">Police Station ($4,000)</span>
+          </button>
+          <button class="tool-btn" data-tool="producer_fire_station">
+            <span class="icon">🚒</span>
+            <span class="name">Fire Station ($4,000)</span>
+          </button>
+          <button class="tool-btn" data-tool="producer_hospital">
+            <span class="icon">🏥</span>
+            <span class="name">Hospital ($6,000)</span>
+          </button>
+          <button class="tool-btn" data-tool="producer_school">
+            <span class="icon">🏫</span>
+            <span class="name">School ($3,500)</span>
+          </button>
+          <button class="tool-btn" data-tool="producer_library">
+            <span class="icon">📚</span>
+            <span class="name">Library ($2,500)</span>
+          </button>
+          <button class="tool-btn" data-tool="producer_city_hall">
+            <span class="icon">🏛️</span>
+            <span class="name">City Hall ($10,000)</span>
           </button>
         </div>
+
+        <div class="tool-group">
+          <span class="group-title">EXPLORATION</span>
+          <button class="tool-btn" data-tool="producer_survey_station">
+            <span class="icon">📡</span>
+            <span class="name">Survey Station ($7,500)</span>
+          </button>
+          <button class="tool-btn" data-tool="survey">
+            <span class="icon">🧭</span>
+            <span class="name">Survey Tile</span>
+          </button>
+        </div>
+
       </aside>
 
       <!-- Right Inspector Panel -->
@@ -176,6 +239,7 @@
           <div class="info-row"><span class="label">Block Pop / Jobs:</span><span class="val" id="inspect-pop-jobs">N/A</span></div>
           <div class="info-row"><span class="label">Growth Score:</span><span class="val" id="inspect-growth">0</span></div>
           <div class="info-row"><span class="label">Pollution:</span><span class="val" id="inspect-pollution">0</span></div>
+          <div class="info-row"><span class="label">Ore Survey:</span><span class="val" id="inspect-ore">Not surveyed</span></div>
           <hr />
           <h4>Utility Connectivity</h4>
           <div class="info-row"><span class="label">Road Connected:</span><span class="val" id="inspect-connected">No</span></div>

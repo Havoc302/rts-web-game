@@ -1,4 +1,4 @@
-import { PRODUCER_TYPE, USAGE_RATES } from '../config.js';
+import { PRODUCER_TYPE, PRODUCER_CONFIG, USAGE_RATES } from '../config.js';
 import { RoadNetwork } from './RoadNetwork.js';
 
 export class UtilityManager {
@@ -6,6 +6,86 @@ export class UtilityManager {
     this.allocateUtility(grid, PRODUCER_TYPE.POWER_PLANT, 'power', 'ascending');
     this.allocateUtility(grid, PRODUCER_TYPE.WATER_TOWER, 'water', 'ascending');
     this.allocateUtility(grid, PRODUCER_TYPE.SEWAGE_PLANT, 'sewage', 'descending');
+    this.allocateServiceUtilities(grid);
+    this.allocateSurveyUtilities(grid);
+  }
+
+  static allocateServiceUtilities(grid) {
+    const utilitySources = {
+      power: PRODUCER_TYPE.POWER_PLANT,
+      water: PRODUCER_TYPE.WATER_TOWER,
+      sewage: PRODUCER_TYPE.SEWAGE_PLANT,
+    };
+    const serviceTypes = [
+      PRODUCER_TYPE.POLICE_STATION,
+      PRODUCER_TYPE.FIRE_STATION,
+      PRODUCER_TYPE.HOSPITAL,
+    ];
+
+    for (const producer of grid.producers.filter((item) => serviceTypes.includes(item.type))) {
+      const usage = PRODUCER_CONFIG[producer.type]?.utilityUsage || {};
+      producer.utilityShortfall = { power: false, water: false, sewage: false };
+      producer.operational = true;
+
+      for (const [utilityKey, sourceType] of Object.entries(utilitySources)) {
+        const required = usage[utilityKey] || 0;
+        const { roadDistancesMap } = RoadNetwork.computeProducerDistances(grid, sourceType);
+        const candidates = [];
+        for (const neighbor of grid.getNeighbors(producer.x, producer.y)) {
+          if (!neighbor.hasRoad) continue;
+          const entries = roadDistancesMap.get(`${neighbor.x},${neighbor.y}`) || new Map();
+          for (const info of entries.values()) candidates.push(info);
+        }
+        candidates.sort((a, b) => a.distance - b.distance);
+        const available = candidates.find((info) => info.producer.capacity - info.producer.usedCapacity >= required);
+        if (available) {
+          available.producer.usedCapacity += required;
+        } else {
+          producer.utilityShortfall[utilityKey] = true;
+          producer.operational = false;
+        }
+      }
+    }
+  }
+
+  static allocateSurveyUtilities(grid) {
+    const utilitySources = {
+      power: PRODUCER_TYPE.POWER_PLANT,
+      water: PRODUCER_TYPE.WATER_TOWER,
+      sewage: PRODUCER_TYPE.SEWAGE_PLANT,
+    };
+    const surveyors = grid.producers.filter((producer) => producer.type === PRODUCER_TYPE.SURVEY_STATION);
+
+    for (const surveyor of surveyors) {
+      surveyor.utilityShortfall = { power: false, water: false, sewage: false };
+      surveyor.operational = true;
+      const usage = PRODUCER_CONFIG[PRODUCER_TYPE.SURVEY_STATION]?.utilityUsage || {};
+      const activeUsage = surveyor.surveyTarget
+        ? PRODUCER_CONFIG[PRODUCER_TYPE.SURVEY_STATION]?.activeUtilityUsage || {}
+        : {};
+
+      for (const [utilityKey, sourceType] of Object.entries(utilitySources)) {
+        const required = (usage[utilityKey] || 0) + (activeUsage[utilityKey] || 0);
+        const { roadDistancesMap } = RoadNetwork.computeProducerDistances(grid, sourceType);
+        const candidates = [];
+        for (const neighbor of grid.getNeighbors(surveyor.x, surveyor.y)) {
+          if (!neighbor.hasRoad) continue;
+          const entries = roadDistancesMap.get(`${neighbor.x},${neighbor.y}`) || new Map();
+          for (const info of entries.values()) {
+            candidates.push(info);
+          }
+        }
+
+        candidates.sort((a, b) => a.distance - b.distance);
+        const available = candidates.find((info) => info.producer.capacity - info.producer.usedCapacity >= required);
+        if (available) {
+          available.producer.usedCapacity += required;
+        } else {
+          surveyor.utilityShortfall[utilityKey] = true;
+          surveyor.operational = false;
+        }
+      }
+    }
   }
 
   static allocateUtility(grid, producerType, utilityKey, sortOrder = 'ascending') {

@@ -4,6 +4,16 @@
   "type": "module",
   "scripts": {
     "test": "node tests/simulation.test.js",
+    "test:ore": "node tests/ore-survey.test.js",
+    "test:river": "node tests/river-pollution.test.js",
+    "test:services": "node tests/service-buildings.test.js",
+    "test:tax": "node tests/tax-pressure.test.js",
+    "test:roads": "node tests/road-maintenance.test.js",
+    "test:income": "node tests/income-population.test.js",
+    "test:industrial": "node tests/industrial-economics.test.js",
+    "test:tax-revenue": "node tests/tax-revenue.test.js",
+    "test:school": "node tests/school-cost.test.js",
+    "test:service-expenses": "node tests/service-expense-scale.test.js",
     "dev": "npx serve ."
   }
 }

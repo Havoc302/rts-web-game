@@ -1,7 +1,7 @@
 import { Grid } from './engine/Grid.js';
 import { Simulation } from './engine/Simulation.js';
 import { Renderer } from './engine/Renderer.js';
-import { ZONE, TERRAIN, PRODUCER_TYPE, PRODUCER_CONFIG, COSTS, TILE_SIZE, RESIDENTIAL_CAPACITY, JOBS_PROVIDED, FOREST_POLLUTION_ABSORPTION, FOREST_DESIRABILITY_RADIUS } from './config.js';
+import { ZONE, TERRAIN, PRODUCER_TYPE, PRODUCER_CONFIG, COSTS, TILE_SIZE, STARTING_TREASURY, RESIDENTIAL_CAPACITY, JOBS_PROVIDED, FOREST_POLLUTION_ABSORPTION, FOREST_DESIRABILITY_RADIUS } from './config.js';
 
 class GameApp {
   constructor() {
@@ -10,7 +10,7 @@ class GameApp {
     this.simulation = new Simulation(this.grid);
     this.renderer = new Renderer(this.canvas, this.grid);
 
-    this.treasury = 10000;
+    this.treasury = STARTING_TREASURY;
     this.activeTool = 'inspect';
     this.isMouseDown = false;
     this.isRightMouseDown = false;
@@ -23,7 +23,7 @@ class GameApp {
     this.bindUIEvents();
     this.bindCanvasEvents();
 
-    this.setSpeed(1);
+    this.setSpeed(0);
     this.startRenderLoop();
   }
 
@@ -60,6 +60,20 @@ class GameApp {
     document.getElementById('btn-speed-2').addEventListener('click', () => this.setSpeed(2));
     document.getElementById('btn-speed-5').addEventListener('click', () => this.setSpeed(5));
 
+    document.querySelectorAll('[data-service-budget]').forEach((slider) => {
+      slider.addEventListener('input', (e) => {
+        const budget = parseInt(e.target.value, 10);
+        const type = e.target.dataset.serviceBudget;
+        this.grid.producers
+          .filter((producer) => producer.type === type)
+          .forEach((producer) => { producer.budget = budget; });
+        const value = document.getElementById(`${type}-budget-value`);
+        if (value) value.textContent = `${budget}%`;
+        this.simulation.computeStats();
+        this.updateHUD();
+      });
+    });
+
     const taxSlider = document.getElementById('tax-slider');
     if (taxSlider) {
       taxSlider.addEventListener('input', (e) => {
@@ -71,17 +85,62 @@ class GameApp {
       });
     }
 
+    const seedInput = document.getElementById('seed-input');
+    if (seedInput) {
+      seedInput.value = this.grid.seed;
+      const triggerSeedReset = () => {
+        const rawVal = seedInput.value;
+        let val = parseInt(rawVal, 10);
+        if (isNaN(val) || val <= 0) val = 12345;
+        this.resetMapWithSeed(val);
+      };
+      seedInput.addEventListener('change', triggerSeedReset);
+      seedInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') triggerSeedReset();
+      });
+    }
+
+    const resetBtn = document.getElementById('btn-reset-map');
+    if (resetBtn) {
+      resetBtn.addEventListener('click', () => {
+        const inputEl = document.getElementById('seed-input');
+        let val = parseInt(inputEl?.value, 10);
+        if (isNaN(val) || val <= 0) val = this.grid.seed;
+        this.resetMapWithSeed(val);
+      });
+    }
+
     const regenBtn = document.getElementById('btn-regen-map');
     if (regenBtn) {
       regenBtn.addEventListener('click', () => {
-        this.grid.randomizeGrid();
-        this.simulation.tickCount = 0;
-        this.simulation.computeStats();
-        this.renderer.selectedTile = null;
-        this.renderer.hoverTile = null;
-        this.updateHUD();
+        const newSeed = Math.floor(Math.random() * 9000000) + 100000;
+        this.resetMapWithSeed(newSeed);
       });
     }
+  }
+
+  resetMapWithSeed(seed) {
+    const validSeed = parseInt(seed, 10) || this.grid.seed;
+    this.grid.randomizeGrid(validSeed);
+
+    const seedInput = document.getElementById('seed-input');
+    if (seedInput) seedInput.value = this.grid.seed;
+
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('metropolis_map_seed', this.grid.seed);
+    }
+    if (typeof window !== 'undefined' && window.history) {
+      const url = new URL(window.location.href);
+      url.searchParams.set('seed', this.grid.seed);
+      window.history.replaceState({}, '', url.toString());
+    }
+
+    this.simulation.tickCount = 0;
+    this.simulation.computeStats();
+    this.renderer.selectedTile = null;
+    this.renderer.hoverTile = null;
+    this.updateHUD();
+    this.renderer.render();
   }
 
   setSpeed(speed) {
@@ -104,7 +163,7 @@ class GameApp {
   simTick() {
     if (this.simulation.isPaused) return;
     const income = this.simulation.tick();
-    this.treasury += income;
+    this.treasury += income - this.simulation.stats.serviceExpenses - this.simulation.stats.roadExpenses;
     this.updateHUD();
     if (this.renderer.selectedTile) {
       this.updateInspector(this.renderer.selectedTile);
@@ -115,6 +174,10 @@ class GameApp {
     document.getElementById('stat-pop').textContent = this.simulation.stats.population.toLocaleString();
     document.getElementById('stat-cash').textContent = `$${this.treasury.toLocaleString()}`;
     document.getElementById('stat-income').textContent = `+$${this.simulation.stats.incomePerTick.toLocaleString()}`;
+    const expensesEl = document.getElementById('stat-service-expenses');
+    if (expensesEl) expensesEl.textContent = `-$${this.simulation.stats.serviceExpenses.toLocaleString()}`;
+    const roadExpensesEl = document.getElementById('stat-road-expenses');
+    if (roadExpensesEl) roadExpensesEl.textContent = `-$${this.simulation.stats.roadExpenses.toLocaleString()}`;
     document.getElementById('stat-tick').textContent = this.simulation.tickCount;
 
     const stats = this.simulation.stats;
@@ -230,6 +293,11 @@ class GameApp {
       if (this.treasury >= cost && this.grid.placeRoad(tile.x, tile.y)) {
         success = true;
       }
+    } else if (this.activeTool === 'bridge') {
+      cost = COSTS.BRIDGE;
+      if (this.treasury >= cost && this.grid.placeBridge(tile.x, tile.y)) {
+        success = true;
+      }
     } else if (this.activeTool === 'zone_r') {
       cost = COSTS.ZONE;
       if (this.treasury >= cost && this.grid.placeZone(tile.x, tile.y, ZONE.RESIDENTIAL)) {
@@ -241,17 +309,22 @@ class GameApp {
         success = true;
       }
     } else if (this.activeTool === 'zone_i') {
-      cost = COSTS.ZONE;
+      cost = COSTS.INDUSTRIAL_ZONE;
       if (this.treasury >= cost && this.grid.placeZone(tile.x, tile.y, ZONE.INDUSTRIAL)) {
+        success = true;
+      }
+    } else if (this.activeTool === 'survey') {
+      if (this.grid.startSurvey(tile.x, tile.y)) {
         success = true;
       }
     } else if (this.activeTool.startsWith('producer_')) {
       const typeKey = this.activeTool.replace('producer_', '').toUpperCase();
       const pType = PRODUCER_TYPE[typeKey] || PRODUCER_TYPE[`${typeKey}_PLANT`] || PRODUCER_TYPE[`${typeKey}_TOWER` ];
       const config = PRODUCER_CONFIG[pType];
-      if (config && this.treasury >= config.cost) {
+      const buildCost = config?.cost;
+      if (config && this.treasury >= buildCost) {
         if (this.grid.placeProducer(tile.x, tile.y, pType, config.capacity)) {
-          cost = config.cost;
+          cost = buildCost;
           success = true;
         }
       }
@@ -286,7 +359,7 @@ class GameApp {
     } else {
       effectRow.style.display = 'none';
     }
-    document.getElementById('inspect-road').textContent = tile.hasRoad ? 'Yes' : 'No';
+    document.getElementById('inspect-road').textContent = tile.hasBridge ? 'Bridge' : tile.hasRoad ? 'Yes' : 'No';
     document.getElementById('inspect-zone').textContent = tile.zone;
     document.getElementById('inspect-density').textContent = tile.zone !== ZONE.NONE ? tile.density : 'N/A';
 
@@ -307,11 +380,26 @@ class GameApp {
 
     document.getElementById('inspect-growth').textContent = tile.zone !== ZONE.NONE ? tile.growthScore : 'N/A';
     document.getElementById('inspect-pollution').textContent = tile.pollution;
+    const oreEl = document.getElementById('inspect-ore');
+    if (oreEl) {
+      if (tile.oreDiscovered) {
+        oreEl.textContent = tile.discoveredOre ? tile.discoveredOre.replace('_', ' ') : 'No deposit';
+      } else if (tile.surveyingBy) {
+        oreEl.textContent = `Surveying ${tile.surveyProgress} / ${tile.surveyRequired} ticks`;
+      } else {
+        oreEl.textContent = 'Not surveyed';
+      }
+    }
 
     const isConnected = this.grid.isRoadAdjacent(tile.x, tile.y);
     document.getElementById('inspect-connected').textContent = isConnected ? 'Yes' : 'No';
 
     const formatUtil = (key) => {
+      if (tile.producer && (tile.producer.type === PRODUCER_TYPE.SURVEY_STATION || tile.producer.type === PRODUCER_TYPE.POLICE_STATION || tile.producer.type === PRODUCER_TYPE.FIRE_STATION || tile.producer.type === PRODUCER_TYPE.HOSPITAL)) {
+        if (!isConnected) return 'No Local Road';
+        return tile.producer.utilityShortfall?.[key] ? 'Shortfall (Building Offline)' : 'Serviced';
+      }
+
       const d = tile.distanceToProducer[key];
       if (d === Infinity) {
         if (!isConnected) return 'No Local Road';
@@ -335,8 +423,11 @@ class GameApp {
       const config = PRODUCER_CONFIG[tile.producer.type];
       const prodHasRoad = this.grid.isRoadAdjacent(tile.producer.x, tile.producer.y);
       const roadStatusStr = prodHasRoad ? '' : ' ⚠️ (Needs Road!)';
+      const utilityStatusStr = tile.producer.type === PRODUCER_TYPE.SURVEY_STATION && prodHasRoad && !tile.producer.operational
+        ? ' ⚠️ (Needs Utilities!)'
+        : '';
       const contaminatedStr = tile.producer.contaminated ? ' ☣️ Contaminated!' : '';
-      document.getElementById('inspect-producer-type').textContent = (config ? config.name : tile.producer.type) + roadStatusStr + contaminatedStr;
+      document.getElementById('inspect-producer-type').textContent = (config ? config.name : tile.producer.type) + roadStatusStr + utilityStatusStr + contaminatedStr;
       document.getElementById('inspect-producer-cap').textContent = `${tile.producer.usedCapacity} / ${tile.producer.capacity}`;
     } else {
       prodPanel.style.display = 'none';

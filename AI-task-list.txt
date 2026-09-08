@@ -1,0 +1,256 @@
+RTS Web Game - AI Work Log
+
+Current task: Add hidden ores and a utility-powered survey building.
+
+- [done] Add simplified ore types and per-tile hidden ore generation, with much higher mountain odds.
+- [done] Add Survey Building configuration, placement, utility requirements, cost, and toolbar control.
+- [done] Add one-square-at-a-time surveying with 10-tick standard duration and 20-tick mountain duration.
+- [done] Add survey progress/results to rendering and tile inspection.
+- [done] Add focused tests for ore generation, survey timing, utility shortfall, and discovery.
+- [done] Run validation and record final status.
+
+Validation:
+- `npm run test:ore` passes.
+- Syntax and editor diagnostics pass for modified source files.
+- `npm test` reaches the existing pollution-growth assertion failure in Test 9; the ore/survey tests pass independently.
+
+Current task: Simplify the discovered-ore map marker.
+
+- [done] Replace the centered discovered-ore circle with a tiny red corner X.
+
+Validation:
+- Renderer syntax and diagnostics pass.
+
+Current task: Limit and attenuate sewage pollution traveling downstream in rivers.
+
+- [done] Make river pollution strength depend on sewage discharge volume and fall off by 10 per tile.
+
+Validation:
+- `npm run test:river` passes.
+- Pollution and renderer syntax and diagnostics pass.
+
+Current task: Clarify Survey Station road and utility warnings.
+
+- [done] Ensure a road-connected Survey Station does not report a misleading road error when utilities are missing.
+
+Validation:
+- `npm run test:ore` passes.
+- Main and renderer syntax and diagnostics pass.
+
+Current task: Combine river pollution from adjacent sewage plants.
+
+- [done] Accumulate sewage discharge contributions when multiple plants feed the same river path.
+
+Validation:
+- `npm run test:river` passes, including the two-plant regression case.
+- Pollution implementation and test syntax and diagnostics pass.
+
+Current task: Correct Survey Station utility status in the Tile Inspector.
+
+- [done] Show actual Survey Station utility connectivity instead of zoned-tile road-network messages.
+
+Validation:
+- `npm run test:ore` passes.
+- Main syntax and diagnostics pass.
+
+Current task: Reduce starting treasury and clarify percentage-based tax income.
+
+- [done] Lower starting money from $10,000 and make the income display explicitly reflect the selected tax percentage.
+
+Validation:
+- Tax percentage test passes, including the existing 150% calculation case.
+- Config, main, and HTML diagnostics pass.
+- Full suite reaches the existing downstream river-contamination assertion failure.
+
+Current task: Fix river-pollution browser hang and rename Water Tower to Water Pump.
+
+- [done] Prevent repeated river-loop processing and update all user-facing water tower labels.
+
+Validation:
+- `npm run test:river` passes.
+- `npm run test:ore` passes.
+- Full suite no longer hangs but reaches the existing downstream water-tower assertion in Test 8.
+- Pollution/config/HTML diagnostics pass.
+
+Current task: Stop idle sewage plants from polluting rivers.
+
+- [done] Base river discharge on actual sewage throughput so zero production creates zero pollution.
+
+Validation:
+- `npm run test:river` passes, including the idle-plant assertion.
+- Pollution implementation and regression test syntax and diagnostics pass.
+- Full suite Test 8 still expects idle sewage plants to pollute at capacity and therefore fails by design under the corrected behavior.
+
+Current task: Restrict 67-unit sewage pollution to the intended downstream range.
+
+- [done] Prevent sideways/reverse river traversal while retaining combined discharge and 10-per-tile falloff.
+
+Validation:
+- Generated-map reproduction no longer expands across the whole river or overflows strength values.
+- `npm run test:river` passes.
+- Pollution syntax and diagnostics pass.
+
+Current task: Cap residential growth score at full population.
+
+- [done] Stop growth score at the score where a high-density residential tile reaches its population capacity.
+
+Validation:
+- Growth score is capped at 50, matching full high-density residential population.
+- `npm test` passes all 18 verification tests.
+- Growth configuration, simulation, and regression test diagnostics pass.
+
+Current task: Show active Survey Station power demand in the HUD.
+
+- [done] Include the Survey Station's active survey power draw in `powerDemand` while a survey is running.
+
+Validation:
+- `npm run test:ore` passes with idle and active HUD demand checks.
+- Simulation and regression test syntax and diagnostics pass.
+
+Current task: Stabilize zone densities and add service operating budgets.
+
+- [done] Keep residential, commercial, and industrial density upgrades permanent.
+- [done] Add Police, Fire, Hospital, School, and Library running costs with adjustable budgets affecting jobs and coverage.
+
+Validation:
+- `npm run test:services` passes, including reduced-budget jobs, coverage, and cost checks.
+- `npm test` passes all 18 verification tests.
+- Density, service-budget, treasury, and UI diagnostics pass.
+
+Current task: Make Police Station size, staffing, cost, and coverage population-driven.
+
+- [done] Add police officer caps by density, population-based staffing, per-officer construction cost, and officer-based coverage.
+
+Validation:
+- `npm run test:services` passes, including the two-officer minimum and one-officer-per-thousand scaling.
+- `npm test` passes all 18 verification tests.
+- Police configuration, service manager, placement, UI, and test diagnostics pass.
+
+Current task: Restore fixed civic construction costs and extend population staffing to Fire and Hospital.
+
+- [done] Keep Police, Fire, and Hospital build prices fixed while sharing population-based staffing caps and officer-based coverage.
+
+Validation:
+- `npm run test:services` passes with fixed Police, Fire, and Hospital construction costs.
+- `npm test` passes all 18 verification tests.
+- Civic service configuration, placement, manager, and test diagnostics pass.
+
+Current task: Add road-tile maintenance costs.
+
+- [done] Charge $1 per road or bridge tile per simulation tick and show the expense in the HUD.
+
+Validation:
+- `npm run test:roads` passes for roads and bridges.
+- `npm test` passes all 18 verification tests.
+- Road maintenance accounting and HUD diagnostics pass.
+
+Current task: Make income per tick population and occupancy based.
+
+- [done] Replace fixed density income with actual residential population and filled commercial/industrial job occupancy.
+
+Validation:
+- `npm run test:income` passes.
+- `npm test` passes all 18 verification tests.
+- Population-based income and tax regression diagnostics pass.
+
+Current task: Start the simulation paused.
+
+- [done] Initialize the game with the pause control active and no simulation interval running.
+
+Validation:
+- Startup pause syntax and HTML diagnostics pass.
+
+Current task: Make industrial zones cost $30 and pay more income.
+
+- [done] Apply the industrial placement cost and higher income rates to offset pollution.
+
+Validation:
+- `npm run test:industrial` passes.
+- `npm run test:income` passes.
+- `npm test` passes all 18 verification tests.
+- Industrial cost, income, placement UI, and diagnostics pass.
+
+Current task: Tax residents and employed workers directly.
+
+- [done] Calculate tax revenue as $1 per 100 residents plus $1 per 100 employed workers per tick, scaled by the tax rate.
+
+Validation:
+- `npm run test:tax-revenue` passes.
+- `npm run test:income` passes.
+- `npm test` passes all 18 verification tests.
+- Tax revenue configuration, simulation, and regression diagnostics pass.
+
+Current task: Reduce school operating cost to match actual staffed jobs.
+
+- [done] Stop school costs multiplying against total city population and base them on staffed school jobs instead.
+
+Validation:
+- `npm run test:school` passes.
+- `npm run test:services` passes.
+- `npm test` passes all 18 verification tests.
+- School cost, service accounting, and diagnostics pass.
+
+Current task: Scale all monetary values by 10.
+
+- [done] Multiply starting treasury, income, build prices, running costs, road maintenance, and tax revenue by 10 without changing non-money simulation quantities.
+
+Validation:
+- `npm run test:tax-revenue` passes.
+- `npm run test:roads` passes.
+- `npm run test:school` passes.
+- `npm test` passes all 18 verification tests.
+- Monetary configuration, UI labels, and diagnostics pass.
+
+Current task: Correct excessive tiny-city service expenses.
+
+- [in progress] Base every service running cost on actual staffed jobs instead of multiplying fixed costs by total population.
+
+Current task: Move Bulldoze into the General tools group.
+
+- [done] Reposition the Bulldoze button under General without changing its behavior.
+
+Validation:
+- HTML diagnostics pass and the Bulldoze button appears once under General.
+
+Current task: Connect civic services to utilities and scale service buildings with population.
+
+- [done] Add utility status/allocation for Police, Fire, and Hospital buildings.
+- [done] Make their coverage and artwork respond to population density tiers.
+
+Validation:
+- `npm run test:services` passes.
+- Civic service implementation and test syntax and diagnostics pass.
+
+Current task: Add active-survey power consumption.
+
+- [done] Make Survey Stations draw an additional power chunk while surveying a tile.
+
+Validation:
+- `npm run test:ore` passes.
+- Survey power configuration, allocation, and test syntax and diagnostics pass.
+
+Current task: Redesign taxation as a realistic 0–100% rate.
+
+- [done] Add high-tax pressure to residential population and commercial/industrial job capacity across the 0–100% rate.
+
+Updated behavior: growth slows continuously toward 50%, turns negative at 50%, and reaches strong outflow pressure at 100%.
+
+Validation:
+- `npm run test:tax` passes.
+- Tax configuration, simulation, and regression test syntax and diagnostics pass.
+- `npm test` passes all 18 verification tests.
+
+Current task: Rename the tax slider label.
+
+- [done] Change the visible label from Income Collected to Tax Rate.
+
+Validation:
+- HTML diagnostics pass and the Tax Rate label is present.
+
+Current task: Bound industrial sewage river spread.
+
+- [done] Prevent branch/cycle amplification so industrial sewage follows the finite discharge falloff instead of contaminating the whole river.
+
+Validation:
+- `npm run test:river` passes.
+- Pollution syntax and diagnostics pass.

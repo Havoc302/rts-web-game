@@ -1,21 +1,62 @@
-import { TERRAIN, TERRAIN_TYPE, ZONE, DENSITY, MAP_WIDTH, MAP_HEIGHT, PRODUCER_CONFIG } from '../config.js';
+import { TERRAIN, TERRAIN_TYPE, ZONE, DENSITY, MAP_WIDTH, MAP_HEIGHT, PRODUCER_CONFIG, ORE_CONFIG, ORE_GENERATION } from '../config.js';
+
+export function createPRNG(seed) {
+  let h = Math.imul((parseInt(seed, 10) || 12345) ^ 0x6d2b79f5, 0x15a4e35d);
+  h = Math.imul(h ^ (h >>> 15), 0x61243495);
+  let s = (h ^ (h >>> 13)) >>> 0;
+
+  return function () {
+    let t = (s += 0x6d2b79f5);
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
 
 export class Grid {
-  constructor(width = MAP_WIDTH, height = MAP_HEIGHT) {
+  constructor(width = MAP_WIDTH, height = MAP_HEIGHT, seed = null) {
     this.width = width;
     this.height = height;
+    this.seed = seed !== null ? parseInt(seed, 10) : this.getInitialSeed();
+    this.random = createPRNG(this.seed);
     this.tiles = [];
     this.producers = [];
     this.nextProducerId = 1;
+    this.terrainVersion = 0;
 
     this.initGrid();
   }
 
-  initGrid() {
-    this.randomizeGrid();
+  getInitialSeed() {
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      const paramSeed = parseInt(urlParams.get('seed'), 10);
+      if (!isNaN(paramSeed) && paramSeed > 0) return paramSeed;
+
+      const savedSeed = parseInt(localStorage.getItem('metropolis_map_seed'), 10);
+      if (!isNaN(savedSeed) && savedSeed > 0) return savedSeed;
+    }
+    const newSeed = Math.floor(Math.random() * 9000000) + 100000;
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('metropolis_map_seed', newSeed);
+    }
+    return newSeed;
   }
 
-  randomizeGrid() {
+  initGrid() {
+    this.randomizeGrid(this.seed);
+  }
+
+  randomizeGrid(seed = null) {
+    if (seed !== null && !isNaN(parseInt(seed, 10))) {
+      this.seed = parseInt(seed, 10);
+    }
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('metropolis_map_seed', this.seed);
+    }
+    this.random = createPRNG(this.seed);
+    this.terrainVersion++;
+
     this.tiles = [];
     this.producers = [];
     for (let y = 0; y < this.height; y++) {
@@ -27,7 +68,18 @@ export class Grid {
     }
 
     this.generateProceduralTerrain();
+    this.generateHiddenOres();
     this.computeRiverFlowOrder();
+  }
+
+  generateHiddenOres() {
+    const oreTypes = Object.keys(ORE_CONFIG);
+    for (const row of this.tiles) {
+      for (const tile of row) {
+        if (this.random() >= (ORE_GENERATION[tile.terrain] || 0)) continue;
+        tile.ore = oreTypes[Math.floor(this.random() * oreTypes.length)];
+      }
+    }
   }
 
   createDefaultTile(x, y) {
@@ -36,6 +88,7 @@ export class Grid {
       y,
       terrain: TERRAIN_TYPE.EMPTY,
       hasRoad: false,
+      hasBridge: false,
       zone: ZONE.NONE,
       density: DENSITY.LIGHT,
       growthScore: 0,
@@ -44,6 +97,12 @@ export class Grid {
       connected: false,
       distanceToProducer: { power: Infinity, water: Infinity, sewage: Infinity },
       pollution: 0,
+      ore: null,
+      oreDiscovered: false,
+      discoveredOre: null,
+      surveyingBy: null,
+      surveyProgress: 0,
+      surveyRequired: 0,
       riverFlowOrder: null,
       riverFlowDir: null,
     };
@@ -57,14 +116,14 @@ export class Grid {
     const mapScale = (this.width * this.height) / 900;
     const numForestClusters = Math.round(6 * mapScale);
     for (let i = 0; i < numForestClusters; i++) {
-      const cx = Math.floor(Math.random() * (this.width - 4)) + 2;
-      const cy = Math.floor(Math.random() * (this.height - 4)) + 2;
-      const radius = 3 + Math.floor(Math.random() * 5);
+      const cx = Math.floor(this.random() * (this.width - 4)) + 2;
+      const cy = Math.floor(this.random() * (this.height - 4)) + 2;
+      const radius = 3 + Math.floor(this.random() * 5);
 
       for (let y = Math.max(0, cy - radius); y <= Math.min(this.height - 1, cy + radius); y++) {
         for (let x = Math.max(0, cx - radius); x <= Math.min(this.width - 1, cx + radius); x++) {
           const dist = Math.sqrt((x - cx) ** 2 + (y - cy) ** 2);
-          if (dist <= radius + (Math.random() * 0.8 - 0.4)) {
+          if (dist <= radius + (this.random() * 0.8 - 0.4)) {
             const tile = this.tiles[y][x];
             if (tile.terrain === TERRAIN_TYPE.EMPTY) {
               tile.terrain = TERRAIN_TYPE.FOREST;
@@ -77,14 +136,14 @@ export class Grid {
     // 3. Scatter Rock Clusters — scaled to map area
     const numRockClusters = Math.round(4 * mapScale);
     for (let i = 0; i < numRockClusters; i++) {
-      const cx = Math.floor(Math.random() * (this.width - 4)) + 2;
-      const cy = Math.floor(Math.random() * (this.height - 4)) + 2;
-      const radius = 2 + Math.floor(Math.random() * 4);
+      const cx = Math.floor(this.random() * (this.width - 4)) + 2;
+      const cy = Math.floor(this.random() * (this.height - 4)) + 2;
+      const radius = 2 + Math.floor(this.random() * 4);
 
       for (let y = Math.max(0, cy - radius); y <= Math.min(this.height - 1, cy + radius); y++) {
         for (let x = Math.max(0, cx - radius); x <= Math.min(this.width - 1, cx + radius); x++) {
           const dist = Math.sqrt((x - cx) ** 2 + (y - cy) ** 2);
-          if (dist <= radius + (Math.random() * 0.6 - 0.3)) {
+          if (dist <= radius + (this.random() * 0.6 - 0.3)) {
             const tile = this.tiles[y][x];
             if (tile.terrain === TERRAIN_TYPE.EMPTY) {
               tile.terrain = TERRAIN_TYPE.ROCK;
@@ -99,10 +158,10 @@ export class Grid {
     const edges = ['top', 'bottom', 'left', 'right'];
 
     // Primary start and end edges
-    const startEdge1 = edges[Math.floor(Math.random() * 4)];
+    const startEdge1 = edges[Math.floor(this.random() * 4)];
     let endEdge1;
     do {
-      endEdge1 = edges[Math.floor(Math.random() * 4)];
+      endEdge1 = edges[Math.floor(this.random() * 4)];
     } while (endEdge1 === startEdge1);
 
     const startPos1 = this.getRandomEdgePoint(startEdge1);
@@ -112,15 +171,15 @@ export class Grid {
     const marginX = Math.max(5, Math.floor(this.width * 0.25));
     const marginY = Math.max(5, Math.floor(this.height * 0.25));
     const junction = {
-      x: marginX + Math.floor(Math.random() * (this.width - marginX * 2)),
-      y: marginY + Math.floor(Math.random() * (this.height - marginY * 2)),
+      x: marginX + Math.floor(this.random() * (this.width - marginX * 2)),
+      y: marginY + Math.floor(this.random() * (this.height - marginY * 2)),
     };
 
     // Decide topology:
     // 40% Simple (1 start -> 1 end, no junction/3rd point)
     // 30% Fork (1 start -> 2 ends, with junction)
     // 30% Merge (2 starts -> 1 end, with junction)
-    const mode = Math.random();
+    const mode = this.random();
 
     if (mode < 0.4) {
       // SIMPLE: Direct path from Start1 to End1
@@ -136,7 +195,7 @@ export class Grid {
 
       // 2nd End point on a remaining edge
       const remainingEdges = edges.filter((e) => e !== startEdge1 && e !== endEdge1);
-      const endEdge2 = remainingEdges[Math.floor(Math.random() * remainingEdges.length)] || endEdge1;
+      const endEdge2 = remainingEdges[Math.floor(this.random() * remainingEdges.length)] || endEdge1;
       const endPos2 = this.getRandomEdgePoint(endEdge2);
 
       const path3 = this.traceRiverPath(junction, endPos2);
@@ -148,7 +207,7 @@ export class Grid {
 
       // 2nd Start point on a remaining edge
       const remainingEdges = edges.filter((e) => e !== startEdge1 && e !== endEdge1);
-      const startEdge2 = remainingEdges[Math.floor(Math.random() * remainingEdges.length)] || startEdge1;
+      const startEdge2 = remainingEdges[Math.floor(this.random() * remainingEdges.length)] || startEdge1;
       const startPos2 = this.getRandomEdgePoint(startEdge2);
 
       const path2 = this.traceRiverPath(startPos2, junction);
@@ -162,10 +221,10 @@ export class Grid {
   getRandomEdgePoint(edge) {
     const margin = Math.max(3, Math.floor(Math.min(this.width, this.height) * 0.1));
     switch (edge) {
-      case 'top':    return { x: margin + Math.floor(Math.random() * (this.width - margin * 2)), y: 0 };
-      case 'bottom': return { x: margin + Math.floor(Math.random() * (this.width - margin * 2)), y: this.height - 1 };
-      case 'left':   return { x: 0, y: margin + Math.floor(Math.random() * (this.height - margin * 2)) };
-      case 'right':  return { x: this.width - 1, y: margin + Math.floor(Math.random() * (this.height - margin * 2)) };
+      case 'top':    return { x: margin + Math.floor(this.random() * (this.width - margin * 2)), y: 0 };
+      case 'bottom': return { x: margin + Math.floor(this.random() * (this.width - margin * 2)), y: this.height - 1 };
+      case 'left':   return { x: 0, y: margin + Math.floor(this.random() * (this.height - margin * 2)) };
+      case 'right':  return { x: this.width - 1, y: margin + Math.floor(this.random() * (this.height - margin * 2)) };
     }
   }
 
@@ -184,8 +243,8 @@ export class Grid {
       }
 
       // 65% move toward target, 35% wander for organic look
-      if (Math.random() < 0.65) {
-        if (Math.abs(dx) > Math.abs(dy) || (Math.abs(dx) === Math.abs(dy) && Math.random() < 0.5)) {
+      if (this.random() < 0.65) {
+        if (Math.abs(dx) > Math.abs(dy) || (Math.abs(dx) === Math.abs(dy) && this.random() < 0.5)) {
           x += Math.sign(dx);
         } else {
           y += Math.sign(dy);
@@ -193,9 +252,9 @@ export class Grid {
       } else {
         // Perpendicular wander
         if (Math.abs(dx) >= Math.abs(dy)) {
-          y += Math.random() < 0.5 ? -1 : 1;
+          y += this.random() < 0.5 ? -1 : 1;
         } else {
-          x += Math.random() < 0.5 ? -1 : 1;
+          x += this.random() < 0.5 ? -1 : 1;
         }
       }
 
@@ -304,8 +363,13 @@ export class Grid {
 
     if (producerType) {
       const config = PRODUCER_CONFIG[producerType];
-      if (config && config.requiresWaterAdjacent && !this.isWaterAdjacent(x, y)) {
-        return false;
+      if (config) {
+        if (config.requiresWaterAdjacent && !this.isWaterAdjacent(x, y)) {
+          return false;
+        }
+        if (config.unique && this.producers.some((p) => p.type === producerType)) {
+          return false;
+        }
       }
     }
     return true;
@@ -336,6 +400,12 @@ export class Grid {
       capacity,
       usedCapacity: 0,
       contaminated: false,
+      utilityShortfall: { power: false, water: false, sewage: false },
+      operational: true,
+      surveyTarget: null,
+      surveyProgress: 0,
+      surveyRequired: 0,
+      budget: 100,
       x,
       y,
     };
@@ -344,16 +414,67 @@ export class Grid {
     return producer;
   }
 
+  canSurvey(x, y) {
+    const tile = this.getTile(x, y);
+    return Boolean(tile && !tile.producer && !tile.hasRoad && !tile.oreDiscovered && !tile.surveyingBy);
+  }
+
+  startSurvey(x, y) {
+    if (!this.canSurvey(x, y)) return false;
+    const surveyors = this.producers.filter((producer) => (
+      producer.type === 'survey_station' && producer.operational && !producer.surveyTarget
+    ));
+    const target = this.getTile(x, y);
+    const surveyor = surveyors.find((producer) => this.isRoadAdjacent(producer.x, producer.y));
+    if (!target || !surveyor) return false;
+
+    surveyor.surveyTarget = { x, y };
+    surveyor.surveyProgress = 0;
+    surveyor.surveyRequired = target.terrain === TERRAIN.MOUNTAIN ? 20 : 10;
+    target.surveyingBy = surveyor.id;
+    target.surveyProgress = 0;
+    target.surveyRequired = surveyor.surveyRequired;
+    return true;
+  }
+
+  canPlaceBridge(x, y) {
+    const tile = this.getTile(x, y);
+    if (!tile) return false;
+    return tile.terrain === TERRAIN_TYPE.RIVER && !tile.hasBridge;
+  }
+
+  placeBridge(x, y) {
+    if (!this.canPlaceBridge(x, y)) return false;
+    const tile = this.getTile(x, y);
+    tile.hasBridge = true;
+    tile.hasRoad = true;
+    return true;
+  }
+
   bulldoze(x, y) {
     const tile = this.getTile(x, y);
     if (!tile) return false;
 
     let modified = false;
+    if (tile.hasBridge) {
+      tile.hasBridge = false;
+      tile.hasRoad = false;
+      modified = true;
+    }
     if (tile.terrain === TERRAIN_TYPE.FOREST) {
       tile.terrain = TERRAIN_TYPE.EMPTY;
+      this.terrainVersion++;
       modified = true;
     }
     if (tile.producer) {
+      if (tile.producer.surveyTarget) {
+        const target = this.getTile(tile.producer.surveyTarget.x, tile.producer.surveyTarget.y);
+        if (target?.surveyingBy === tile.producer.id) {
+          target.surveyingBy = null;
+          target.surveyProgress = 0;
+          target.surveyRequired = 0;
+        }
+      }
       this.producers = this.producers.filter((p) => p.id !== tile.producer.id);
       tile.producer = null;
       modified = true;

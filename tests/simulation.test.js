@@ -162,6 +162,9 @@ console.log('Running Phase 1 Core Loop Automated Verification Tests...\n');
   }
 
   assert.strictEqual(zTile.density, DENSITY.HIGH, 'Tile should upgrade to HIGH density at threshold');
+  zTile.growthScore = GROWTH_CONFIG.MAX_SCORE + 10;
+  sim.updateGrowthAndDensity();
+  assert.strictEqual(zTile.growthScore, GROWTH_CONFIG.MAX_SCORE, 'Growth score should cap at full population');
   console.log('✔ Test 4 Passed: Growth score & density progression correct');
 }
 
@@ -180,19 +183,23 @@ console.log('Running Phase 1 Core Loop Automated Verification Tests...\n');
   grid.placeZone(1, 2, ZONE.INDUSTRIAL);  // Light = $2
 
   // Force Industrial to High density
+  const resTile = grid.getTile(3, 2);
+  resTile.growthScore = GROWTH_CONFIG.MAX_SCORE;
   const indTile = grid.getTile(1, 2);
   indTile.growthScore = 30;
   indTile.density = DENSITY.HIGH; // High Industrial = $6
 
-  // Total base income = 1 + 2 + 6 = 9
+  // Income is based on residents and employed workers, not zone density.
   sim.taxRate = 100;
-  let income = sim.tick();
-  assert.strictEqual(income, 9, 'Base income at 100% tax should be $9');
+  sim.computeStats();
+  let income = sim.stats.incomePerTick;
+  assert.strictEqual(income, 10, 'Income at 100% tax should reflect scaled resident and worker revenue');
 
-  // Change tax rate to 150%
-  sim.taxRate = 150;
-  income = sim.tick();
-  assert.strictEqual(income, 14, 'Income at 150% tax should be $14 (Math.round(9 * 1.5))');
+  // Change tax rate to 50%
+  sim.taxRate = 50;
+  sim.computeStats();
+  income = sim.stats.incomePerTick;
+  assert.strictEqual(income, 5, 'Income at 50% tax should round half of the scaled population-based income');
   console.log('✔ Test 5 Passed: Tax income calculations per zone/density & tax rate multiplier correct');
 }
 
@@ -246,11 +253,14 @@ console.log('Running Phase 1 Core Loop Automated Verification Tests...\n');
   }
 
   // Water column at x=5
-  for (let y = 0; y < 10; y++) grid.tiles[y][5].terrain = 'water';
+  for (let y = 0; y < 10; y++) {
+    grid.tiles[y][5].terrain = 'water';
+    grid.tiles[y][5].riverFlowDir = { x: 0, y: 1 };
+  }
   grid.computeRiverFlowOrder();
 
   // Sewage plant at (4, 2) (adjacent to riverFlowOrder 2)
-  grid.placeProducer(4, 2, PRODUCER_TYPE.SEWAGE_PLANT, 100);
+  const sewagePlant = grid.placeProducer(4, 2, PRODUCER_TYPE.SEWAGE_PLANT, 100);
 
   // Upstream water tower at (4, 0) (adjacent to riverFlowOrder 0)
   const upstreamTower = grid.placeProducer(4, 0, PRODUCER_TYPE.WATER_TOWER, 100);
@@ -260,6 +270,8 @@ console.log('Running Phase 1 Core Loop Automated Verification Tests...\n');
 
   const sim = new Simulation(grid);
   sim.tick();
+  sewagePlant.usedCapacity = 100;
+  PollutionManager.computePollution(grid);
 
   assert.strictEqual(upstreamTower.contaminated, false, 'Upstream water tower should NOT be contaminated');
   assert.strictEqual(downstreamTower.contaminated, true, 'Downstream water tower SHOULD be contaminated');
@@ -289,6 +301,10 @@ console.log('Running Phase 1 Core Loop Automated Verification Tests...\n');
 
   const resTile = grid.getTile(3, 2);
   const indTile = grid.getTile(3, 4);
+  const laborTile = grid.getTile(4, 2);
+  laborTile.zone = ZONE.RESIDENTIAL;
+  laborTile.density = DENSITY.HIGH;
+  laborTile.growthScore = GROWTH_CONFIG.THRESHOLD_HIGH;
 
   // Inject high pollution to both
   resTile.pollution = 10;
@@ -350,7 +366,7 @@ console.log('Running Phase 1 Core Loop Automated Verification Tests...\n');
   iTile.zone = ZONE.INDUSTRIAL;
   iTile.density = DENSITY.MEDIUM;
 
-  // 1 Res Light = 50 employable
+  // 1 Res Light starts at 10% of its 50 capacity = 5 employable
   const rTile = grid.getTile(1, 3);
   rTile.zone = ZONE.RESIDENTIAL;
   rTile.density = DENSITY.LIGHT;
@@ -358,10 +374,10 @@ console.log('Running Phase 1 Core Loop Automated Verification Tests...\n');
   sim.computeStats();
 
   assert.strictEqual(sim.stats.totalJobsProvided, 230, 'Total jobs provided should be 230');
-  assert.strictEqual(sim.stats.totalEmployablePopulation, 50, 'Total employable pop should be 50');
-  assert.strictEqual(sim.stats.jobsFilled, 50, 'Jobs filled should be min(230, 50) = 50');
-  assert.strictEqual(sim.stats.jobsAvailable, 180, 'Jobs available should be 230 - 50 = 180');
-  assert.strictEqual(sim.stats.employmentRate, 50 / 230, 'Employment rate should be 50 / 230');
+  assert.strictEqual(sim.stats.totalEmployablePopulation, 5, 'Total employable pop should start at 5');
+  assert.strictEqual(sim.stats.jobsFilled, 5, 'Jobs filled should be min(230, 5) = 5');
+  assert.strictEqual(sim.stats.jobsAvailable, 225, 'Jobs available should be 230 - 5 = 225');
+  assert.strictEqual(sim.stats.employmentRate, 5 / 230, 'Employment rate should be 5 / 230');
   console.log('✔ Test 11 Passed: City-wide labor market aggregates correct');
 }
 
@@ -413,6 +429,9 @@ console.log('Running Phase 1 Core Loop Automated Verification Tests...\n');
   // 1 Commercial Light = 5 jobs, 1 Res Light = 5 employable -> employmentRate = 1.0 (100%)
   grid.placeZone(3, 2, ZONE.COMMERCIAL);
   grid.placeZone(3, 3, ZONE.RESIDENTIAL);
+  const laborTile = grid.getTile(3, 3);
+  laborTile.density = DENSITY.HIGH;
+  laborTile.growthScore = GROWTH_CONFIG.THRESHOLD_HIGH;
 
   sim.tick();
 
@@ -442,27 +461,30 @@ console.log('Running Phase 1 Core Loop Automated Verification Tests...\n');
   grid.placeZone(3, 2, ZONE.RESIDENTIAL);
   grid.placeZone(3, 3, ZONE.COMMERCIAL);
   grid.placeZone(3, 4, ZONE.INDUSTRIAL);
+  const laborTile = grid.getTile(3, 2);
+  laborTile.density = DENSITY.HIGH;
+  laborTile.growthScore = GROWTH_CONFIG.THRESHOLD_HIGH;
 
-  // At neutral tax rate (100%), delta = +1 (serviced) -> growthScore becomes 1
-  sim.taxRate = 100;
+  // At 0% tax, delta = +1 (serviced) -> growthScore becomes 1
+  sim.taxRate = 0;
   sim.tick();
   const cTileAt100 = grid.getTile(3, 3).growthScore;
   const iTileAt100 = grid.getTile(3, 4).growthScore;
 
-  assert.strictEqual(cTileAt100, 1, 'Commercial grows by +1 at 100% tax');
-  assert.strictEqual(iTileAt100, 1, 'Industrial grows by +1 at 100% tax');
+  assert.strictEqual(cTileAt100, 2, 'Commercial grows by serviced growth plus employment bonus at 0% tax');
+  assert.strictEqual(iTileAt100, 2, 'Industrial grows by serviced growth plus employment bonus at 0% tax');
 
-  // Reset tile growthScores and set tax rate to 150% (50% above neutral -> -1 penalty)
+  // Reset tile growthScores and set tax rate to 100% (strong population outflow)
   grid.getTile(3, 3).growthScore = 0;
   grid.getTile(3, 4).growthScore = 0;
-  sim.taxRate = 150;
+  sim.taxRate = 100;
   sim.tick();
 
   const cTileAt150 = grid.getTile(3, 3).growthScore;
   const iTileAt150 = grid.getTile(3, 4).growthScore;
 
-  assert.strictEqual(cTileAt150, 0, 'Commercial growth score reduced by tax penalty (1 - 1 = 0)');
-  assert.strictEqual(iTileAt150, 0, 'Industrial growth score reduced by tax penalty (1 - 1 = 0)');
+  assert.strictEqual(cTileAt150, 0, 'Commercial growth should reverse at the 100% tax rate');
+  assert.strictEqual(iTileAt150, 0, 'Industrial growth should reverse at the 100% tax rate');
 
   console.log('✔ Test 14 Passed: High tax rate reduces growth score across all zone types');
 }
@@ -496,17 +518,17 @@ console.log('Running Phase 1 Core Loop Automated Verification Tests...\n');
 // Test 16: Dynamic Map Dimensions & TERRAIN_TYPE Dictionary
 {
   const grid = new Grid(MAP_WIDTH, MAP_HEIGHT);
-  assert.strictEqual(grid.width, 30, 'MAP_WIDTH should be 30');
-  assert.strictEqual(grid.height, 30, 'MAP_HEIGHT should be 30');
-  assert.strictEqual(grid.tiles.length, 30, 'Grid should have 30 rows');
-  assert.strictEqual(grid.tiles[0].length, 30, 'Grid should have 30 columns');
+  assert.strictEqual(grid.width, MAP_WIDTH, 'Grid width should match MAP_WIDTH');
+  assert.strictEqual(grid.height, MAP_HEIGHT, 'Grid height should match MAP_HEIGHT');
+  assert.strictEqual(grid.tiles.length, MAP_HEIGHT, 'Grid should have MAP_HEIGHT rows');
+  assert.strictEqual(grid.tiles[0].length, MAP_WIDTH, 'Grid should have MAP_WIDTH columns');
 
   assert.ok(TERRAIN_TYPE.EMPTY, 'TERRAIN_TYPE.EMPTY defined');
   assert.ok(TERRAIN_TYPE.RIVER, 'TERRAIN_TYPE.RIVER defined');
   assert.ok(TERRAIN_TYPE.ROCK, 'TERRAIN_TYPE.ROCK defined');
   assert.ok(TERRAIN_TYPE.FOREST, 'TERRAIN_TYPE.FOREST defined');
 
-  console.log('✔ Test 16 Passed: Dynamic map dimensions (30x30) & TERRAIN_TYPE dictionary correct');
+  console.log('✔ Test 16 Passed: Dynamic map dimensions & TERRAIN_TYPE dictionary correct');
 }
 
 // Test 17: Procedural Terrain Generation & Random Walk River

@@ -1,6 +1,7 @@
-import { GROWTH_CONFIG, DENSITY, ZONE, TERRAIN, USAGE_RATES, BASE_INCOME, POLLUTION_CONFIG, JOBS_PROVIDED, EMPLOYABLE_POPULATION, RESIDENTIAL_CAPACITY, LABOR_TAX_GROWTH_CONFIG, FOREST_DESIRABILITY_RADIUS } from '../config.js';
+import { GROWTH_CONFIG, DENSITY, ZONE, TERRAIN, USAGE_RATES, POLLUTION_CONFIG, JOBS_PROVIDED, EMPLOYABLE_POPULATION, RESIDENTIAL_CAPACITY, LABOR_TAX_GROWTH_CONFIG, FOREST_DESIRABILITY_RADIUS, PRODUCER_TYPE, ROAD_MAINTENANCE_COST, TAX_REVENUE_CONFIG } from '../config.js';
 import { UtilityManager } from './UtilityManager.js';
 import { PollutionManager } from './PollutionManager.js';
+import { ServiceManager } from './ServiceManager.js';
 
 export class Simulation {
   constructor(grid) {
@@ -8,7 +9,7 @@ export class Simulation {
     this.tickCount = 0;
     this.isPaused = false;
     this.speed = 1;
-    this.taxRate = 100;
+    this.taxRate = 0;
     this.stats = {
       population: 0,
       incomePerTick: 0,
@@ -18,6 +19,8 @@ export class Simulation {
       waterCapacity: 0,
       sewageDemand: 0,
       sewageCapacity: 0,
+      serviceExpenses: 0,
+      roadExpenses: 0,
       avgPollution: 0,
       maxPollution: 0,
       totalJobsProvided: 0,
@@ -38,6 +41,8 @@ export class Simulation {
 
     UtilityManager.allocateAll(this.grid);
     PollutionManager.computePollution(this.grid);
+    ServiceManager.updateServices(this.grid, this.stats.population, this.stats.employmentRate);
+    this.updateSurveys();
 
     this.computeStats();
     this.updateGrowthAndDensity();
@@ -45,16 +50,31 @@ export class Simulation {
     return this.stats.incomePerTick;
   }
 
+  updateSurveys() {
+    for (const surveyor of this.grid.producers) {
+      if (surveyor.type !== PRODUCER_TYPE.SURVEY_STATION || !surveyor.surveyTarget) continue;
+      const target = this.grid.getTile(surveyor.surveyTarget.x, surveyor.surveyTarget.y);
+      if (!target || !surveyor.operational || target.surveyingBy !== surveyor.id) continue;
+
+      surveyor.surveyProgress++;
+      target.surveyProgress = surveyor.surveyProgress;
+      if (surveyor.surveyProgress < surveyor.surveyRequired) continue;
+
+      target.oreDiscovered = true;
+      target.discoveredOre = target.ore;
+      target.surveyingBy = null;
+      target.surveyProgress = surveyor.surveyRequired;
+      surveyor.surveyTarget = null;
+      surveyor.surveyProgress = 0;
+      surveyor.surveyRequired = 0;
+    }
+  }
+
   updateGrowthAndDensity() {
     const jobsAvail = this.stats.jobsAvailable;
     const empRate = this.stats.employmentRate;
 
-    let taxPenalty = 0;
-    if (this.taxRate > LABOR_TAX_GROWTH_CONFIG.BASE_NEUTRAL_TAX_RATE) {
-      taxPenalty = Math.floor(
-        (this.taxRate - LABOR_TAX_GROWTH_CONFIG.BASE_NEUTRAL_TAX_RATE) / 50
-      ) * LABOR_TAX_GROWTH_CONFIG.TAX_PENALTY_PER_50_PCT;
-    }
+    const taxGrowthModifier = this.getTaxGrowthModifier();
 
     for (let y = 0; y < this.grid.height; y++) {
       for (let x = 0; x < this.grid.width; x++) {
@@ -80,13 +100,22 @@ export class Simulation {
           delta += POLLUTION_CONFIG.POLLUTION_GROWTH_PENALTY;
         }
 
-        // Apply tax rate penalty across ALL zone types (R, C, I)
-        delta -= taxPenalty;
+        // Tax pressure applies continuously across all zone types.
+        delta += taxGrowthModifier;
 
         if (tile.zone === ZONE.RESIDENTIAL) {
           // Forest desirability bonus
           if (this.hasNearbyForest(x, y)) {
             delta += 1;
+          }
+          // Essential services desirability bonuses
+          if (tile.services) {
+            if (tile.services.police) delta += 1;
+            if (tile.services.fire) delta += 1;
+            if (tile.services.hospital) delta += 1;
+            if (tile.services.school) delta += 1;
+            if (tile.services.library) delta += 1;
+            if (tile.services.cityHall) delta += 2;
           }
           // Residential growthScore only increases if jobsAvailable > 0.
           // No available jobs = positive growth stalls entirely.
@@ -104,14 +133,16 @@ export class Simulation {
           delta += empBonus;
         }
 
-        tile.growthScore = Math.max(0, tile.growthScore + delta);
+        tile.growthScore = Math.min(
+          GROWTH_CONFIG.MAX_SCORE,
+          Math.max(0, tile.growthScore + delta),
+        );
 
-        if (tile.growthScore >= GROWTH_CONFIG.THRESHOLD_HIGH) {
-          tile.density = DENSITY.HIGH;
-        } else if (tile.growthScore >= GROWTH_CONFIG.THRESHOLD_MEDIUM) {
+        if (tile.density === DENSITY.LIGHT && tile.growthScore >= GROWTH_CONFIG.THRESHOLD_MEDIUM) {
           tile.density = DENSITY.MEDIUM;
-        } else {
-          tile.density = DENSITY.LIGHT;
+        }
+        if (tile.density === DENSITY.MEDIUM && tile.growthScore >= GROWTH_CONFIG.THRESHOLD_HIGH) {
+          tile.density = DENSITY.HIGH;
         }
       }
     }
@@ -127,6 +158,7 @@ export class Simulation {
       waterCapacity: 0,
       sewageDemand: 0,
       sewageCapacity: 0,
+      serviceExpenses: 0,
       avgPollution: 0,
       maxPollution: 0,
       totalJobsProvided: 0,
@@ -146,11 +178,19 @@ export class Simulation {
       if (p.type === 'power_plant') stats.powerCapacity += p.capacity;
       if (p.type === 'water_tower') stats.waterCapacity += p.capacity;
       if (p.type === 'sewage_plant') stats.sewageCapacity += p.capacity;
+      if (p.runningCost) stats.serviceExpenses += p.runningCost;
+      if (p.type === PRODUCER_TYPE.SURVEY_STATION && p.surveyTarget) {
+        stats.powerDemand += 10;
+      }
+      if (p.totalJobs && p.totalJobs > 0) stats.totalJobsProvided += p.totalJobs;
     }
 
-    let baseIncomeSum = 0;
+    stats.roadExpenses = this.grid.tiles.flat().filter((tile) => tile.hasRoad).length * ROAD_MAINTENANCE_COST;
+
     let totalPollution = 0;
     let tileCount = 0;
+    const highTaxPressure = this.getHighTaxPressure();
+    const jobsMultiplier = 1 - highTaxPressure * LABOR_TAX_GROWTH_CONFIG.MAX_HIGH_TAX_JOBS_REDUCTION;
 
     for (let y = 0; y < this.grid.height; y++) {
       for (let x = 0; x < this.grid.width; x++) {
@@ -169,9 +209,6 @@ export class Simulation {
         stats.waterDemand += rates.water;
         stats.sewageDemand += rates.sewage;
 
-        const tileBaseIncome = BASE_INCOME[tile.zone]?.[tile.density] || 0;
-        baseIncomeSum += tileBaseIncome;
-
         if (stats.zones[tile.zone]) {
           stats.zones[tile.zone][tile.density]++;
         }
@@ -185,8 +222,8 @@ export class Simulation {
           stats.totalEmployablePopulation += pop;
         } else if (tile.zone === ZONE.COMMERCIAL || tile.zone === ZONE.INDUSTRIAL) {
           const jobs = JOBS_PROVIDED[tile.zone]?.[tile.density] || 0;
-          tile.totalJobs = jobs;
-          stats.totalJobsProvided += jobs;
+          tile.totalJobs = Math.max(0, Math.round(jobs * jobsMultiplier));
+          stats.totalJobsProvided += tile.totalJobs;
         } else {
           tile.population = 0;
           tile.maxPopulation = 0;
@@ -207,10 +244,13 @@ export class Simulation {
         if (tile.zone === ZONE.COMMERCIAL || tile.zone === ZONE.INDUSTRIAL) {
           tile.filledJobs = Math.round((tile.totalJobs || 0) * stats.employmentRate);
         }
+
       }
     }
 
-    stats.incomePerTick = Math.round(baseIncomeSum * (this.taxRate / 100));
+    const taxBase = (stats.population / TAX_REVENUE_CONFIG.RESIDENTS_PER_TAX_UNIT) +
+      (stats.jobsFilled / TAX_REVENUE_CONFIG.EMPLOYED_PER_TAX_UNIT);
+    stats.incomePerTick = Math.round(taxBase * TAX_REVENUE_CONFIG.MONEY_PER_TAX_UNIT * (this.taxRate / 100));
     stats.avgPollution = tileCount > 0 ? Math.round((totalPollution / tileCount) * 10) / 10 : 0;
     this.stats = stats;
   }
@@ -226,9 +266,30 @@ export class Simulation {
     } else if (tile.density === DENSITY.MEDIUM) {
       progress = (tHigh - tMed) > 0 ? Math.min(1, (gs - tMed) / (tHigh - tMed)) : 1;
     } else {
-      progress = tHigh > 0 ? Math.min(1, (gs - tHigh) / tHigh) : 1;
+      progress = tHigh > 0 ? Math.min(1, (gs - tHigh) / (GROWTH_CONFIG.MAX_SCORE - tHigh)) : 1;
     }
     return Math.max(1, Math.round(capacity * (0.1 + 0.9 * Math.max(0, progress))));
+  }
+
+  getHighTaxPressure() {
+    return Math.min(
+      1,
+      Math.max(0, this.taxRate - LABOR_TAX_GROWTH_CONFIG.POPULATION_OUTFLOW_START_RATE) /
+        (LABOR_TAX_GROWTH_CONFIG.MAX_TAX_RATE - LABOR_TAX_GROWTH_CONFIG.POPULATION_OUTFLOW_START_RATE),
+    );
+  }
+
+  getTaxGrowthModifier() {
+    const rate = Math.min(LABOR_TAX_GROWTH_CONFIG.MAX_TAX_RATE, Math.max(0, this.taxRate));
+    if (rate <= LABOR_TAX_GROWTH_CONFIG.POPULATION_OUTFLOW_START_RATE) {
+      return -rate / LABOR_TAX_GROWTH_CONFIG.GROWTH_NEUTRAL_RATE;
+    }
+
+    const outflowProgress = (rate - LABOR_TAX_GROWTH_CONFIG.POPULATION_OUTFLOW_START_RATE) /
+      (LABOR_TAX_GROWTH_CONFIG.MAX_TAX_RATE - LABOR_TAX_GROWTH_CONFIG.POPULATION_OUTFLOW_START_RATE);
+    const startPenalty = -LABOR_TAX_GROWTH_CONFIG.POPULATION_OUTFLOW_START_RATE /
+      LABOR_TAX_GROWTH_CONFIG.GROWTH_NEUTRAL_RATE;
+    return startPenalty - (LABOR_TAX_GROWTH_CONFIG.MAX_OUTFLOW_GROWTH_PENALTY - Math.abs(startPenalty)) * outflowProgress ** 2;
   }
 
   hasNearbyForest(cx, cy) {
