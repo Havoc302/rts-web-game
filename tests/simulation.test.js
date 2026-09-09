@@ -3,7 +3,7 @@ import { Grid } from '../src/engine/Grid.js';
 import { Simulation } from '../src/engine/Simulation.js';
 import { UtilityManager } from '../src/engine/UtilityManager.js';
 import { PollutionManager } from '../src/engine/PollutionManager.js';
-import { PRODUCER_TYPE, ZONE, DENSITY, GROWTH_CONFIG, MAP_WIDTH, MAP_HEIGHT, TERRAIN_TYPE } from '../src/config.js';
+import { PRODUCER_TYPE, ZONE, DENSITY, GROWTH_CONFIG, MAP_WIDTH, MAP_HEIGHT, TERRAIN_TYPE, CRIME_CONFIG } from '../src/config.js';
 
 console.log('Running Phase 1 Core Loop Automated Verification Tests...\n');
 
@@ -148,6 +148,14 @@ console.log('Running Phase 1 Core Loop Automated Verification Tests...\n');
   assert.strictEqual(zTile.density, DENSITY.LIGHT);
   assert.strictEqual(zTile.growthScore, 0);
 
+  // Crime spawning is probabilistic; disable it so growth math stays deterministic here.
+  const originalRandom = Math.random;
+  const originalBaseCrimeChance = CRIME_CONFIG.BASE_CRIME_CHANCE;
+  const originalUnemploymentScaler = CRIME_CONFIG.JOB_SCARCITY_CRIME_SCALER;
+  Math.random = () => 0.999;
+  CRIME_CONFIG.BASE_CRIME_CHANCE = 0;
+  CRIME_CONFIG.JOB_SCARCITY_CRIME_SCALER = 0;
+
   // Run simulation ticks up to THRESHOLD_MEDIUM
   for (let i = 0; i < GROWTH_CONFIG.THRESHOLD_MEDIUM; i++) {
     sim.tick();
@@ -160,6 +168,10 @@ console.log('Running Phase 1 Core Loop Automated Verification Tests...\n');
   for (let i = 0; i < GROWTH_CONFIG.THRESHOLD_HIGH - GROWTH_CONFIG.THRESHOLD_MEDIUM; i++) {
     sim.tick();
   }
+
+  Math.random = originalRandom;
+  CRIME_CONFIG.BASE_CRIME_CHANCE = originalBaseCrimeChance;
+  CRIME_CONFIG.JOB_SCARCITY_CRIME_SCALER = originalUnemploymentScaler;
 
   assert.strictEqual(zTile.density, DENSITY.HIGH, 'Tile should upgrade to HIGH density at threshold');
   zTile.growthScore = GROWTH_CONFIG.MAX_SCORE + 10;
@@ -193,13 +205,13 @@ console.log('Running Phase 1 Core Loop Automated Verification Tests...\n');
   sim.taxRate = 100;
   sim.computeStats();
   let income = sim.stats.incomePerTick;
-  assert.strictEqual(income, 10, 'Income at 100% tax should reflect scaled resident and worker revenue');
+  assert.strictEqual(income, 5, 'Income at 100% tax should reflect scaled resident and worker revenue');
 
   // Change tax rate to 50%
   sim.taxRate = 50;
   sim.computeStats();
   income = sim.stats.incomePerTick;
-  assert.strictEqual(income, 5, 'Income at 50% tax should round half of the scaled population-based income');
+  assert.strictEqual(income, 3, 'Income at 50% tax should round half of the scaled population-based income');
   console.log('✔ Test 5 Passed: Tax income calculations per zone/density & tax rate multiplier correct');
 }
 
@@ -304,7 +316,7 @@ console.log('Running Phase 1 Core Loop Automated Verification Tests...\n');
   const laborTile = grid.getTile(4, 2);
   laborTile.zone = ZONE.RESIDENTIAL;
   laborTile.density = DENSITY.HIGH;
-  laborTile.growthScore = GROWTH_CONFIG.THRESHOLD_HIGH;
+  laborTile.growthScore = GROWTH_CONFIG.MAX_SCORE;
 
   // Inject high pollution to both
   resTile.pollution = 10;
@@ -366,7 +378,7 @@ console.log('Running Phase 1 Core Loop Automated Verification Tests...\n');
   iTile.zone = ZONE.INDUSTRIAL;
   iTile.density = DENSITY.MEDIUM;
 
-  // 1 Res Light starts at 10% of its 50 capacity = 5 employable
+  // 1 Res Light starts at 0 population until growthScore rises above 0
   const rTile = grid.getTile(1, 3);
   rTile.zone = ZONE.RESIDENTIAL;
   rTile.density = DENSITY.LIGHT;
@@ -374,10 +386,10 @@ console.log('Running Phase 1 Core Loop Automated Verification Tests...\n');
   sim.computeStats();
 
   assert.strictEqual(sim.stats.totalJobsProvided, 230, 'Total jobs provided should be 230');
-  assert.strictEqual(sim.stats.totalEmployablePopulation, 5, 'Total employable pop should start at 5');
-  assert.strictEqual(sim.stats.jobsFilled, 5, 'Jobs filled should be min(230, 5) = 5');
-  assert.strictEqual(sim.stats.jobsAvailable, 225, 'Jobs available should be 230 - 5 = 225');
-  assert.strictEqual(sim.stats.employmentRate, 5 / 230, 'Employment rate should be 5 / 230');
+  assert.strictEqual(sim.stats.totalEmployablePopulation, 0, 'Total employable pop should start at 0');
+  assert.strictEqual(sim.stats.jobsFilled, 0, 'Jobs filled should be min(230, 0) = 0');
+  assert.strictEqual(sim.stats.jobsAvailable, 230, 'Jobs available should be 230 - 0 = 230');
+  assert.strictEqual(sim.stats.employmentRate, 0, 'Employment rate should be 0 with no population yet');
   console.log('✔ Test 11 Passed: City-wide labor market aggregates correct');
 }
 
@@ -431,7 +443,7 @@ console.log('Running Phase 1 Core Loop Automated Verification Tests...\n');
   grid.placeZone(3, 3, ZONE.RESIDENTIAL);
   const laborTile = grid.getTile(3, 3);
   laborTile.density = DENSITY.HIGH;
-  laborTile.growthScore = GROWTH_CONFIG.THRESHOLD_HIGH;
+  laborTile.growthScore = GROWTH_CONFIG.MAX_SCORE;
 
   sim.tick();
 
@@ -463,7 +475,7 @@ console.log('Running Phase 1 Core Loop Automated Verification Tests...\n');
   grid.placeZone(3, 4, ZONE.INDUSTRIAL);
   const laborTile = grid.getTile(3, 2);
   laborTile.density = DENSITY.HIGH;
-  laborTile.growthScore = GROWTH_CONFIG.THRESHOLD_HIGH;
+  laborTile.growthScore = GROWTH_CONFIG.MAX_SCORE;
 
   // At 0% tax, delta = +1 (serviced) -> growthScore becomes 1
   sim.taxRate = 0;

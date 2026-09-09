@@ -1,7 +1,7 @@
 import { Grid } from './engine/Grid.js';
 import { Simulation } from './engine/Simulation.js';
 import { Renderer } from './engine/Renderer.js';
-import { ZONE, TERRAIN, PRODUCER_TYPE, PRODUCER_CONFIG, COSTS, TILE_SIZE, STARTING_TREASURY, RESIDENTIAL_CAPACITY, JOBS_PROVIDED, FOREST_POLLUTION_ABSORPTION, FOREST_DESIRABILITY_RADIUS } from './config.js';
+import { ZONE, TERRAIN, PRODUCER_TYPE, PRODUCER_CONFIG, COSTS, TILE_SIZE, STARTING_TREASURY, RESIDENTIAL_CAPACITY, JOBS_PROVIDED, FOREST_POLLUTION_ABSORPTION, FOREST_DESIRABILITY_RADIUS, CRIME_CONFIG, POWER_PRODUCER_TYPES, POLLUTION_CONFIG, COAL_CONFIG, WIND_CONFIG, SOLAR_CONFIG, BATTERY_CONFIG, DENSITY } from './config.js';
 
 class GameApp {
   constructor() {
@@ -44,6 +44,11 @@ class GameApp {
         this.activeTool = btn.dataset.tool;
         this.renderer.highlightWaterAdjacent =
           this.activeTool === 'producer_water' || this.activeTool === 'producer_sewage';
+        if (this.activeTool !== 'inspect') {
+          document.getElementById('inspector-panel').classList.remove('visible');
+          this.renderer.selectedTile = null;
+        }
+        this.updateBuildInfoPanel(this.activeTool);
       });
     });
 
@@ -140,7 +145,7 @@ class GameApp {
     this.renderer.selectedTile = null;
     this.renderer.hoverTile = null;
     this.updateHUD();
-    this.renderer.render();
+    this.renderer.render(this.simulation);
   }
 
   setSpeed(speed) {
@@ -156,7 +161,7 @@ class GameApp {
       this.simulation.isPaused = false;
       this.simulation.speed = speed;
       if (this.simInterval) clearInterval(this.simInterval);
-      this.simInterval = setInterval(() => this.simTick(), 1000 / speed);
+      this.simInterval = setInterval(() => this.simTick(), 2000 / speed);
     }
   }
 
@@ -179,6 +184,13 @@ class GameApp {
     const roadExpensesEl = document.getElementById('stat-road-expenses');
     if (roadExpensesEl) roadExpensesEl.textContent = `-$${this.simulation.stats.roadExpenses.toLocaleString()}`;
     document.getElementById('stat-tick').textContent = this.simulation.tickCount;
+
+    const hour = this.simulation.getHourOfDay();
+    const isDay = this.simulation.isDaytime();
+    const displayHour = hour % 12 === 0 ? 12 : hour % 12;
+    const ampm = hour < 12 ? 'AM' : 'PM';
+    const timeEl = document.getElementById('stat-time');
+    if (timeEl) timeEl.textContent = `${isDay ? '☀️' : '🌙'} ${displayHour}:00 ${ampm}`;
 
     const stats = this.simulation.stats;
 
@@ -251,8 +263,21 @@ class GameApp {
 
     this.canvas.addEventListener('wheel', (e) => {
       e.preventDefault();
+      const rect = this.canvas.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+
+      const oldZoom = this.renderer.zoom;
+      const worldX = (mouseX - this.canvas.width / 2 - this.renderer.cameraX) / oldZoom;
+      const worldY = (mouseY - this.canvas.height / 2 - this.renderer.cameraY) / oldZoom;
+
       const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
-      this.renderer.setCamera(this.renderer.cameraX, this.renderer.cameraY, this.renderer.zoom * zoomFactor);
+      const newZoom = Math.min(2.5, Math.max(0.4, oldZoom * zoomFactor));
+
+      const newCameraX = mouseX - this.canvas.width / 2 - worldX * newZoom;
+      const newCameraY = mouseY - this.canvas.height / 2 - worldY * newZoom;
+
+      this.renderer.setCamera(newCameraX, newCameraY, newZoom);
     });
   }
 
@@ -281,6 +306,7 @@ class GameApp {
 
     if (this.activeTool === 'inspect') {
       this.renderer.selectedTile = tile;
+      document.getElementById('inspector-panel').classList.add('visible');
       this.updateInspector(tile);
       return;
     }
@@ -337,7 +363,7 @@ class GameApp {
 
     if (success) {
       this.treasury -= cost;
-      const income = this.simulation.tick();
+      const income = this.simulation.tick(!this.simulation.isPaused);
       this.treasury += income;
       this.updateHUD();
       if (this.renderer.selectedTile) {
@@ -345,6 +371,76 @@ class GameApp {
       }
     }
 
+  }
+
+  updateBuildInfoPanel(tool) {
+    const panel = document.getElementById('build-info-panel');
+    const title = document.getElementById('build-info-title');
+    const body = document.getElementById('build-info-body');
+    const row = (label, val) => `<div class="info-row"><span class="label">${label}:</span><span class="val">${val}</span></div>`;
+
+    if (tool.startsWith('producer_')) {
+      const typeKey = tool.replace('producer_', '').toUpperCase();
+      const pType = PRODUCER_TYPE[typeKey] || PRODUCER_TYPE[`${typeKey}_PLANT`] || PRODUCER_TYPE[`${typeKey}_TOWER`];
+      const config = PRODUCER_CONFIG[pType];
+      if (!config) {
+        panel.classList.remove('visible');
+        return;
+      }
+
+      title.textContent = config.name;
+      const rows = [row('Cost', `$${config.cost.toLocaleString()}`)];
+      if (config.requiresWaterAdjacent) rows.push(row('Requires', 'Adjacent to water'));
+
+      if (config.utility === 'power') {
+        if (pType === PRODUCER_TYPE.WINDMILL) {
+          rows.push(row('Power Output', `${WIND_CONFIG.MIN_CAPACITY}-${WIND_CONFIG.BASE_CAPACITY + WIND_CONFIG.FLUCTUATION} (fluctuates each tick)`));
+        } else if (pType === PRODUCER_TYPE.SOLAR_PANEL) {
+          rows.push(row('Power Output', `0-${SOLAR_CONFIG.PEAK_CAPACITY} (day only, peaks at noon)`));
+        } else if (pType === PRODUCER_TYPE.BATTERY) {
+          rows.push(row('Storage Capacity', `${BATTERY_CONFIG.MAX_STORAGE}`));
+          rows.push(row('Discharge Rate', `${BATTERY_CONFIG.DISCHARGE_RATE} / tick`));
+        } else {
+          rows.push(row('Power Output', `${config.capacity}`));
+        }
+        if (pType === PRODUCER_TYPE.COAL_PLANT) {
+          rows.push(row('Pollution', `Emits ${COAL_CONFIG.EMISSION} within ${COAL_CONFIG.RADIUS} tiles`));
+        } else if (pType !== PRODUCER_TYPE.BATTERY) {
+          rows.push(row('Pollution', 'None'));
+        }
+      } else if (config.utility === 'water' || config.utility === 'sewage') {
+        rows.push(row('Capacity', `${config.capacity}`));
+      } else if (config.jobs) {
+        rows.push(row('Jobs (Light/Medium/High)', `${config.jobs.light} / ${config.jobs.medium} / ${config.jobs.high}`));
+        if (config.radius) rows.push(row('Coverage Radius (L/M/H)', `${config.radius.light} / ${config.radius.medium} / ${config.radius.high}`));
+      } else if (config.surveyDuration) {
+        rows.push(row('Survey Duration (Flat/Mountain)', `${config.surveyDuration.standard} / ${config.surveyDuration.mountain} ticks`));
+      }
+
+      body.innerHTML = rows.join('');
+      panel.classList.add('visible');
+    } else if (tool === 'zone_r' || tool === 'zone_c' || tool === 'zone_i') {
+      const zoneType = tool === 'zone_r' ? ZONE.RESIDENTIAL : tool === 'zone_c' ? ZONE.COMMERCIAL : ZONE.INDUSTRIAL;
+      const cost = tool === 'zone_i' ? COSTS.INDUSTRIAL_ZONE : COSTS.ZONE;
+      title.textContent = tool === 'zone_r' ? 'Residential Zone' : tool === 'zone_c' ? 'Commercial Zone' : 'Industrial Zone';
+
+      const rows = [row('Cost', `$${cost.toLocaleString()}`)];
+      if (zoneType === ZONE.RESIDENTIAL) {
+        rows.push(row('Population (Light/Medium/High)', `${RESIDENTIAL_CAPACITY[DENSITY.LIGHT]} / ${RESIDENTIAL_CAPACITY[DENSITY.MEDIUM]} / ${RESIDENTIAL_CAPACITY[DENSITY.HIGH]}`));
+      } else {
+        const jobs = JOBS_PROVIDED[zoneType];
+        rows.push(row('Jobs (Light/Medium/High)', `${jobs[DENSITY.LIGHT]} / ${jobs[DENSITY.MEDIUM]} / ${jobs[DENSITY.HIGH]}`));
+      }
+      if (zoneType === ZONE.INDUSTRIAL) {
+        rows.push(row('Pollution (Light/Medium/High)', `${POLLUTION_CONFIG.INDUSTRIAL_EMISSION.light} / ${POLLUTION_CONFIG.INDUSTRIAL_EMISSION.medium} / ${POLLUTION_CONFIG.INDUSTRIAL_EMISSION.high}`));
+        rows.push(row('Pollution Radius (L/M/H)', `${POLLUTION_CONFIG.INDUSTRIAL_RADIUS.light} / ${POLLUTION_CONFIG.INDUSTRIAL_RADIUS.medium} / ${POLLUTION_CONFIG.INDUSTRIAL_RADIUS.high}`));
+      }
+
+      body.innerHTML = rows.join('');
+      panel.classList.add('visible');
+    } else {
+      panel.classList.remove('visible');
+    }
   }
 
   updateInspector(tile) {
@@ -380,6 +476,12 @@ class GameApp {
 
     document.getElementById('inspect-growth').textContent = tile.zone !== ZONE.NONE ? tile.growthScore : 'N/A';
     document.getElementById('inspect-pollution').textContent = tile.pollution;
+
+    const crime = tile.crime || 0;
+    const crimeLevel = crime <= 0 ? 'Safe' : crime < CRIME_CONFIG.CRIME_PENALTY_THRESHOLD ? 'Moderate' : 'High Crime';
+    document.getElementById('inspect-crime').textContent = crimeLevel;
+    const crimeTaxPenalty = Math.min(CRIME_CONFIG.MAX_TAX_LOSS_RATIO, crime * CRIME_CONFIG.TAX_LOSS_PER_CRIME_POINT);
+    document.getElementById('inspect-crime-tax-loss').textContent = `-${Math.round(crimeTaxPenalty * 100)}%`;
     const oreEl = document.getElementById('inspect-ore');
     if (oreEl) {
       if (tile.oreDiscovered) {
@@ -395,16 +497,25 @@ class GameApp {
     document.getElementById('inspect-connected').textContent = isConnected ? 'Yes' : 'No';
 
     const formatUtil = (key) => {
-      if (tile.producer && (tile.producer.type === PRODUCER_TYPE.SURVEY_STATION || tile.producer.type === PRODUCER_TYPE.POLICE_STATION || tile.producer.type === PRODUCER_TYPE.FIRE_STATION || tile.producer.type === PRODUCER_TYPE.HOSPITAL)) {
-        if (!isConnected) return 'No Local Road';
-        return tile.producer.utilityShortfall?.[key] ? 'Shortfall (Building Offline)' : 'Serviced';
+      if (tile.producer) {
+        const producerConfig = PRODUCER_CONFIG[tile.producer.type];
+        if (producerConfig?.utility === key) {
+          return 'Produces This Utility';
+        }
+        const usage = producerConfig?.utilityUsage;
+        if (usage && (usage[key] > 0 || producerConfig?.activeUtilityUsage?.[key] > 0)) {
+          if (!isConnected) return 'No Local Road';
+          return tile.producer.utilityShortfall?.[key] ? 'Shortfall (Building Offline)' : 'Serviced';
+        }
+        return 'Not Required';
       }
 
       const d = tile.distanceToProducer[key];
       if (d === Infinity) {
         if (!isConnected) return 'No Local Road';
-        const typeStr = key === 'power' ? 'power_plant' : key === 'water' ? 'water_tower' : 'sewage_plant';
-        const prods = this.grid.producers.filter((p) => p.type === typeStr);
+        const prods = key === 'power'
+          ? this.grid.producers.filter((p) => POWER_PRODUCER_TYPES.includes(p.type))
+          : this.grid.producers.filter((p) => p.type === (key === 'water' ? 'water_tower' : 'sewage_plant'));
         if (prods.length === 0) return 'No Producer Built';
         const prodHasRoad = prods.some((p) => this.grid.isRoadAdjacent(p.x, p.y));
         if (!prodHasRoad) return 'Producer Needs Road!';
@@ -428,7 +539,9 @@ class GameApp {
         : '';
       const contaminatedStr = tile.producer.contaminated ? ' ☣️ Contaminated!' : '';
       document.getElementById('inspect-producer-type').textContent = (config ? config.name : tile.producer.type) + roadStatusStr + utilityStatusStr + contaminatedStr;
-      document.getElementById('inspect-producer-cap').textContent = `${tile.producer.usedCapacity} / ${tile.producer.capacity}`;
+      document.getElementById('inspect-producer-cap').textContent = tile.producer.type === PRODUCER_TYPE.BATTERY
+        ? `${tile.producer.usedCapacity} / ${tile.producer.capacity} (Stored: ${Math.round(tile.producer.storedEnergy || 0)} / ${tile.producer.maxStorage})`
+        : `${tile.producer.usedCapacity} / ${tile.producer.capacity}`;
     } else {
       prodPanel.style.display = 'none';
     }

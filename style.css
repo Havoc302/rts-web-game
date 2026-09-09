@@ -344,6 +344,11 @@ body {
   width: 280px;
   padding: 16px;
   z-index: 5;
+  display: none;
+}
+
+.inspector-panel.visible {
+  display: block;
 }
 
 .panel-header {

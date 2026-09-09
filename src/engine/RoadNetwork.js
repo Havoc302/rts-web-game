@@ -1,9 +1,10 @@
 export class RoadNetwork {
   static computeProducerDistances(grid, producerType) {
-    const producersOfChoice = grid.producers.filter((p) => p.type === producerType);
+    const types = Array.isArray(producerType) ? producerType : [producerType];
+    const producersOfChoice = grid.producers.filter((p) => types.includes(p.type));
 
     if (producersOfChoice.length === 0) {
-      return { roadDistances: new Map(), connectedZonedTiles: [] };
+      return { roadDistancesMap: new Map(), connectedZonedTiles: [] };
     }
 
     // Map: roadKey -> Map(producerId -> { distance, producer })

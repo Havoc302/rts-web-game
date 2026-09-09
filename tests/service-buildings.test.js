@@ -26,9 +26,9 @@ assert.strictEqual(police.operational, true, 'Police should be operational with 
 assert.strictEqual(police.utilityShortfall.power, false);
 assert.strictEqual(police.utilityShortfall.water, false);
 assert.strictEqual(police.utilityShortfall.sewage, false);
-assert.strictEqual(SERVICE_CONFIG[PRODUCER_TYPE.POLICE_STATION].cost, 400, 'Police construction cost should remain fixed');
-assert.strictEqual(SERVICE_CONFIG[PRODUCER_TYPE.FIRE_STATION].cost, 400, 'Fire construction cost should remain fixed');
-assert.strictEqual(SERVICE_CONFIG[PRODUCER_TYPE.HOSPITAL].cost, 600, 'Hospital construction cost should remain fixed');
+assert.strictEqual(SERVICE_CONFIG[PRODUCER_TYPE.POLICE_STATION].cost, 4000, 'Police construction cost should remain fixed');
+assert.strictEqual(SERVICE_CONFIG[PRODUCER_TYPE.FIRE_STATION].cost, 4000, 'Fire construction cost should remain fixed');
+assert.strictEqual(SERVICE_CONFIG[PRODUCER_TYPE.HOSPITAL].cost, 6000, 'Hospital construction cost should remain fixed');
 
 ServiceManager.updateServices(grid, 0, 1);
 const lightJobs = police.totalJobs;

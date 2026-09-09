@@ -1,7 +1,8 @@
-import { GROWTH_CONFIG, DENSITY, ZONE, TERRAIN, USAGE_RATES, POLLUTION_CONFIG, JOBS_PROVIDED, EMPLOYABLE_POPULATION, RESIDENTIAL_CAPACITY, LABOR_TAX_GROWTH_CONFIG, FOREST_DESIRABILITY_RADIUS, PRODUCER_TYPE, ROAD_MAINTENANCE_COST, TAX_REVENUE_CONFIG } from '../config.js';
+import { GROWTH_CONFIG, DENSITY, ZONE, TERRAIN, USAGE_RATES, POLLUTION_CONFIG, JOBS_PROVIDED, EMPLOYABLE_POPULATION, RESIDENTIAL_CAPACITY, LABOR_TAX_GROWTH_CONFIG, FOREST_DESIRABILITY_RADIUS, PRODUCER_TYPE, POWER_PRODUCER_TYPES, ROAD_MAINTENANCE_COST, TAX_REVENUE_CONFIG, CRIME_CONFIG, TICKS_PER_HOUR, HOURS_PER_DAY, DAY_START_HOUR, NIGHT_START_HOUR } from '../config.js';
 import { UtilityManager } from './UtilityManager.js';
 import { PollutionManager } from './PollutionManager.js';
 import { ServiceManager } from './ServiceManager.js';
+import { CrimeManager } from './CrimeManager.js';
 
 export class Simulation {
   constructor(grid) {
@@ -28,6 +29,7 @@ export class Simulation {
       jobsFilled: 0,
       jobsAvailable: 0,
       employmentRate: 0,
+      crimeTaxLoss: 0,
       zones: {
         residential: { light: 0, medium: 0, high: 0 },
         commercial: { light: 0, medium: 0, high: 0 },
@@ -36,16 +38,23 @@ export class Simulation {
     };
   }
 
-  tick() {
-    this.tickCount++;
+  tick(advanceWorld = true) {
+    if (advanceWorld) {
+      this.tickCount++;
+    }
 
-    UtilityManager.allocateAll(this.grid);
+    UtilityManager.allocateAll(this.grid, this.getHourOfDay());
     PollutionManager.computePollution(this.grid);
     ServiceManager.updateServices(this.grid, this.stats.population, this.stats.employmentRate);
-    this.updateSurveys();
+    if (advanceWorld) {
+      CrimeManager.updateCrime(this.grid, this.stats);
+      this.updateSurveys();
+    }
 
     this.computeStats();
-    this.updateGrowthAndDensity();
+    if (advanceWorld) {
+      this.updateGrowthAndDensity();
+    }
 
     return this.stats.incomePerTick;
   }
@@ -68,6 +77,15 @@ export class Simulation {
       surveyor.surveyProgress = 0;
       surveyor.surveyRequired = 0;
     }
+  }
+
+  getHourOfDay() {
+    return Math.floor(this.tickCount / TICKS_PER_HOUR) % HOURS_PER_DAY;
+  }
+
+  isDaytime() {
+    const hour = this.getHourOfDay();
+    return hour >= DAY_START_HOUR && hour < NIGHT_START_HOUR;
   }
 
   updateGrowthAndDensity() {
@@ -98,6 +116,10 @@ export class Simulation {
           tile.zone !== ZONE.INDUSTRIAL
         ) {
           delta += POLLUTION_CONFIG.POLLUTION_GROWTH_PENALTY;
+        }
+
+        if ((tile.crime || 0) >= CRIME_CONFIG.CRIME_PENALTY_THRESHOLD) {
+          delta += -2;
         }
 
         // Tax pressure applies continuously across all zone types.
@@ -166,6 +188,7 @@ export class Simulation {
       jobsFilled: 0,
       jobsAvailable: 0,
       employmentRate: 0,
+      crimeTaxLoss: 0,
       zones: {
         residential: { light: 0, medium: 0, high: 0 },
         commercial: { light: 0, medium: 0, high: 0 },
@@ -175,7 +198,7 @@ export class Simulation {
 
     for (const p of this.grid.producers) {
       if (!this.grid.isRoadAdjacent(p.x, p.y)) continue;
-      if (p.type === 'power_plant') stats.powerCapacity += p.capacity;
+      if (POWER_PRODUCER_TYPES.includes(p.type)) stats.powerCapacity += p.capacity;
       if (p.type === 'water_tower') stats.waterCapacity += p.capacity;
       if (p.type === 'sewage_plant') stats.sewageCapacity += p.capacity;
       if (p.runningCost) stats.serviceExpenses += p.runningCost;
@@ -248,9 +271,31 @@ export class Simulation {
       }
     }
 
+    // Deduct tax revenue lost to crime on each zoned tile
+    for (let y = 0; y < this.grid.height; y++) {
+      for (let x = 0; x < this.grid.width; x++) {
+        const tile = this.grid.getTile(x, y);
+        if (tile.zone === ZONE.NONE) continue;
+
+        let tileBaseTax = 0;
+        if (tile.zone === ZONE.RESIDENTIAL) {
+          tileBaseTax = (tile.population || 0) / TAX_REVENUE_CONFIG.RESIDENTS_PER_TAX_UNIT * TAX_REVENUE_CONFIG.MONEY_PER_TAX_UNIT * (this.taxRate / 100);
+        } else {
+          tileBaseTax = (tile.filledJobs || 0) / TAX_REVENUE_CONFIG.EMPLOYED_PER_TAX_UNIT * TAX_REVENUE_CONFIG.MONEY_PER_TAX_UNIT * (this.taxRate / 100);
+        }
+
+        const crimeTaxPenalty = Math.min(
+          CRIME_CONFIG.MAX_TAX_LOSS_RATIO,
+          (tile.crime || 0) * CRIME_CONFIG.TAX_LOSS_PER_CRIME_POINT,
+        );
+        const tileLoss = tileBaseTax * crimeTaxPenalty;
+        stats.crimeTaxLoss += tileLoss;
+      }
+    }
+
     const taxBase = (stats.population / TAX_REVENUE_CONFIG.RESIDENTS_PER_TAX_UNIT) +
       (stats.jobsFilled / TAX_REVENUE_CONFIG.EMPLOYED_PER_TAX_UNIT);
-    stats.incomePerTick = Math.round(taxBase * TAX_REVENUE_CONFIG.MONEY_PER_TAX_UNIT * (this.taxRate / 100));
+    stats.incomePerTick = Math.round(taxBase * TAX_REVENUE_CONFIG.MONEY_PER_TAX_UNIT * (this.taxRate / 100) - stats.crimeTaxLoss);
     stats.avgPollution = tileCount > 0 ? Math.round((totalPollution / tileCount) * 10) / 10 : 0;
     this.stats = stats;
   }
@@ -268,7 +313,7 @@ export class Simulation {
     } else {
       progress = tHigh > 0 ? Math.min(1, (gs - tHigh) / (GROWTH_CONFIG.MAX_SCORE - tHigh)) : 1;
     }
-    return Math.max(1, Math.round(capacity * (0.1 + 0.9 * Math.max(0, progress))));
+    return Math.round(capacity * Math.max(0, progress));
   }
 
   getHighTaxPressure() {

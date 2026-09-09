@@ -1,34 +1,90 @@
-import { PRODUCER_TYPE, PRODUCER_CONFIG, USAGE_RATES } from '../config.js';
+import { PRODUCER_TYPE, PRODUCER_CONFIG, USAGE_RATES, POWER_PRODUCER_TYPES, WIND_CONFIG, SOLAR_CONFIG, BATTERY_CONFIG, DAY_START_HOUR, NIGHT_START_HOUR } from '../config.js';
 import { RoadNetwork } from './RoadNetwork.js';
 
 export class UtilityManager {
-  static allocateAll(grid) {
-    this.allocateUtility(grid, PRODUCER_TYPE.POWER_PLANT, 'power', 'ascending');
+  static allocateAll(grid, hourOfDay = 12) {
+    this.updatePowerGeneration(grid, hourOfDay);
+    this.allocateUtility(grid, POWER_PRODUCER_TYPES, 'power', 'ascending');
+    this.settleBatteries(grid);
+    this.chargeBatteries(grid);
     this.allocateUtility(grid, PRODUCER_TYPE.WATER_TOWER, 'water', 'ascending');
     this.allocateUtility(grid, PRODUCER_TYPE.SEWAGE_PLANT, 'sewage', 'descending');
-    this.allocateServiceUtilities(grid);
-    this.allocateSurveyUtilities(grid);
+    this.allocateUtilityConsumers(grid);
   }
 
-  static allocateServiceUtilities(grid) {
+  // Windmill output swings randomly each tick, solar follows a sunrise-to-sunset
+  // bell curve, and batteries can only discharge what they currently hold in storage.
+  static updatePowerGeneration(grid, hourOfDay) {
+    for (const p of grid.producers) {
+      if (p.type === PRODUCER_TYPE.WINDMILL) {
+        const swing = (Math.random() * 2 - 1) * WIND_CONFIG.FLUCTUATION;
+        p.capacity = Math.max(WIND_CONFIG.MIN_CAPACITY, Math.round(WIND_CONFIG.BASE_CAPACITY + swing));
+      } else if (p.type === PRODUCER_TYPE.SOLAR_PANEL) {
+        p.capacity = Math.round(SOLAR_CONFIG.PEAK_CAPACITY * this.solarOutputFactor(hourOfDay));
+      } else if (p.type === PRODUCER_TYPE.BATTERY) {
+        p.capacity = Math.min(BATTERY_CONFIG.DISCHARGE_RATE, Math.floor(p.storedEnergy || 0));
+      }
+    }
+  }
+
+  static solarOutputFactor(hourOfDay) {
+    if (hourOfDay < DAY_START_HOUR || hourOfDay >= NIGHT_START_HOUR) return 0;
+    const span = NIGHT_START_HOUR - DAY_START_HOUR;
+    return Math.max(0, Math.sin((Math.PI * (hourOfDay - DAY_START_HOUR)) / span));
+  }
+
+  // Batteries deplete by whatever they discharged this tick before recharging.
+  static settleBatteries(grid) {
+    for (const p of grid.producers) {
+      if (p.type !== PRODUCER_TYPE.BATTERY) continue;
+      p.storedEnergy = Math.max(0, (p.storedEnergy || 0) - (p.usedCapacity || 0));
+    }
+  }
+
+  // Batteries recharge from power that was generated but never allocated to demand.
+  static chargeBatteries(grid) {
+    const batteries = grid.producers.filter((p) => p.type === PRODUCER_TYPE.BATTERY);
+    if (batteries.length === 0) return;
+
+    let surplus = grid.producers
+      .filter((p) => POWER_PRODUCER_TYPES.includes(p.type) && p.type !== PRODUCER_TYPE.BATTERY)
+      .reduce((sum, p) => sum + Math.max(0, p.capacity - p.usedCapacity), 0);
+
+    for (const battery of batteries) {
+      if (surplus <= 0) break;
+      const headroom = (battery.maxStorage || 0) - (battery.storedEnergy || 0);
+      const charge = Math.min(surplus, headroom);
+      battery.storedEnergy = (battery.storedEnergy || 0) + charge;
+      surplus -= charge;
+    }
+  }
+
+  // Every producer with a `utilityUsage` config consumes power/water/sewage from
+  // the nearest connected source of each (except the utility it produces itself).
+  // Covers civic services, Survey Station, and now the power/water/sewage
+  // producers too, so they show up as connected consumers in the Tile Inspector.
+  static allocateUtilityConsumers(grid) {
     const utilitySources = {
-      power: PRODUCER_TYPE.POWER_PLANT,
+      power: POWER_PRODUCER_TYPES,
       water: PRODUCER_TYPE.WATER_TOWER,
       sewage: PRODUCER_TYPE.SEWAGE_PLANT,
     };
-    const serviceTypes = [
-      PRODUCER_TYPE.POLICE_STATION,
-      PRODUCER_TYPE.FIRE_STATION,
-      PRODUCER_TYPE.HOSPITAL,
-    ];
 
-    for (const producer of grid.producers.filter((item) => serviceTypes.includes(item.type))) {
-      const usage = PRODUCER_CONFIG[producer.type]?.utilityUsage || {};
+    for (const producer of grid.producers) {
+      const config = PRODUCER_CONFIG[producer.type];
+      const usage = config?.utilityUsage;
+      if (!usage) continue;
+
       producer.utilityShortfall = { power: false, water: false, sewage: false };
       producer.operational = true;
+      const activeUsage = producer.type === PRODUCER_TYPE.SURVEY_STATION && producer.surveyTarget
+        ? config.activeUtilityUsage || {}
+        : {};
 
       for (const [utilityKey, sourceType] of Object.entries(utilitySources)) {
-        const required = usage[utilityKey] || 0;
+        const required = (usage[utilityKey] || 0) + (activeUsage[utilityKey] || 0);
+        if (required <= 0) continue;
+
         const { roadDistancesMap } = RoadNetwork.computeProducerDistances(grid, sourceType);
         const candidates = [];
         for (const neighbor of grid.getNeighbors(producer.x, producer.y)) {
@@ -48,48 +104,9 @@ export class UtilityManager {
     }
   }
 
-  static allocateSurveyUtilities(grid) {
-    const utilitySources = {
-      power: PRODUCER_TYPE.POWER_PLANT,
-      water: PRODUCER_TYPE.WATER_TOWER,
-      sewage: PRODUCER_TYPE.SEWAGE_PLANT,
-    };
-    const surveyors = grid.producers.filter((producer) => producer.type === PRODUCER_TYPE.SURVEY_STATION);
-
-    for (const surveyor of surveyors) {
-      surveyor.utilityShortfall = { power: false, water: false, sewage: false };
-      surveyor.operational = true;
-      const usage = PRODUCER_CONFIG[PRODUCER_TYPE.SURVEY_STATION]?.utilityUsage || {};
-      const activeUsage = surveyor.surveyTarget
-        ? PRODUCER_CONFIG[PRODUCER_TYPE.SURVEY_STATION]?.activeUtilityUsage || {}
-        : {};
-
-      for (const [utilityKey, sourceType] of Object.entries(utilitySources)) {
-        const required = (usage[utilityKey] || 0) + (activeUsage[utilityKey] || 0);
-        const { roadDistancesMap } = RoadNetwork.computeProducerDistances(grid, sourceType);
-        const candidates = [];
-        for (const neighbor of grid.getNeighbors(surveyor.x, surveyor.y)) {
-          if (!neighbor.hasRoad) continue;
-          const entries = roadDistancesMap.get(`${neighbor.x},${neighbor.y}`) || new Map();
-          for (const info of entries.values()) {
-            candidates.push(info);
-          }
-        }
-
-        candidates.sort((a, b) => a.distance - b.distance);
-        const available = candidates.find((info) => info.producer.capacity - info.producer.usedCapacity >= required);
-        if (available) {
-          available.producer.usedCapacity += required;
-        } else {
-          surveyor.utilityShortfall[utilityKey] = true;
-          surveyor.operational = false;
-        }
-      }
-    }
-  }
-
   static allocateUtility(grid, producerType, utilityKey, sortOrder = 'ascending') {
-    const producers = grid.producers.filter((p) => p.type === producerType);
+    const types = Array.isArray(producerType) ? producerType : [producerType];
+    const producers = grid.producers.filter((p) => types.includes(p.type));
 
     producers.forEach((p) => {
       p.usedCapacity = 0;

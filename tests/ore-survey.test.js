@@ -52,13 +52,13 @@ function clearTerrain(grid) {
   const station = grid.producers.find((producer) => producer.type === PRODUCER_TYPE.SURVEY_STATION);
   const powerPlant = grid.producers.find((producer) => producer.type === PRODUCER_TYPE.POWER_PLANT);
   assert.strictEqual(station.operational, true, 'Survey station should operate when all utilities are connected');
-  assert.strictEqual(powerPlant.usedCapacity, 2, 'Idle survey station should use its baseline power demand');
+  assert.strictEqual(powerPlant.usedCapacity, 6, 'Idle survey station plus water/sewage baseline draws should use 6 power');
   assert.strictEqual(simulation.stats.powerDemand, 0, 'Idle survey should not add active power demand');
   assert.strictEqual(grid.startSurvey(3, 4), true, 'Survey station should accept one target');
   assert.strictEqual(grid.startSurvey(4, 4), false, 'A busy survey station should reject a second target');
 
   simulation.tick();
-  assert.strictEqual(powerPlant.usedCapacity, 12, 'Active survey should add a ten-unit power demand');
+  assert.strictEqual(powerPlant.usedCapacity, 16, 'Active survey should add a ten-unit power demand on top of the 6-unit baseline');
   assert.strictEqual(simulation.stats.powerDemand, 10, 'Active survey power should appear in HUD demand');
 
   for (let i = 0; i < 8; i++) simulation.tick();

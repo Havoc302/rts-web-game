@@ -1,4 +1,4 @@
-import { TERRAIN, TERRAIN_TYPE, ZONE, DENSITY, MAP_WIDTH, MAP_HEIGHT, PRODUCER_CONFIG, ORE_CONFIG, ORE_GENERATION } from '../config.js';
+import { TERRAIN, TERRAIN_TYPE, ZONE, DENSITY, MAP_WIDTH, MAP_HEIGHT, PRODUCER_CONFIG, PRODUCER_TYPE, ORE_CONFIG, ORE_GENERATION } from '../config.js';
 
 export function createPRNG(seed) {
   let h = Math.imul((parseInt(seed, 10) || 12345) ^ 0x6d2b79f5, 0x15a4e35d);
@@ -105,12 +105,16 @@ export class Grid {
       surveyRequired: 0,
       riverFlowOrder: null,
       riverFlowDir: null,
+      crime: 0,
     };
   }
 
   generateProceduralTerrain() {
     // 1. Generate river(s) with random start/end edges and optional fork
     this.generateRiver();
+
+    // 1b. Scatter 0-5 lakes of varying size
+    this.generateLakes();
 
     // 2. Scatter Forest Clusters — scaled to map area
     const mapScale = (this.width * this.height) / 900;
@@ -147,6 +151,30 @@ export class Grid {
             const tile = this.tiles[y][x];
             if (tile.terrain === TERRAIN_TYPE.EMPTY) {
               tile.terrain = TERRAIN_TYPE.ROCK;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  generateLakes() {
+    const numLakes = Math.floor(this.random() * 6); // 0-5 lakes
+    for (let i = 0; i < numLakes; i++) {
+      const radius = 2 + Math.floor(this.random() * 6); // radius 2-7 for varying size
+      const margin = radius + 2;
+      if (this.width <= margin * 2 || this.height <= margin * 2) continue;
+
+      const cx = margin + Math.floor(this.random() * (this.width - margin * 2));
+      const cy = margin + Math.floor(this.random() * (this.height - margin * 2));
+
+      for (let y = Math.max(0, cy - radius); y <= Math.min(this.height - 1, cy + radius); y++) {
+        for (let x = Math.max(0, cx - radius); x <= Math.min(this.width - 1, cx + radius); x++) {
+          const dist = Math.sqrt((x - cx) ** 2 + (y - cy) ** 2);
+          if (dist <= radius + (this.random() * 0.8 - 0.4)) {
+            const tile = this.tiles[y][x];
+            if (tile.terrain === TERRAIN_TYPE.EMPTY) {
+              tile.terrain = TERRAIN_TYPE.RIVER;
             }
           }
         }
@@ -409,6 +437,11 @@ export class Grid {
       x,
       y,
     };
+    if (producerType === PRODUCER_TYPE.BATTERY) {
+      producer.maxStorage = capacity;
+      producer.storedEnergy = 0;
+      producer.capacity = 0;
+    }
     tile.producer = producer;
     this.producers.push(producer);
     return producer;

@@ -1,4 +1,4 @@
-import { ZONE, PRODUCER_TYPE, TERRAIN, POLLUTION_CONFIG, FOREST_POLLUTION_ABSORPTION } from '../config.js';
+import { ZONE, PRODUCER_TYPE, TERRAIN, POLLUTION_CONFIG, FOREST_POLLUTION_ABSORPTION, COAL_CONFIG } from '../config.js';
 
 export class PollutionManager {
   static computePollution(grid) {
@@ -38,6 +38,11 @@ export class PollutionManager {
           POLLUTION_CONFIG.SEWAGE_BACKUP_EMISSION
         );
       }
+    }
+
+    // Step 3b: Source B2 — Coal power plant smokestack emission
+    for (const plant of grid.producers.filter((p) => p.type === PRODUCER_TYPE.COAL_PLANT)) {
+      this.spreadPollution(grid, plant.x, plant.y, COAL_CONFIG.RADIUS, COAL_CONFIG.EMISSION);
     }
 
     // Step 4: Source C — River discharge contamination

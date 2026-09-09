@@ -1,4 +1,4 @@
-import { TERRAIN, ZONE, DENSITY, PRODUCER_TYPE, TILE_SIZE, ORE_CONFIG } from '../config.js';
+import { TERRAIN, ZONE, DENSITY, PRODUCER_TYPE, TILE_SIZE, ORE_CONFIG, NIGHT_TINT_ALPHA } from '../config.js';
 
 export class Renderer {
   constructor(canvas, grid) {
@@ -152,6 +152,11 @@ export class Renderer {
       ctx.strokeStyle = '#f59e0b';
       ctx.lineWidth = 3;
       ctx.strokeRect(sx, sy, TILE_SIZE, TILE_SIZE);
+    }
+
+    if (simulation && !simulation.isDaytime()) {
+      ctx.fillStyle = `rgba(2, 6, 23, ${NIGHT_TINT_ALPHA})`;
+      ctx.fillRect(visibleLeft, visibleTop, visibleRight - visibleLeft, visibleBottom - visibleTop);
     }
 
     ctx.restore();
@@ -546,6 +551,78 @@ export class Renderer {
       ctx.lineTo(px + 15, py + 15);
       ctx.closePath();
       ctx.fill();
+    } else if (prod.type === PRODUCER_TYPE.WINDMILL) {
+      ctx.fillStyle = '#475569';
+      ctx.fillRect(px + 2, py + 2, 28, 28);
+
+      ctx.fillStyle = '#e2e8f0';
+      ctx.fillRect(px + 15, py + 14, 2, 16);
+
+      const spin = this.animTime * 4;
+      ctx.strokeStyle = '#f1f5f9';
+      ctx.lineWidth = 2;
+      for (let i = 0; i < 3; i++) {
+        const angle = spin + (i * Math.PI * 2) / 3;
+        ctx.beginPath();
+        ctx.moveTo(px + 16, py + 12);
+        ctx.lineTo(px + 16 + Math.cos(angle) * 9, py + 12 + Math.sin(angle) * 9);
+        ctx.stroke();
+      }
+    } else if (prod.type === PRODUCER_TYPE.SOLAR_PANEL) {
+      ctx.fillStyle = '#1e293b';
+      ctx.fillRect(px + 2, py + 2, 28, 28);
+      ctx.fillStyle = '#1d4ed8';
+      ctx.fillRect(px + 5, py + 5, 22, 22);
+      ctx.fillStyle = '#60a5fa';
+      for (let r = 0; r < 3; r++) {
+        for (let c = 0; c < 3; c++) {
+          ctx.fillRect(px + 7 + c * 7, py + 7 + r * 7, 5, 5);
+        }
+      }
+    } else if (prod.type === PRODUCER_TYPE.BATTERY) {
+      ctx.fillStyle = '#166534';
+      ctx.fillRect(px + 2, py + 2, 28, 28);
+      ctx.fillStyle = '#22c55e';
+      ctx.fillRect(px + 8, py + 6, 16, 20);
+      ctx.fillRect(px + 13, py + 3, 6, 4);
+
+      const pct = prod.maxStorage > 0 ? (prod.storedEnergy || 0) / prod.maxStorage : 0;
+      ctx.fillStyle = '#bbf7d0';
+      const fillHeight = Math.round(16 * pct);
+      ctx.fillRect(px + 10, py + 24 - fillHeight, 12, fillHeight);
+    } else if (prod.type === PRODUCER_TYPE.COAL_PLANT) {
+      ctx.fillStyle = '#292524';
+      ctx.fillRect(px + 2, py + 2, 28, 28);
+      ctx.fillStyle = '#57534e';
+      ctx.fillRect(px + 21, py + 4, 6, 22);
+      ctx.fillRect(px + 6, py + 12, 6, 14);
+
+      const smokeOffset = (Math.sin(this.animTime * 2) * 3) | 0;
+      ctx.fillStyle = 'rgba(120, 113, 108, 0.8)';
+      ctx.beginPath();
+      ctx.arc(px + 24 + smokeOffset, py + 3, 4, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (prod.type === PRODUCER_TYPE.NUCLEAR_PLANT) {
+      ctx.fillStyle = '#3f6212';
+      ctx.fillRect(px + 2, py + 2, 28, 28);
+      ctx.fillStyle = '#84cc16';
+      ctx.beginPath();
+      ctx.arc(px + 12, py + 20, 8, Math.PI, 0);
+      ctx.arc(px + 22, py + 20, 8, Math.PI, 0);
+      ctx.fill();
+
+      const puff = 1 + Math.sin(this.animTime * 1.5) * 0.2;
+      ctx.fillStyle = 'rgba(236, 253, 245, 0.85)';
+      ctx.beginPath();
+      ctx.arc(px + 12, py + 8, 5 * puff, 0, Math.PI * 2);
+      ctx.arc(px + 22, py + 8, 5 * puff, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = '#1a2e05';
+      ctx.font = 'bold 12px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('☢', px + 17, py + 24);
     } else if (prod.type === PRODUCER_TYPE.WATER_TOWER) {
       ctx.fillStyle = '#0284c7';
       ctx.fillRect(px + 2, py + 2, 28, 28);
@@ -760,6 +837,21 @@ export class Renderer {
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(`${tile.pollution}`, px + 16, py + 16);
+      }
+      return;
+    }
+
+    if (this.overlayMode === 'crime') {
+      if (tile.crime > 0) {
+        const intensity = Math.min(1, tile.crime / 10);
+        ctx.fillStyle = `rgba(225, 29, 72, ${0.15 + intensity * 0.55})`;
+        ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+
+        ctx.fillStyle = '#fecdd3';
+        ctx.font = '10px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(`${tile.crime}`, px + 16, py + 16);
       }
       return;
     }

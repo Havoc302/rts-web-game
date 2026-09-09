@@ -254,3 +254,157 @@ Current task: Bound industrial sewage river spread.
 Validation:
 - `npm run test:river` passes.
 - Pollution syntax and diagnostics pass.
+
+Current task: Halve residential population capacity to reduce excessive high-density population.
+
+- [done] Halve RESIDENTIAL_CAPACITY for light/medium/high density (50/250/1000 -> 25/125/500).
+
+Validation:
+- `npm test` initially failed 3 stale assertions (simulation.test.js Test 5 tax income, Test 11 labor aggregates, Test 14 employment bonus) and tax-revenue.test.js, all tied to the old capacity numbers; expectations were recalculated and updated to match the halved capacity.
+- All suites pass (see below).
+
+Current task: Add crime & policing simulation (spawns from unemployment, police suppression, growth penalty, tax revenue loss).
+
+- [done] Add `CRIME_CONFIG` to config.js and `crime: 0` to Grid.js default tile.
+- [done] Add `src/engine/CrimeManager.js`: decay, unemployment-driven spawn probability (clamped to [0,1]), police suppression, +2 crime per hit (capped 10), diffusion to unpoliced neighbors above threshold 4.
+- [done] Wire `CrimeManager.updateCrime()` into `Simulation.tick()` right after `ServiceManager.updateServices(...)`.
+- [done] Apply -2 growth penalty in `updateGrowthAndDensity()` for all zoned tiles at/above `CRIME_PENALTY_THRESHOLD`.
+- [done] Deduct per-tile crime tax loss (capped at `MAX_TAX_LOSS_RATIO`) from `stats.incomePerTick` in `computeStats()`.
+- [done] Add crime level + tax penalty % to the Tile Inspector (main.js) and a red "🚨 Crime" overlay mode (Renderer.js + index.html button).
+- [done] Added a deterministic Math.random/CRIME_CONFIG stub in simulation.test.js's growth-threshold test so probabilistic crime doesn't make it flaky.
+
+Validation:
+- `npm test` passes all 18 verification tests.
+- CrimeManager, Simulation, Renderer, main.js, index.html, config.js, Grid.js diagnostics pass.
+
+Current task: Fix stale 10x-monetary-scaling test expectations (from an earlier "Scale all monetary values by 10" task that never updated two test files).
+
+- [done] `tests/industrial-economics.test.js`: COSTS.INDUSTRIAL_ZONE assertion updated from $30 to $300.
+- [done] `tests/service-buildings.test.js`: Police/Fire/Hospital cost assertions updated from $400/$400/$600 to $4000/$4000/$6000.
+
+Validation:
+- All test suites pass: `npm test`, test:ore, test:river, test:services, test:tax, test:roads, test:income, test:industrial, test:tax-revenue, test:school, test:service-expenses.
+
+Current task: Route all monetary config values through the single MONEY_MULTIPLIER variable (previously hardcoded as pre-multiplied literals).
+
+- [done] Rewrote STARTING_TREASURY, SERVICE_CONFIG (costs, runningCost, runningCostPerJob), PRODUCER_CONFIG costs, COSTS, ROAD_MAINTENANCE_COST, TAX_REVENUE_CONFIG.MONEY_PER_TAX_UNIT, and BASE_INCOME in config.js as `base * MONEY_MULTIPLIER` instead of pre-scaled literals. Resulting values are unchanged (base values are the pre-10x numbers), so future scale changes only require editing MONEY_MULTIPLIER.
+
+Validation:
+- All test suites pass unchanged: `npm test`, test:ore, test:river, test:services, test:tax, test:roads, test:income, test:industrial, test:tax-revenue, test:school, test:service-expenses.
+
+Current task: Expand default map size from 150x150 to 200x200.
+
+- [done] Set MAP_WIDTH/MAP_HEIGHT to 200 in config.js.
+
+Validation:
+- All test suites pass unchanged: `npm test`, test:ore, test:river, test:services, test:tax, test:roads, test:income, test:industrial, test:tax-revenue, test:school, test:service-expenses.
+
+Current task: Close the Tile Inspector panel when a non-Inspect tool is selected.
+
+- [done] Hide `#inspector-panel` by default (CSS `display:none`, shown via a `.visible` class) and only add `.visible` when a tile is clicked with the Inspect tool active.
+- [done] Clear `renderer.selectedTile` and remove `.visible` whenever any other tool button is clicked.
+
+Validation:
+- main.js and style.css diagnostics pass. No automated test covers this UI-only behavior.
+
+Current task: Make scroll-wheel zoom center on the mouse cursor instead of the map center.
+
+- [done] In the canvas `wheel` handler, compute the world point under the cursor before zooming, then solve for the new camera offset so that same world point stays under the cursor after the zoom factor is applied.
+
+Validation:
+- main.js diagnostics pass. No automated test covers this UI-only behavior.
+
+Current task: Increase forest air pollution absorption to a more realistic level.
+
+- [done] Raised FOREST_POLLUTION_ABSORPTION from 2 to 6 (per-tile pollution values top out around 15 from a contaminated water tower and 10 from high-density industrial, so 2 was only ~13-20% mitigation; 6 brings a forest tile closer to real-world urban-canopy particulate reduction estimates of 15-40%).
+
+Validation:
+- No test references FOREST_POLLUTION_ABSORPTION directly. All test suites pass unchanged: `npm test`, test:ore, test:river, test:services, test:tax, test:roads, test:income, test:industrial, test:tax-revenue, test:school, test:service-expenses.
+
+Current task: Add Windmill, Solar Panel, Battery Storage, Coal Power Plant, and Nuclear Power Plant, plus a day/night cycle.
+
+- [done] config.js: added PRODUCER_TYPE entries + POWER_PRODUCER_TYPES list, day/night constants (TICKS_PER_HOUR=1, HOURS_PER_DAY=24, DAY_START_HOUR=6, NIGHT_START_HOUR=18, NIGHT_TINT_ALPHA), WIND_CONFIG, SOLAR_CONFIG, BATTERY_CONFIG (400 max storage / 40 discharge per tick, matching the user's 10-tick example), COAL_CONFIG (radius 6 / emission 12), and PRODUCER_CONFIG entries for all five (Nuclear requires water-adjacent for cooling, is the most expensive and highest-capacity, and emits no pollution; Coal is mid-cost but a heavy polluter).
+- [done] Grid.js: new Battery producers get `maxStorage`/`storedEnergy` fields; their per-tick `capacity` starts at 0 and is computed dynamically.
+- [done] RoadNetwork.computeProducerDistances and UtilityManager.allocateUtility now accept an array of producer types (backward compatible with a single type string), so all power-generating buildings share one allocation pool.
+- [done] UtilityManager: added `updatePowerGeneration` (windmill = base capacity +/- random fluctuation each tick; solar = sine bell curve between DAY_START_HOUR and NIGHT_START_HOUR, 0 at night), `settleBatteries` (depletes stored energy by whatever was discharged that tick), and `chargeBatteries` (recharges from OTHER producers' unused generated capacity, i.e. supply minus what tiles actually drew).
+- [done] Simulation: `getHourOfDay()`/`isDaytime()` derived from tickCount; `tick()` now passes the current hour into `UtilityManager.allocateAll`; `computeStats()` power-capacity aggregation now recognizes all POWER_PRODUCER_TYPES instead of only 'power_plant'.
+- [done] PollutionManager: added a coal-plant smokestack emission source (same radius/falloff model as industrial zones).
+- [done] Renderer: added a flat semi-transparent night-time tint over the visible map when `!simulation.isDaytime()`, plus distinct tile art for windmill (spinning blades), solar panel, battery (fill-level indicator), coal plant (smokestack), and nuclear plant (cooling towers).
+- [done] index.html: added toolbar buttons for all five new producers under Utility Producers, and a HUD clock (`stat-time`) showing sun/moon icon + 12-hour time.
+- [done] main.js: producer inspector panel shows battery stored/max energy; render loop and manual `render()` calls now pass `simulation` through for the night tint; fixed the power-producer lookup in the utility status inspector text to recognize all power types instead of only 'power_plant'.
+
+Validation:
+- All test suites pass unchanged: `npm test`, test:ore, test:river, test:services, test:tax, test:roads, test:income, test:industrial, test:tax-revenue, test:school, test:service-expenses.
+- Manual node scripts confirmed: solar capacity is 0 at night and follows a sine bell curve peaking at noon during the day; windmill capacity fluctuates tick to tick; battery storedEnergy climbs toward maxStorage from surplus generation; coal plant pollution falls off correctly from source (emission) to 0 at radius+1.
+
+Current task: Halve the simulation tick rate (user feedback: too fast).
+
+- [done] Changed the sim interval from `1000 / speed` to `2000 / speed` in main.js so every speed setting (pause/1x/2x/5x) now ticks half as often, without changing the button labels or speed multiplier semantics.
+
+Validation:
+- main.js diagnostics pass. No automated test covers this UI timing behavior.
+
+Current task: Stop the simulation from silently advancing (tickCount, crime, growth, surveys) when placing tiles while paused.
+
+- [done] Simulation.tick(advanceWorld = true) now gates tickCount increment, CrimeManager.updateCrime, updateSurveys, and updateGrowthAndDensity behind `advanceWorld`, while still always recomputing utility allocation/pollution/services/stats so the HUD reflects the new placement immediately.
+- [done] main.js build-tool success handler now calls `this.simulation.tick(!this.simulation.isPaused)` so placing roads/zones/producers while paused only refreshes stats/treasury instead of advancing the game clock and world state.
+
+Validation:
+- All test suites pass unchanged (existing `sim.tick()` calls use the default `advanceWorld = true`): `npm test`, test:ore, test:river, test:services, test:tax, test:roads, test:income, test:industrial, test:tax-revenue, test:school, test:service-expenses.
+
+Current task: Fix crime being driven by the wrong "unemployment" metric, which masked the tax rate's effect on growth.
+
+- [done] Root cause: CrimeManager used `1 - stats.employmentRate` (jobsFilled / totalJobsProvided) as its unemployment signal. That's a job-vacancy-fill ratio, not resident unemployment — in a city with abundant jobs relative to population it reads as near-zero (e.g. 0.01), which the crime scaler (2.5x) blew up into near-guaranteed crime every tick regardless of tax rate, capping tile crime at 10 and permanently zeroing growthScore via the crime growth penalty. That made it look like tax rate no longer affected growth (both 0% and 100% tax stalled at growthScore 0), while employment rate still visibly moved with tax since jobsMultiplier is computed independently.
+- [done] Renamed `CRIME_CONFIG.UNEMPLOYMENT_CRIME_SCALER` to `JOB_SCARCITY_CRIME_SCALER` and changed CrimeManager to drive crime probability off resident job scarcity: `(totalEmployablePopulation - jobsFilled) / totalEmployablePopulation` (residents who want work but can't get any, because there aren't enough jobs), instead of the jobs-side employment rate. A city with more jobs than residents now reads as zero scarcity (low baseline crime only) even before every job slot is filled.
+- [done] Updated the one test that toggled this constant to the new name.
+
+Validation:
+- All test suites pass unchanged: `npm test`, test:ore, test:river, test:services, test:tax, test:roads, test:income, test:industrial, test:tax-revenue, test:school, test:service-expenses.
+- Manual node script confirmed: with abundant commercial jobs vs a small residential population, tile.crime now stays 0 at both 0% and 100% tax, and growthScore again clearly differs by tax rate (20 vs 0 after 20 ticks) instead of being masked by maxed-out crime.
+
+Current task: Remove the generic Power Plant from the build menu (replaced by the 5 specific plant types) and rebalance windmill/solar to be cheap but weak, needing several to match a coal/nuclear plant.
+
+- [done] Removed the "Power Plant" toolbar button from index.html so it's no longer buildable in the UI. The `PRODUCER_TYPE.POWER_PLANT` / `PRODUCER_CONFIG` entry itself was left in config.js since existing tests place it directly via `grid.placeProducer(...)` as a generic utility stand-in unrelated to power-plant balance; it's harmless dead UI-only code otherwise.
+- [done] Rebalanced capacities/costs: Windmill 60->40 base capacity (fluctuation 40->25), cost 3500->1500. Solar Panel peak 90->60, cost 4000->2000. Coal Plant capacity 250->300, cost 4500->4000. Nuclear Plant capacity 600->800, cost 20000->25000. Net effect: a single coal plant now needs ~5-7 windmills or ~5 solar panels (fewer, since solar is 0 at night) to match; nuclear remains the most expensive and most powerful clean option, coal the cheaper heavy polluter.
+
+Validation:
+- All test suites pass unchanged: `npm test`, test:ore, test:river, test:services, test:tax, test:roads, test:income, test:industrial, test:tax-revenue, test:school, test:service-expenses.
+
+Current task: Raise Coal Power Plant cost to $12,500, and add a "Build Info" panel showing stats for the currently selected build tool.
+
+- [done] Coal Power Plant cost raised from $4,000 to $12,500 (config.js PRODUCER_CONFIG + index.html toolbar label). Note: this supersedes the $4,000 figure from the immediately preceding rebalance task.
+- [done] Added `#build-info-panel` (index.html) reusing the existing `.inspector-panel`/`.visible` show-hide CSS, plus `updateBuildInfoPanel(tool)` in main.js. It shows when any `producer_*` or `zone_*` tool is selected in the left tool drawer: cost, power output/capacity (with special-cased text for windmill fluctuation, solar day-curve, battery storage/discharge, coal pollution radius/emission), service building job/coverage tables, survey duration, or zone population/jobs-by-density and industrial pollution stats. Hidden (and mutually exclusive with the Tile Inspector) for inspect/road/bridge/bulldoze/survey.
+
+Validation:
+- All test suites pass unchanged: `npm test`, test:ore, test:river, test:services, test:tax, test:roads, test:income, test:industrial, test:tax-revenue, test:school, test:service-expenses.
+
+Current task: Flip the Utility HUD header from "Capacity & Demand" to "Demand & Capacity".
+
+- [done] Updated the `.utility-hud` header text in index.html; the meter values themselves (`updateMeter` in main.js) already rendered `demand / capacity`, so only the label was mismatched.
+
+Validation:
+- index.html diagnostics pass. No automated test covers this UI label.
+
+Current task: Stop freshly-zoned residential tiles from starting with free population before any simulation ticks occur.
+
+- [done] Root cause: `computeTilePopulation()` used `Math.max(1, Math.round(capacity * (0.1 + 0.9 * progress)))`, giving every residential tile a guaranteed 10%-of-capacity population (minimum 1) even at growthScore 0, i.e. immediately on placement while paused/before pressing Go.
+- [done] Changed to `Math.round(capacity * Math.max(0, progress))`, so population is exactly 0 until growthScore actually rises above 0 via ticks.
+- [done] Updated 3 tests in simulation.test.js that depended on the old floor: two "labor supply" tiles used `growthScore = THRESHOLD_HIGH` (the exact boundary where HIGH-tier progress is still 0) to seed population for employment-rate checks — bumped both to `GROWTH_CONFIG.MAX_SCORE` so they still provide workers under the corrected math. The labor-market-aggregates test's expected employable population at growthScore 0 was corrected from 3 to 0 (with jobsFilled/jobsAvailable/employmentRate adjusted to match).
+
+Validation:
+- All test suites pass: `npm test`, test:ore, test:river, test:services, test:tax, test:roads, test:income, test:industrial, test:tax-revenue, test:school, test:service-expenses.
+
+Note: A separate, not-yet-implemented report is still open — Windmill/Solar Panel/Battery show as "disconnected" from utilities in the Tile Inspector because those producer types have no `utilityUsage` entry in PRODUCER_CONFIG (only civic services + Survey Station consume power/water/sewage today), and `formatUtil()` in main.js only special-cases that same small list of producer types. Fixing this properly means giving every producer type a utilityUsage for whichever utilities it doesn't itself produce, generalizing UtilityManager's service/survey utility-consumption pass to cover all producers, and updating the inspector's `formatUtil()` to recognize any producer with a utilityUsage instead of the hardcoded type list.
+
+Current task: Fix Windmill/Solar Panel/Battery (and other producers) showing as disconnected in the Tile Inspector (follow-up to the note above).
+
+- [done] Added `utilityUsage` to every producer type that lacked one, sized to consume the utilities it doesn't itself produce: all 6 power producers (Power Plant, Windmill, Solar Panel, Battery, Coal, Nuclear) now draw `{water:1, sewage:1}`; Water Pump draws `{power:2, sewage:1}`; Sewage Plant draws `{power:2, water:1}`; School/Library each `{power:1, water:1, sewage:1}`; City Hall `{power:2, water:2, sewage:2}` (Police/Fire/Hospital/Survey Station already had usage).
+- [done] Merged `UtilityManager.allocateServiceUtilities` + `allocateSurveyUtilities` into one generic `allocateUtilityConsumers(grid)` that consumes utilities for ANY producer with a `utilityUsage` config (previously hardcoded to just Police/Fire/Hospital/Survey Station), so every producer's `utilityShortfall`/`operational` fields are now populated correctly. This only affects inspector display/bookkeeping — it does not gate power/water/sewage generation capacity on being "operational", to avoid an unintended new failure-cascade mechanic.
+- [done] Fixed a real pre-existing bug found along the way: `RoadNetwork.computeProducerDistances`'s zero-producers-of-this-type early return used the wrong key (`roadDistances` instead of `roadDistancesMap`), which threw a TypeError as soon as any producer tried to consume a utility with no producer of that type built yet.
+- [done] Generalized `formatUtil()` in main.js's Tile Inspector to check `PRODUCER_CONFIG[type].utility === key` ("Produces This Utility") and `utilityUsage[key] > 0` ("Serviced"/"Shortfall (Building Offline)"/"No Local Road") for any producer, instead of a hardcoded Survey Station/Police/Fire/Hospital list; other producers now show "Not Required" for utilities they neither produce nor consume.
+- [done] Updated `tests/ore-survey.test.js`: the power plant's `usedCapacity` baseline changed from 2 to 6 (idle) and 12 to 16 (active survey), since the water tower and sewage plant now also draw baseline power from it.
+
+Validation:
+- All test suites pass: `npm test`, test:ore, test:river, test:services, test:tax, test:roads, test:income, test:industrial, test:tax-revenue, test:school, test:service-expenses.
+- Manual node script confirmed: a windmill connected by road to a water tower and sewage plant now reports `operational: true` and `utilityShortfall: {power:false, water:false, sewage:false}`, while still generating its own power independently.
+

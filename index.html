@@ -55,6 +55,10 @@
           <span class="label">SIM TICK</span>
           <span class="value" id="stat-tick">0</span>
         </div>
+        <div class="stat-item">
+          <span class="label">TIME</span>
+          <span class="value" id="stat-time">🌙 12:00 AM</span>
+        </div>
       </div>
 
 
@@ -85,11 +89,12 @@
         <button class="overlay-btn" data-mode="water">💧 Water Pipeline</button>
         <button class="overlay-btn" data-mode="sewage">☣️ Sewage Network</button>
         <button class="overlay-btn" data-mode="pollution">☢️ Pollution</button>
+        <button class="overlay-btn" data-mode="crime">🚨 Crime</button>
       </div>
 
       <!-- Utilities HUD -->
       <div class="utility-hud glass">
-        <h3>Utility Capacity & Demand</h3>
+        <h3>Utility Demand & Capacity</h3>
         <div class="utility-meter">
           <div class="meter-header">
             <span>⚡ Power</span>
@@ -168,9 +173,25 @@
 
         <div class="tool-group">
           <span class="group-title">UTILITY PRODUCERS</span>
-          <button class="tool-btn" data-tool="producer_power">
-            <span class="icon">⚡</span>
-            <span class="name">Power Plant ($5,000)</span>
+          <button class="tool-btn" data-tool="producer_windmill">
+            <span class="icon">🌬️</span>
+            <span class="name">Windmill ($1,500)</span>
+          </button>
+          <button class="tool-btn" data-tool="producer_solar_panel">
+            <span class="icon">☀️</span>
+            <span class="name">Solar Panel ($2,000)</span>
+          </button>
+          <button class="tool-btn" data-tool="producer_battery">
+            <span class="icon">🔋</span>
+            <span class="name">Battery Storage ($3,000)</span>
+          </button>
+          <button class="tool-btn" data-tool="producer_coal_plant">
+            <span class="icon">🏭</span>
+            <span class="name">Coal Power Plant ($12,500)</span>
+          </button>
+          <button class="tool-btn" data-tool="producer_nuclear_plant">
+            <span class="icon">☢️</span>
+            <span class="name">Nuclear Power Plant ($25,000)</span>
           </button>
           <button class="tool-btn" data-tool="producer_water">
             <span class="icon">💧</span>
@@ -224,6 +245,14 @@
 
       </aside>
 
+      <!-- Build Info Panel (shown while a producer/zone build tool is selected) -->
+      <aside class="inspector-panel glass" id="build-info-panel">
+        <div class="panel-header">
+          <h3 id="build-info-title">Build Info</h3>
+        </div>
+        <div class="panel-body" id="build-info-body"></div>
+      </aside>
+
       <!-- Right Inspector Panel -->
       <aside class="inspector-panel glass" id="inspector-panel">
         <div class="panel-header">
@@ -239,6 +268,8 @@
           <div class="info-row"><span class="label">Block Pop / Jobs:</span><span class="val" id="inspect-pop-jobs">N/A</span></div>
           <div class="info-row"><span class="label">Growth Score:</span><span class="val" id="inspect-growth">0</span></div>
           <div class="info-row"><span class="label">Pollution:</span><span class="val" id="inspect-pollution">0</span></div>
+          <div class="info-row"><span class="label">Crime:</span><span class="val" id="inspect-crime">Safe</span></div>
+          <div class="info-row"><span class="label">Tax Revenue Penalty:</span><span class="val" id="inspect-crime-tax-loss">-0%</span></div>
           <div class="info-row"><span class="label">Ore Survey:</span><span class="val" id="inspect-ore">Not surveyed</span></div>
           <hr />
           <h4>Utility Connectivity</h4>
