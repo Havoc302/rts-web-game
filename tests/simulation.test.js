@@ -3,7 +3,7 @@ import { Grid } from '../src/engine/Grid.js';
 import { Simulation } from '../src/engine/Simulation.js';
 import { UtilityManager } from '../src/engine/UtilityManager.js';
 import { PollutionManager } from '../src/engine/PollutionManager.js';
-import { PRODUCER_TYPE, ZONE, DENSITY, GROWTH_CONFIG, MAP_WIDTH, MAP_HEIGHT, TERRAIN_TYPE, CRIME_CONFIG } from '../src/config.js';
+import { PRODUCER_TYPE, ZONE, DENSITY, GROWTH_CONFIG, MAP_WIDTH, MAP_HEIGHT, TERRAIN_TYPE, CRIME_CONFIG, MEDICAL_CONFIG } from '../src/config.js';
 
 console.log('Running Phase 1 Core Loop Automated Verification Tests...\n');
 
@@ -152,9 +152,12 @@ console.log('Running Phase 1 Core Loop Automated Verification Tests...\n');
   const originalRandom = Math.random;
   const originalBaseCrimeChance = CRIME_CONFIG.BASE_CRIME_CHANCE;
   const originalUnemploymentScaler = CRIME_CONFIG.JOB_SCARCITY_CRIME_SCALER;
+  const originalUnhealthyPenalty = MEDICAL_CONFIG.UNHEALTHY_GROWTH_PENALTY;
   Math.random = () => 0.999;
   CRIME_CONFIG.BASE_CRIME_CHANCE = 0;
   CRIME_CONFIG.JOB_SCARCITY_CRIME_SCALER = 0;
+  // No hospital built in this test; disable the unrelated health penalty so growth math stays deterministic.
+  MEDICAL_CONFIG.UNHEALTHY_GROWTH_PENALTY = 0;
 
   // Run simulation ticks up to THRESHOLD_MEDIUM
   for (let i = 0; i < GROWTH_CONFIG.THRESHOLD_MEDIUM; i++) {
@@ -177,6 +180,7 @@ console.log('Running Phase 1 Core Loop Automated Verification Tests...\n');
   zTile.growthScore = GROWTH_CONFIG.MAX_SCORE + 10;
   sim.updateGrowthAndDensity();
   assert.strictEqual(zTile.growthScore, GROWTH_CONFIG.MAX_SCORE, 'Growth score should cap at full population');
+  MEDICAL_CONFIG.UNHEALTHY_GROWTH_PENALTY = originalUnhealthyPenalty;
   console.log('✔ Test 4 Passed: Growth score & density progression correct');
 }
 
@@ -269,15 +273,14 @@ console.log('Running Phase 1 Core Loop Automated Verification Tests...\n');
     grid.tiles[y][5].terrain = 'water';
     grid.tiles[y][5].riverFlowDir = { x: 0, y: 1 };
   }
-  grid.computeRiverFlowOrder();
 
-  // Sewage plant at (4, 2) (adjacent to riverFlowOrder 2)
+  // Sewage plant at (4, 2), flowing downstream (increasing y)
   const sewagePlant = grid.placeProducer(4, 2, PRODUCER_TYPE.SEWAGE_PLANT, 100);
 
-  // Upstream water tower at (4, 0) (adjacent to riverFlowOrder 0)
+  // Upstream water tower at (4, 0)
   const upstreamTower = grid.placeProducer(4, 0, PRODUCER_TYPE.WATER_TOWER, 100);
 
-  // Downstream water tower at (4, 6) (adjacent to riverFlowOrder 6)
+  // Downstream water tower at (4, 6)
   const downstreamTower = grid.placeProducer(4, 6, PRODUCER_TYPE.WATER_TOWER, 100);
 
   const sim = new Simulation(grid);

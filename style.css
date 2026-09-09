@@ -328,12 +328,24 @@ body {
   background: rgba(56, 189, 248, 0.15);
   border-color: var(--accent);
   color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.35), 0 0 12px rgba(56, 189, 248, 0.5);
 }
 
 .tool-btn.danger.active {
   background: rgba(239, 68, 68, 0.15);
   border-color: var(--danger);
   color: var(--danger);
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.35), 0 0 12px rgba(239, 68, 68, 0.5);
+}
+
+.auto-pan-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  cursor: pointer;
 }
 
 /* Right Inspector Panel */
@@ -402,3 +414,104 @@ h4 {
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
+
+/* Mobile drawer toggle buttons (hidden on desktop, shown via the media query below) */
+.mobile-toggle {
+  display: none;
+  position: absolute;
+  bottom: calc(90px + env(safe-area-inset-bottom, 0px));
+  width: 48px;
+  height: 48px;
+  border-radius: 999px;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.3rem;
+  z-index: 20;
+  cursor: pointer;
+}
+
+.mobile-toggle-tools { left: 16px; }
+.mobile-toggle-hud { right: 16px; }
+
+/* Mobile layout: side panels become off-canvas drawers so the map is never blocked */
+@media (max-width: 820px) {
+  .header-bar {
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 8px 12px;
+    margin: 8px 8px 0 8px;
+  }
+
+  .brand h1 { font-size: 0.95rem; }
+  .brand .badge { display: none; }
+
+  .stats-counter {
+    order: 3;
+    width: 100%;
+    gap: 14px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 2px;
+  }
+
+  .stat-item { flex: 0 0 auto; }
+
+  .speed-controls { gap: 6px; }
+  .seed-control { display: none; }
+
+  .viewport { margin: 8px; }
+
+  .view-overlay-picker {
+    max-width: calc(100% - 88px);
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .overlay-btn {
+    padding: 6px 10px;
+    font-size: 0.72rem;
+    white-space: nowrap;
+    flex: 0 0 auto;
+  }
+
+  .mobile-toggle {
+    display: flex;
+  }
+
+  .tool-drawer,
+  .utility-hud {
+    top: 16px;
+    bottom: calc(90px + env(safe-area-inset-bottom, 0px));
+    max-height: none;
+    width: min(260px, calc(100% - 32px));
+    transition: transform 0.25s ease;
+    z-index: 15;
+  }
+
+  .tool-drawer {
+    left: 16px;
+    transform: translateX(-115%);
+  }
+
+  .utility-hud {
+    right: 16px;
+    transform: translateX(115%);
+  }
+
+  .tool-drawer.mobile-open,
+  .utility-hud.mobile-open {
+    transform: translateX(0);
+  }
+
+  .inspector-panel,
+  #build-info-panel {
+    left: 16px;
+    right: 16px;
+    bottom: calc(150px + env(safe-area-inset-bottom, 0px));
+    width: auto;
+    max-height: 40vh;
+    overflow-y: auto;
+  }
+}
+

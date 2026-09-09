@@ -408,3 +408,47 @@ Validation:
 - All test suites pass: `npm test`, test:ore, test:river, test:services, test:tax, test:roads, test:income, test:industrial, test:tax-revenue, test:school, test:service-expenses.
 - Manual node script confirmed: a windmill connected by road to a water tower and sewage plant now reports `operational: true` and `utilityShortfall: {power:false, water:false, sewage:false}`, while still generating its own power independently.
 
+Current task: Mobile compatibility — add a dedicated Pan mode and touch support.
+
+- [done] index.html: added a "Pan Map" tool button (✋) as the first General tool and made it active by default (Inspect Tile is no longer pre-selected). Added an "Auto-switch to Pan after building" checkbox (`#auto-pan-toggle`, checked by default) under the General tool group.
+- [done] style.css: `.tool-btn.active`/`.tool-btn.danger.active` now get a glowing box-shadow ring in addition to the existing border/background highlight, so the active tool is unmistakable on small mobile screens. Added `.auto-pan-toggle` checkbox row styling.
+- [done] main.js: default `activeTool` changed from `'inspect'` to `'pan'`. Factored tool-button activation into a new `setActiveTool(tool)` helper (updates button classes, water-highlight, inspector visibility, and the Build Info panel) so it can be reused both from toolbar clicks and auto-revert logic.
+- [done] `handleCanvasClick` now treats `'pan'` exactly like `'inspect'` (tap = select/inspect tile only, never build/bulldoze/zone).
+- [done] Added `this.autoSwitchToPan` (bound to the new checkbox); after any successful placement/bulldoze/survey action, if enabled, the tool automatically reverts to Pan via `setActiveTool('pan')`.
+- [done] Added `touchstart`/`touchmove`/`touchend` listeners (all `{passive:false}` with `preventDefault()` to stop page scroll and suppress duplicate synthetic mouse events): single-finger drag ALWAYS pans the camera regardless of active tool (never drag-builds), and a tap that moved less than 8px triggers `handleCanvasClick` with a synthetic `{clientX, clientY}` object once released.
+
+Validation:
+- All test suites pass unchanged (no test touches main.js): `npm test`, test:ore, test:river, test:services, test:tax, test:roads, test:income, test:industrial, test:tax-revenue, test:school, test:service-expenses.
+- main.js/index.html/style.css diagnostics pass. Not verified on an actual mobile device/emulator in this session — recommend a manual touch-device smoke test (pan-drag, tap-to-inspect in Pan mode, tap-to-build in a placement tool, auto-revert after building).
+
+Current task: Fix mobile layout where the header, tool drawer, utility HUD, and inspector panels all overlapped the map (no responsive CSS existed at all before this).
+
+- [done] Added a `@media (max-width: 820px)` block in style.css: header wraps to a second row and its stats-counter becomes a horizontally scrollable strip (seed control hidden to save space); the overlay-mode picker becomes horizontally scrollable instead of overflowing.
+- [done] `.tool-drawer` (left) and `.utility-hud` (right) become full-height off-canvas drawers on mobile (`transform: translateX(...)`, hidden by default) instead of always-visible floating panels, so the map underneath is fully clear by default.
+- [done] Added two floating round toggle buttons (🛠️ tools / 📊 stats) inside the viewport (index.html), wired in main.js to toggle a `.mobile-open` class on each drawer; opening one auto-closes the other. Selecting a tool (`setActiveTool`) auto-closes the tool drawer afterward so the map is immediately visible to tap-build.
+- [done] `.inspector-panel`/`#build-info-panel` (Tile Inspector / Build Info) get mobile-only positioning: full width minus margins, and raised off the bottom edge (`bottom: 76px`) so they don't collide with the new toggle buttons.
+
+Validation:
+- All test suites pass unchanged (no test touches CSS/HTML/main.js UI wiring): `npm test`, test:ore, test:river, test:services, test:tax, test:roads, test:income, test:industrial, test:tax-revenue, test:school, test:service-expenses.
+- main.js/index.html/style.css diagnostics pass. Still not verified on a real device/emulator — recommend checking a phone-width viewport (e.g. browser devtools device toolbar at ~390px) to confirm the drawers open/close cleanly and nothing overlaps.
+
+Current task: Real-device mobile feedback fixes (Samsung phone with on-screen nav bar covering the toggle buttons; auto-switch-to-Pan resetting road placement).
+
+- [done] Raised the 🛠️/📊 mobile toggle buttons from `bottom: 16px` to `bottom: calc(90px + env(safe-area-inset-bottom, 0px))` and added `viewport-fit=cover` to the HTML viewport meta tag so `env(safe-area-inset-bottom)` actually resolves on devices that report it, clearing the phone's on-screen nav/gesture bar. Adjusted `.tool-drawer`/`.utility-hud` bottom offset and `.inspector-panel`/`#build-info-panel` bottom offset (76px -> 150px) to match, so nothing overlaps the raised buttons.
+- [done] Auto-switch-to-Pan now only fires for single-placement buildings (`activeTool.startsWith('producer_')`) after a successful build, not for repeatable tools like road/bridge/zone/bulldoze/survey — so placing a run of roads no longer kicks you back to Pan/Inspect after every tile. Updated the checkbox label to "Auto-switch to Pan after placing a building" to reflect the narrower scope.
+
+Validation:
+- All test suites pass unchanged: `npm test`, test:ore, test:river, test:services, test:tax, test:roads, test:income, test:industrial, test:tax-revenue, test:school, test:service-expenses.
+- main.js/index.html/style.css diagnostics pass. Still not verified on the reporting user's actual device — the safe-area-inset offset is a best-effort fix since Android's on-screen nav bar isn't always reported via that CSS env var consistently across browsers; may need further tuning based on next feedback.
+
+Current task: Require Windmill/Solar Panel to be adjacent (including diagonals) to a Battery Storage building to transmit power.
+
+- [done] Grid.js: added `getNeighbors8(x, y)` (8-directional including diagonals), leaving the existing orthogonal `getNeighbors(x, y)` untouched for road/utility network logic.
+- [done] UtilityManager.updatePowerGeneration: Windmill/Solar Panel producers now check `hasAdjacentBattery(grid, x, y)` (via `getNeighbors8`) each tick. If no Battery Storage is adjacent, `producer.capacity = 0` and `producer.hasBatteryConnection = false`; if adjacent, capacity is computed as before (wind fluctuation / solar day-curve) and `hasBatteryConnection = true`.
+- [done] Tile Inspector (main.js `updateInspector`): Windmill/Solar Panel tiles show `⚠️ Offline (Must be adjacent to Battery Storage)` in place of the load/capacity readout when disconnected; otherwise shows normal output as before.
+- [done] Build Info panel (main.js `updateBuildInfoPanel`): Windmill and Solar Panel entries now include a "Requires: Adjacent (incl. diagonals) to Battery Storage to transmit power" row.
+
+Validation:
+- All test suites pass unchanged (no test places Windmill/Solar Panel producers): `npm test`, test:ore, test:river, test:services, test:tax, test:roads, test:income, test:industrial, test:tax-revenue, test:school, test:service-expenses.
+- Manual node script confirmed: a windmill diagonally adjacent to a battery generates power normally (`hasBatteryConnection: true`, nonzero capacity); a solar panel with no adjacent battery is gated to `capacity: 0` (`hasBatteryConnection: false`).
+

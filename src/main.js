@@ -1,7 +1,7 @@
 import { Grid } from './engine/Grid.js';
 import { Simulation } from './engine/Simulation.js';
 import { Renderer } from './engine/Renderer.js';
-import { ZONE, TERRAIN, PRODUCER_TYPE, PRODUCER_CONFIG, COSTS, TILE_SIZE, STARTING_TREASURY, RESIDENTIAL_CAPACITY, JOBS_PROVIDED, FOREST_POLLUTION_ABSORPTION, FOREST_DESIRABILITY_RADIUS, CRIME_CONFIG, POWER_PRODUCER_TYPES, POLLUTION_CONFIG, COAL_CONFIG, WIND_CONFIG, SOLAR_CONFIG, BATTERY_CONFIG, DENSITY } from './config.js';
+import { ZONE, TERRAIN, PRODUCER_TYPE, PRODUCER_CONFIG, COSTS, TILE_SIZE, STARTING_TREASURY, RESIDENTIAL_CAPACITY, JOBS_PROVIDED, FOREST_POLLUTION_ABSORPTION, FOREST_DESIRABILITY_RADIUS, CRIME_CONFIG, MEDICAL_CONFIG, POWER_PRODUCER_TYPES, POLLUTION_CONFIG, COAL_CONFIG, WIND_CONFIG, SOLAR_CONFIG, BATTERY_CONFIG, DENSITY } from './config.js';
 
 class GameApp {
   constructor() {
@@ -11,11 +11,17 @@ class GameApp {
     this.renderer = new Renderer(this.canvas, this.grid);
 
     this.treasury = STARTING_TREASURY;
-    this.activeTool = 'inspect';
+    this.activeTool = 'pan';
+    this.autoSwitchToPan = true;
     this.isMouseDown = false;
     this.isRightMouseDown = false;
     this.lastMouseX = 0;
     this.lastMouseY = 0;
+    this.lastTouchX = 0;
+    this.lastTouchY = 0;
+    this.touchStartX = 0;
+    this.touchStartY = 0;
+    this.touchMoved = false;
 
     this.simInterval = null;
 
@@ -37,18 +43,28 @@ class GameApp {
   }
 
   bindUIEvents() {
+    const autoPanToggle = document.getElementById('auto-pan-toggle');
+    if (autoPanToggle) {
+      this.autoSwitchToPan = autoPanToggle.checked;
+      autoPanToggle.addEventListener('change', () => {
+        this.autoSwitchToPan = autoPanToggle.checked;
+      });
+    }
+
+    const toolDrawer = document.querySelector('.tool-drawer');
+    const utilityHud = document.querySelector('.utility-hud');
+    document.getElementById('btn-toggle-tools')?.addEventListener('click', () => {
+      toolDrawer?.classList.toggle('mobile-open');
+      utilityHud?.classList.remove('mobile-open');
+    });
+    document.getElementById('btn-toggle-hud')?.addEventListener('click', () => {
+      utilityHud?.classList.toggle('mobile-open');
+      toolDrawer?.classList.remove('mobile-open');
+    });
+
     document.querySelectorAll('.tool-btn').forEach((btn) => {
       btn.addEventListener('click', (e) => {
-        document.querySelectorAll('.tool-btn').forEach((b) => b.classList.remove('active'));
-        btn.classList.add('active');
-        this.activeTool = btn.dataset.tool;
-        this.renderer.highlightWaterAdjacent =
-          this.activeTool === 'producer_water' || this.activeTool === 'producer_sewage';
-        if (this.activeTool !== 'inspect') {
-          document.getElementById('inspector-panel').classList.remove('visible');
-          this.renderer.selectedTile = null;
-        }
-        this.updateBuildInfoPanel(this.activeTool);
+        this.setActiveTool(btn.dataset.tool);
       });
     });
 
@@ -203,6 +219,7 @@ class GameApp {
     this.updateMeter('meter-power-text', 'meter-power-fill', stats.powerDemand, stats.powerCapacity);
     this.updateMeter('meter-water-text', 'meter-water-fill', stats.waterDemand, stats.waterCapacity);
     this.updateMeter('meter-sewage-text', 'meter-sewage-fill', stats.sewageDemand, stats.sewageCapacity);
+    this.updateMeter('meter-hospital-text', 'meter-hospital-fill', stats.patientDemand, stats.patientCapacity);
 
     const pollEl = document.getElementById('meter-pollution-text');
     if (pollEl) pollEl.textContent = `Avg ${stats.avgPollution} / Max ${stats.maxPollution}`;
@@ -219,6 +236,22 @@ class GameApp {
     const fillEl = document.getElementById(fillId);
     fillEl.style.width = `${pct}%`;
     fillEl.style.backgroundColor = demand > capacity ? '#ef4444' : '';
+  }
+
+  setActiveTool(tool) {
+    document.querySelectorAll('.tool-btn').forEach((b) => b.classList.remove('active'));
+    const btn = document.querySelector(`.tool-btn[data-tool="${tool}"]`);
+    if (btn) btn.classList.add('active');
+    this.activeTool = tool;
+    this.renderer.highlightWaterAdjacent =
+      this.activeTool === 'producer_water' || this.activeTool === 'producer_sewage';
+    if (this.activeTool !== 'inspect') {
+      document.getElementById('inspector-panel').classList.remove('visible');
+      this.renderer.selectedTile = null;
+    }
+    this.updateBuildInfoPanel(this.activeTool);
+    // On mobile, close the off-canvas tool drawer once a tool is picked so the map is visible again.
+    document.querySelector('.tool-drawer')?.classList.remove('mobile-open');
   }
 
   bindCanvasEvents() {
@@ -279,6 +312,46 @@ class GameApp {
 
       this.renderer.setCamera(newCameraX, newCameraY, newZoom);
     });
+
+    // Touch support: single-finger drag always pans the camera (never builds),
+    // and a tap that didn't move performs the active tool's action.
+    this.canvas.addEventListener('touchstart', (e) => {
+      if (e.touches.length !== 1) return;
+      e.preventDefault();
+      const touch = e.touches[0];
+      this.touchStartX = touch.clientX;
+      this.touchStartY = touch.clientY;
+      this.lastTouchX = touch.clientX;
+      this.lastTouchY = touch.clientY;
+      this.touchMoved = false;
+    }, { passive: false });
+
+    this.canvas.addEventListener('touchmove', (e) => {
+      if (e.touches.length !== 1) return;
+      e.preventDefault();
+      const touch = e.touches[0];
+      const dx = touch.clientX - this.lastTouchX;
+      const dy = touch.clientY - this.lastTouchY;
+      this.renderer.setCamera(this.renderer.cameraX + dx, this.renderer.cameraY + dy);
+
+      const totalDx = touch.clientX - this.touchStartX;
+      const totalDy = touch.clientY - this.touchStartY;
+      if (Math.hypot(totalDx, totalDy) > 8) {
+        this.touchMoved = true;
+      }
+
+      this.lastTouchX = touch.clientX;
+      this.lastTouchY = touch.clientY;
+    }, { passive: false });
+
+    this.canvas.addEventListener('touchend', (e) => {
+      e.preventDefault();
+      if (!this.touchMoved && e.changedTouches.length === 1) {
+        const touch = e.changedTouches[0];
+        this.handleCanvasClick({ clientX: touch.clientX, clientY: touch.clientY });
+      }
+      this.touchMoved = false;
+    }, { passive: false });
   }
 
   screenToTile(screenX, screenY) {
@@ -304,7 +377,7 @@ class GameApp {
 
     if (!tile) return;
 
-    if (this.activeTool === 'inspect') {
+    if (this.activeTool === 'inspect' || this.activeTool === 'pan') {
       this.renderer.selectedTile = tile;
       document.getElementById('inspector-panel').classList.add('visible');
       this.updateInspector(tile);
@@ -369,6 +442,11 @@ class GameApp {
       if (this.renderer.selectedTile) {
         this.updateInspector(this.renderer.selectedTile);
       }
+      // Only single-placement buildings (producers) auto-revert to Pan; repeatable
+      // tools like roads/zones/bulldoze stay active so you can keep placing.
+      if (this.autoSwitchToPan && this.activeTool.startsWith('producer_')) {
+        this.setActiveTool('pan');
+      }
     }
 
   }
@@ -395,8 +473,10 @@ class GameApp {
       if (config.utility === 'power') {
         if (pType === PRODUCER_TYPE.WINDMILL) {
           rows.push(row('Power Output', `${WIND_CONFIG.MIN_CAPACITY}-${WIND_CONFIG.BASE_CAPACITY + WIND_CONFIG.FLUCTUATION} (fluctuates each tick)`));
+          rows.push(row('Requires', 'Adjacent (incl. diagonals) to Battery Storage to transmit power'));
         } else if (pType === PRODUCER_TYPE.SOLAR_PANEL) {
           rows.push(row('Power Output', `0-${SOLAR_CONFIG.PEAK_CAPACITY} (day only, peaks at noon)`));
+          rows.push(row('Requires', 'Adjacent (incl. diagonals) to Battery Storage to transmit power'));
         } else if (pType === PRODUCER_TYPE.BATTERY) {
           rows.push(row('Storage Capacity', `${BATTERY_CONFIG.MAX_STORAGE}`));
           rows.push(row('Discharge Rate', `${BATTERY_CONFIG.DISCHARGE_RATE} / tick`));
@@ -413,6 +493,10 @@ class GameApp {
       } else if (config.jobs) {
         rows.push(row('Jobs (Light/Medium/High)', `${config.jobs.light} / ${config.jobs.medium} / ${config.jobs.high}`));
         if (config.radius) rows.push(row('Coverage Radius (L/M/H)', `${config.radius.light} / ${config.radius.medium} / ${config.radius.high}`));
+        if (pType === PRODUCER_TYPE.HOSPITAL) {
+          const cap = (staff) => staff * MEDICAL_CONFIG.HOSPITAL_PATIENT_CAPACITY_PER_JOB;
+          rows.push(row('Patient Capacity (L/M/H)', `${cap(config.jobs.light)} / ${cap(config.jobs.medium)} / ${cap(config.jobs.high)}`));
+        }
       } else if (config.surveyDuration) {
         rows.push(row('Survey Duration (Flat/Mountain)', `${config.surveyDuration.standard} / ${config.surveyDuration.mountain} ticks`));
       }
@@ -539,9 +623,15 @@ class GameApp {
         : '';
       const contaminatedStr = tile.producer.contaminated ? ' ☣️ Contaminated!' : '';
       document.getElementById('inspect-producer-type').textContent = (config ? config.name : tile.producer.type) + roadStatusStr + utilityStatusStr + contaminatedStr;
-      document.getElementById('inspect-producer-cap').textContent = tile.producer.type === PRODUCER_TYPE.BATTERY
-        ? `${tile.producer.usedCapacity} / ${tile.producer.capacity} (Stored: ${Math.round(tile.producer.storedEnergy || 0)} / ${tile.producer.maxStorage})`
-        : `${tile.producer.usedCapacity} / ${tile.producer.capacity}`;
+
+      const isBatteryDependent = tile.producer.type === PRODUCER_TYPE.WINDMILL || tile.producer.type === PRODUCER_TYPE.SOLAR_PANEL;
+      if (isBatteryDependent && !tile.producer.hasBatteryConnection) {
+        document.getElementById('inspect-producer-cap').textContent = '⚠️ Offline (Must be adjacent to Battery Storage)';
+      } else if (tile.producer.type === PRODUCER_TYPE.BATTERY) {
+        document.getElementById('inspect-producer-cap').textContent = `${tile.producer.usedCapacity} / ${tile.producer.capacity} (Stored: ${Math.round(tile.producer.storedEnergy || 0)} / ${tile.producer.maxStorage})`;
+      } else {
+        document.getElementById('inspect-producer-cap').textContent = `${tile.producer.usedCapacity} / ${tile.producer.capacity}`;
+      }
     } else {
       prodPanel.style.display = 'none';
     }

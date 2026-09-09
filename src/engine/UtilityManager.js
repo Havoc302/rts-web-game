@@ -14,17 +14,30 @@ export class UtilityManager {
 
   // Windmill output swings randomly each tick, solar follows a sunrise-to-sunset
   // bell curve, and batteries can only discharge what they currently hold in storage.
+  // Windmills/solar panels also need a Battery Storage building adjacent (including
+  // diagonals) to actually transmit their power to the grid.
   static updatePowerGeneration(grid, hourOfDay) {
     for (const p of grid.producers) {
-      if (p.type === PRODUCER_TYPE.WINDMILL) {
-        const swing = (Math.random() * 2 - 1) * WIND_CONFIG.FLUCTUATION;
-        p.capacity = Math.max(WIND_CONFIG.MIN_CAPACITY, Math.round(WIND_CONFIG.BASE_CAPACITY + swing));
-      } else if (p.type === PRODUCER_TYPE.SOLAR_PANEL) {
-        p.capacity = Math.round(SOLAR_CONFIG.PEAK_CAPACITY * this.solarOutputFactor(hourOfDay));
+      if (p.type === PRODUCER_TYPE.WINDMILL || p.type === PRODUCER_TYPE.SOLAR_PANEL) {
+        p.hasBatteryConnection = this.hasAdjacentBattery(grid, p.x, p.y);
+        if (!p.hasBatteryConnection) {
+          p.capacity = 0;
+          continue;
+        }
+        if (p.type === PRODUCER_TYPE.WINDMILL) {
+          const swing = (Math.random() * 2 - 1) * WIND_CONFIG.FLUCTUATION;
+          p.capacity = Math.max(WIND_CONFIG.MIN_CAPACITY, Math.round(WIND_CONFIG.BASE_CAPACITY + swing));
+        } else {
+          p.capacity = Math.round(SOLAR_CONFIG.PEAK_CAPACITY * this.solarOutputFactor(hourOfDay));
+        }
       } else if (p.type === PRODUCER_TYPE.BATTERY) {
         p.capacity = Math.min(BATTERY_CONFIG.DISCHARGE_RATE, Math.floor(p.storedEnergy || 0));
       }
     }
+  }
+
+  static hasAdjacentBattery(grid, x, y) {
+    return grid.getNeighbors8(x, y).some((tile) => tile.producer && tile.producer.type === PRODUCER_TYPE.BATTERY);
   }
 
   static solarOutputFactor(hourOfDay) {
@@ -70,6 +83,13 @@ export class UtilityManager {
       sewage: PRODUCER_TYPE.SEWAGE_PLANT,
     };
 
+    // Distances from producers-of-type-X to all roads don't change within a tick,
+    // so compute each utility's road-distance map once and reuse it for every consumer.
+    const roadDistancesByUtility = {};
+    for (const [utilityKey, sourceType] of Object.entries(utilitySources)) {
+      roadDistancesByUtility[utilityKey] = RoadNetwork.computeProducerDistances(grid, sourceType).roadDistancesMap;
+    }
+
     for (const producer of grid.producers) {
       const config = PRODUCER_CONFIG[producer.type];
       const usage = config?.utilityUsage;
@@ -81,11 +101,11 @@ export class UtilityManager {
         ? config.activeUtilityUsage || {}
         : {};
 
-      for (const [utilityKey, sourceType] of Object.entries(utilitySources)) {
+      for (const [utilityKey] of Object.entries(utilitySources)) {
         const required = (usage[utilityKey] || 0) + (activeUsage[utilityKey] || 0);
         if (required <= 0) continue;
 
-        const { roadDistancesMap } = RoadNetwork.computeProducerDistances(grid, sourceType);
+        const roadDistancesMap = roadDistancesByUtility[utilityKey];
         const candidates = [];
         for (const neighbor of grid.getNeighbors(producer.x, producer.y)) {
           if (!neighbor.hasRoad) continue;
@@ -147,6 +167,7 @@ export class UtilityManager {
       // First try candidate producers at the same minimum distance
       let bestCap = -1;
       for (const prod of item.candidateProducers) {
+        if (prod.contaminated) continue;
         const remaining = prod.capacity - prod.usedCapacity;
         if (remaining >= usage && remaining > bestCap) {
           bestCap = remaining;
@@ -158,6 +179,7 @@ export class UtilityManager {
       if (!chosenProducer && item.allCandidatesSorted) {
         for (const candidateInfo of item.allCandidatesSorted) {
           const prod = candidateInfo.producer;
+          if (prod.contaminated) continue;
           const remaining = prod.capacity - prod.usedCapacity;
           if (remaining >= usage) {
             chosenProducer = prod;

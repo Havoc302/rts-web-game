@@ -403,6 +403,15 @@ export const CRIME_CONFIG = {
   MAX_TAX_LOSS_RATIO: 0.50,           // Capped at 50% max tax loss per tile
 };
 
+export const MEDICAL_CONFIG = {
+  PATIENTS_PER_RESIDENT: 0.01,            // Baseline passive sickness rate per resident
+  PATIENTS_PER_INDUSTRIAL_JOB: 0.05,      // Higher injury rate per filled industrial job
+  PATIENTS_PER_CRIME_POINT: 0.5,          // Additional trauma patients per point of tile crime
+  PATIENTS_PER_POLLUTION_POINT: 0.2,      // Additional sickness per point of tile pollution
+  HOSPITAL_PATIENT_CAPACITY_PER_JOB: 15,  // Patient capacity provided per staffed hospital job
+  UNHEALTHY_GROWTH_PENALTY: -2,           // Growth penalty on residential tiles during hospital shortfall
+};
+
 
 
 

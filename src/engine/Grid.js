@@ -69,7 +69,6 @@ export class Grid {
 
     this.generateProceduralTerrain();
     this.generateHiddenOres();
-    this.computeRiverFlowOrder();
   }
 
   generateHiddenOres() {
@@ -103,7 +102,6 @@ export class Grid {
       surveyingBy: null,
       surveyProgress: 0,
       surveyRequired: 0,
-      riverFlowOrder: null,
       riverFlowDir: null,
       crime: 0,
     };
@@ -330,8 +328,6 @@ export class Grid {
     }
   }
 
-  computeRiverFlowOrder() {}
-
   isInBounds(x, y) {
     return x >= 0 && x < this.width && y >= 0 && y < this.height;
   }
@@ -348,6 +344,22 @@ export class Grid {
       { x: 1, y: 0 },
       { x: 0, y: 1 },
       { x: -1, y: 0 },
+    ];
+    for (const d of dirs) {
+      const nx = x + d.x;
+      const ny = y + d.y;
+      if (this.isInBounds(nx, ny)) {
+        neighbors.push(this.tiles[ny][nx]);
+      }
+    }
+    return neighbors;
+  }
+
+  getNeighbors8(x, y) {
+    const neighbors = [];
+    const dirs = [
+      { x: 0, y: -1 }, { x: 1, y: -1 }, { x: 1, y: 0 }, { x: 1, y: 1 },
+      { x: 0, y: 1 },  { x: -1, y: 1 }, { x: -1, y: 0 }, { x: -1, y: -1 },
     ];
     for (const d of dirs) {
       const nx = x + d.x;

@@ -1,4 +1,4 @@
-import { GROWTH_CONFIG, DENSITY, ZONE, TERRAIN, USAGE_RATES, POLLUTION_CONFIG, JOBS_PROVIDED, EMPLOYABLE_POPULATION, RESIDENTIAL_CAPACITY, LABOR_TAX_GROWTH_CONFIG, FOREST_DESIRABILITY_RADIUS, PRODUCER_TYPE, POWER_PRODUCER_TYPES, ROAD_MAINTENANCE_COST, TAX_REVENUE_CONFIG, CRIME_CONFIG, TICKS_PER_HOUR, HOURS_PER_DAY, DAY_START_HOUR, NIGHT_START_HOUR } from '../config.js';
+import { GROWTH_CONFIG, DENSITY, ZONE, TERRAIN, USAGE_RATES, POLLUTION_CONFIG, JOBS_PROVIDED, EMPLOYABLE_POPULATION, RESIDENTIAL_CAPACITY, LABOR_TAX_GROWTH_CONFIG, FOREST_DESIRABILITY_RADIUS, PRODUCER_TYPE, POWER_PRODUCER_TYPES, ROAD_MAINTENANCE_COST, TAX_REVENUE_CONFIG, CRIME_CONFIG, MEDICAL_CONFIG, TICKS_PER_HOUR, HOURS_PER_DAY, DAY_START_HOUR, NIGHT_START_HOUR } from '../config.js';
 import { UtilityManager } from './UtilityManager.js';
 import { PollutionManager } from './PollutionManager.js';
 import { ServiceManager } from './ServiceManager.js';
@@ -30,6 +30,9 @@ export class Simulation {
       jobsAvailable: 0,
       employmentRate: 0,
       crimeTaxLoss: 0,
+      patientDemand: 0,
+      patientCapacity: 0,
+      untreatedPatients: 0,
       zones: {
         residential: { light: 0, medium: 0, high: 0 },
         commercial: { light: 0, medium: 0, high: 0 },
@@ -139,6 +142,10 @@ export class Simulation {
             if (tile.services.library) delta += 1;
             if (tile.services.cityHall) delta += 2;
           }
+          // Hospital capacity shortfall triggers a citywide public health penalty
+          if (this.stats.untreatedPatients > 0) {
+            delta += MEDICAL_CONFIG.UNHEALTHY_GROWTH_PENALTY;
+          }
           // Residential growthScore only increases if jobsAvailable > 0.
           // No available jobs = positive growth stalls entirely.
           if (jobsAvail <= 0 && delta > 0) {
@@ -189,6 +196,9 @@ export class Simulation {
       jobsAvailable: 0,
       employmentRate: 0,
       crimeTaxLoss: 0,
+      patientDemand: 0,
+      patientCapacity: 0,
+      untreatedPatients: 0,
       zones: {
         residential: { light: 0, medium: 0, high: 0 },
         commercial: { light: 0, medium: 0, high: 0 },
@@ -206,6 +216,9 @@ export class Simulation {
         stats.powerDemand += 10;
       }
       if (p.totalJobs && p.totalJobs > 0) stats.totalJobsProvided += p.totalJobs;
+      if (p.type === PRODUCER_TYPE.HOSPITAL && p.operational) {
+        stats.patientCapacity += (p.filledJobs || 0) * MEDICAL_CONFIG.HOSPITAL_PATIENT_CAPACITY_PER_JOB;
+      }
     }
 
     stats.roadExpenses = this.grid.tiles.flat().filter((tile) => tile.hasRoad).length * ROAD_MAINTENANCE_COST;
@@ -271,7 +284,8 @@ export class Simulation {
       }
     }
 
-    // Deduct tax revenue lost to crime on each zoned tile
+    // Deduct tax revenue lost to crime, and tally patient demand, on each zoned tile
+    let totalPatientDemand = 0;
     for (let y = 0; y < this.grid.height; y++) {
       for (let x = 0; x < this.grid.width; x++) {
         const tile = this.grid.getTile(x, y);
@@ -280,9 +294,15 @@ export class Simulation {
         let tileBaseTax = 0;
         if (tile.zone === ZONE.RESIDENTIAL) {
           tileBaseTax = (tile.population || 0) / TAX_REVENUE_CONFIG.RESIDENTS_PER_TAX_UNIT * TAX_REVENUE_CONFIG.MONEY_PER_TAX_UNIT * (this.taxRate / 100);
+          totalPatientDemand += (tile.population || 0) * MEDICAL_CONFIG.PATIENTS_PER_RESIDENT;
         } else {
           tileBaseTax = (tile.filledJobs || 0) / TAX_REVENUE_CONFIG.EMPLOYED_PER_TAX_UNIT * TAX_REVENUE_CONFIG.MONEY_PER_TAX_UNIT * (this.taxRate / 100);
+          if (tile.zone === ZONE.INDUSTRIAL) {
+            totalPatientDemand += (tile.filledJobs || 0) * MEDICAL_CONFIG.PATIENTS_PER_INDUSTRIAL_JOB;
+          }
         }
+        totalPatientDemand += (tile.crime || 0) * MEDICAL_CONFIG.PATIENTS_PER_CRIME_POINT;
+        totalPatientDemand += (tile.pollution || 0) * MEDICAL_CONFIG.PATIENTS_PER_POLLUTION_POINT;
 
         const crimeTaxPenalty = Math.min(
           CRIME_CONFIG.MAX_TAX_LOSS_RATIO,
@@ -292,6 +312,8 @@ export class Simulation {
         stats.crimeTaxLoss += tileLoss;
       }
     }
+    stats.patientDemand = Math.round(totalPatientDemand);
+    stats.untreatedPatients = Math.max(0, stats.patientDemand - stats.patientCapacity);
 
     const taxBase = (stats.population / TAX_REVENUE_CONFIG.RESIDENTS_PER_TAX_UNIT) +
       (stats.jobsFilled / TAX_REVENUE_CONFIG.EMPLOYED_PER_TAX_UNIT);

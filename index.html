@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>City Economy Core Loop — City Builder Prototype</title>
   <link rel="stylesheet" href="style.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -82,6 +82,10 @@
     <main class="viewport">
       <canvas id="game-canvas"></canvas>
 
+      <!-- Mobile drawer toggles (hidden on desktop) -->
+      <button class="mobile-toggle mobile-toggle-tools glass" id="btn-toggle-tools" aria-label="Toggle Tools">🛠️</button>
+      <button class="mobile-toggle mobile-toggle-hud glass" id="btn-toggle-hud" aria-label="Toggle Stats">📊</button>
+
       <!-- Overlay View Selector -->
       <div class="view-overlay-picker glass">
         <button class="overlay-btn active" data-mode="normal">Normal</button>
@@ -118,6 +122,13 @@
         </div>
         <div class="utility-meter">
           <div class="meter-header">
+            <span>🏥 Hospital</span>
+            <span id="meter-hospital-text">0 / 0</span>
+          </div>
+          <div class="progress-bar"><div class="fill sewage" id="meter-hospital-fill"></div></div>
+        </div>
+        <div class="utility-meter">
+          <div class="meter-header">
             <span>☢️ Pollution</span>
             <span id="meter-pollution-text">Avg 0 / Max 0</span>
           </div>
@@ -137,7 +148,11 @@
       <aside class="tool-drawer glass">
         <div class="tool-group">
           <span class="group-title">GENERAL</span>
-          <button class="tool-btn active" data-tool="inspect">
+          <button class="tool-btn active" data-tool="pan">
+            <span class="icon">✋</span>
+            <span class="name">Pan Map</span>
+          </button>
+          <button class="tool-btn" data-tool="inspect">
             <span class="icon">🔍</span>
             <span class="name">Inspect Tile</span>
           </button>
@@ -153,6 +168,10 @@
             <span class="icon">🚜</span>
             <span class="name">Bulldoze ($50)</span>
           </button>
+          <label class="auto-pan-toggle">
+            <input type="checkbox" id="auto-pan-toggle" checked />
+            <span>Auto-switch to Pan after placing a building</span>
+          </label>
         </div>
 
         <div class="tool-group">
