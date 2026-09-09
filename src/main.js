@@ -566,6 +566,9 @@ class GameApp {
     document.getElementById('inspect-crime').textContent = crimeLevel;
     const crimeTaxPenalty = Math.min(CRIME_CONFIG.MAX_TAX_LOSS_RATIO, crime * CRIME_CONFIG.TAX_LOSS_PER_CRIME_POINT);
     document.getElementById('inspect-crime-tax-loss').textContent = `-${Math.round(crimeTaxPenalty * 100)}%`;
+    document.getElementById('inspect-fire').textContent = tile.onFire
+      ? `Yes (Damage: ${Math.min(100, Math.round(tile.fireDamage || 0))}%)`
+      : 'No';
     const oreEl = document.getElementById('inspect-ore');
     if (oreEl) {
       if (tile.oreDiscovered) {

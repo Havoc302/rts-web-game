@@ -104,6 +104,8 @@ export class Grid {
       surveyRequired: 0,
       riverFlowDir: null,
       crime: 0,
+      onFire: false,
+      fireDamage: 0,
     };
   }
 

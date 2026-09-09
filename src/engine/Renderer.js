@@ -120,6 +120,10 @@ export class Renderer {
           this.renderSurveyStatus(ctx, tile, px, py);
         }
 
+        if (tile.onFire) {
+          this.renderFireTile(ctx, tile, px, py);
+        }
+
         if (this.overlayMode !== 'normal') {
           this.renderOverlay(ctx, tile, px, py);
         }
@@ -781,6 +785,35 @@ export class Renderer {
     ctx.moveTo(px + 29, py + 3);
     ctx.lineTo(px + 25, py + 7);
     ctx.stroke();
+  }
+
+  renderFireTile(ctx, tile, px, py) {
+    const flicker = 0.55 + 0.35 * Math.abs(Math.sin(this.animTime * 6 + (tile.x + tile.y)));
+    ctx.fillStyle = `rgba(249, 115, 22, ${0.5 + 0.2 * flicker})`;
+    ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+
+    // Pulsing smoke particles
+    const smokeCount = 3;
+    for (let i = 0; i < smokeCount; i++) {
+      const phase = this.animTime * 1.5 + i * 2.1 + (tile.x * 3 + tile.y * 7);
+      const riseFrac = (phase % 2) / 2;
+      const sx = px + TILE_SIZE / 2 + Math.sin(phase) * 6;
+      const sy = py + TILE_SIZE * (0.8 - riseFrac * 0.7);
+      const alpha = (1 - riseFrac) * 0.35;
+      ctx.fillStyle = `rgba(100, 116, 139, ${alpha})`;
+      ctx.beginPath();
+      ctx.arc(sx, sy, 3 + riseFrac * 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    if (tile.fireDamage > 0) {
+      const pct = Math.min(1, tile.fireDamage / 100);
+      const barWidth = TILE_SIZE - 6;
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.7)';
+      ctx.fillRect(px + 3, py + TILE_SIZE - 6, barWidth, 3);
+      ctx.fillStyle = '#ef4444';
+      ctx.fillRect(px + 3, py + TILE_SIZE - 6, barWidth * pct, 3);
+    }
   }
 
   renderShortfallIndicators(ctx, tile, px, py) {

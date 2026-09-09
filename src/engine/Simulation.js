@@ -3,6 +3,7 @@ import { UtilityManager } from './UtilityManager.js';
 import { PollutionManager } from './PollutionManager.js';
 import { ServiceManager } from './ServiceManager.js';
 import { CrimeManager } from './CrimeManager.js';
+import { FireManager } from './FireManager.js';
 
 export class Simulation {
   constructor(grid) {
@@ -33,6 +34,7 @@ export class Simulation {
       patientDemand: 0,
       patientCapacity: 0,
       untreatedPatients: 0,
+      fireInjuries: 0,
       zones: {
         residential: { light: 0, medium: 0, high: 0 },
         commercial: { light: 0, medium: 0, high: 0 },
@@ -51,6 +53,7 @@ export class Simulation {
     ServiceManager.updateServices(this.grid, this.stats.population, this.stats.employmentRate);
     if (advanceWorld) {
       CrimeManager.updateCrime(this.grid, this.stats);
+      FireManager.updateFires(this.grid, this.stats);
       this.updateSurveys();
     }
 
@@ -178,6 +181,7 @@ export class Simulation {
   }
 
   computeStats() {
+    const fireInjuries = this.stats.fireInjuries || 0;
     const stats = {
       population: 0,
       incomePerTick: 0,
@@ -199,6 +203,7 @@ export class Simulation {
       patientDemand: 0,
       patientCapacity: 0,
       untreatedPatients: 0,
+      fireInjuries,
       zones: {
         residential: { light: 0, medium: 0, high: 0 },
         commercial: { light: 0, medium: 0, high: 0 },
@@ -312,6 +317,7 @@ export class Simulation {
         stats.crimeTaxLoss += tileLoss;
       }
     }
+    totalPatientDemand += fireInjuries;
     stats.patientDemand = Math.round(totalPatientDemand);
     stats.untreatedPatients = Math.max(0, stats.patientDemand - stats.patientCapacity);
 

@@ -412,6 +412,16 @@ export const MEDICAL_CONFIG = {
   UNHEALTHY_GROWTH_PENALTY: -2,           // Growth penalty on residential tiles during hospital shortfall
 };
 
+export const FIRE_CONFIG = {
+  BASE_IGNITION_CHANCE: 0.002,            // Baseline chance per tick for an eligible tile to catch fire
+  INDUSTRIAL_IGNITION_MULTIPLIER: 3.0,    // Industrial tiles are 3x more likely to ignite
+  HIGH_POLLUTION_IGNITION_BONUS: 0.003,   // Extra chance if tile pollution >= 5
+  DAMAGE_PER_TICK: 20,                    // Fire damage accumulated per tick (burns down at 100)
+  SPREAD_CHANCE_PER_TICK: 0.15,           // Chance to ignite an adjacent non-dirt/road tile per tick
+  INJURIES_PER_BURNING_TILE: 5,           // Burn trauma patients added to hospital demand per active fire tick
+  BASE_SUPPRESSION_POWER: 35,             // Base fire suppression points per tick from nearby fire stations
+};
+
 
 
 
