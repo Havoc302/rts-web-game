@@ -34,6 +34,7 @@ export class ServiceManager {
       { type: SERVICE_TYPE.LIBRARY, key: 'library' },
       { type: SERVICE_TYPE.CITY_HALL, key: 'cityHall' },
     ];
+    let availableWorkers = Math.max(0, Math.floor(totalPopulation));
 
     for (const { type, key } of serviceKeys) {
       const config = SERVICE_CONFIG[type];
@@ -69,8 +70,9 @@ export class ServiceManager {
           : maxJobs;
         const budgetedJobs = Math.round(staffedBase * budgetRatio);
         prod.totalJobs = budgetedJobs;
-        // Jobs filled scale with city employment rate (min 30% baseline staff)
-        prod.filledJobs = Math.min(budgetedJobs, Math.round(budgetedJobs * Math.max(LABOR_TAX_GROWTH_CONFIG.MIN_SERVICE_EMPLOYMENT_RATE, employmentRate)));
+        // Fully funded essential services receive workers before commercial and industrial jobs.
+        prod.filledJobs = Math.min(budgetedJobs, availableWorkers);
+        availableWorkers -= prod.filledJobs;
 
         const fillRatio = prod.totalJobs > 0 ? prod.filledJobs / prod.totalJobs : 0;
         if (!prod.operational) {

@@ -47,6 +47,10 @@
           <span class="label">EMP RATE</span>
           <span class="value" id="stat-emp-rate">0%</span>
         </div>
+        <div class="stat-item resource-ticker">
+          <span class="label">STOCKPILES</span>
+          <span class="value" id="stat-resources">Food 0 | Coal 0 | Iron 0 | Bauxite 0 | Goods 0</span>
+        </div>
         <div class="stat-item tax-control">
           <span class="label">TAX RATE (<span id="tax-rate-val">0</span>%)</span>
           <input type="range" id="tax-slider" min="0" max="100" value="0" step="5" />
@@ -220,6 +224,13 @@
             <span class="icon">☣️</span>
             <span class="name">Sewage Plant ($4,000)</span>
           </button>
+          <button class="tool-btn" data-tool="producer_mine_iron"><span class="icon">⛏️</span><span class="name">Iron Mine ($5,000)</span></button>
+          <button class="tool-btn" data-tool="producer_mine_bauxite"><span class="icon">⛏️</span><span class="name">Bauxite Mine ($5,000)</span></button>
+          <button class="tool-btn" data-tool="producer_mine_coal"><span class="icon">⛏️</span><span class="name">Coal Mine ($5,000)</span></button>
+          <button class="tool-btn" data-tool="producer_warehouse_ore"><span class="icon">📦</span><span class="name">Ore Warehouse ($4,000)</span></button>
+          <button class="tool-btn" data-tool="producer_warehouse_bar"><span class="icon">📦</span><span class="name">Bar Warehouse ($5,000)</span></button>
+          <button class="tool-btn" data-tool="producer_warehouse_goods"><span class="icon">📦</span><span class="name">Goods Warehouse ($6,000)</span></button>
+          <button class="tool-btn" data-tool="producer_smelter"><span class="icon">🔥</span><span class="name">Smelter ($9,000)</span></button>
         </div>
 
         <div class="tool-group">
@@ -285,6 +296,7 @@
           <div class="info-row"><span class="label">Zone:</span><span class="val" id="inspect-zone">Unzoned</span></div>
           <div class="info-row"><span class="label">Density:</span><span class="val" id="inspect-density">N/A</span></div>
           <div class="info-row"><span class="label">Block Pop / Jobs:</span><span class="val" id="inspect-pop-jobs">N/A</span></div>
+          <div class="info-row" id="industrial-recipe-row" style="display:none;"><span class="label">Recipe:</span><select class="val" id="industrial-recipe-select"></select></div>
           <div class="info-row"><span class="label">Growth Score:</span><span class="val" id="inspect-growth">0</span></div>
           <div class="info-row"><span class="label">Pollution:</span><span class="val" id="inspect-pollution">0</span></div>
           <div class="info-row"><span class="label">Crime:</span><span class="val" id="inspect-crime">Safe</span></div>

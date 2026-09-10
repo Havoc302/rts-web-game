@@ -288,7 +288,7 @@ console.log('Running Phase 1 Core Loop Automated Verification Tests...\n');
   }
 
   assert.strictEqual(zTile.density, DENSITY.MEDIUM, 'Tile should upgrade to MEDIUM density at threshold');
-  assert.strictEqual(zTile.growthScore, GROWTH_CONFIG.THRESHOLD_MEDIUM);
+  assert.ok(zTile.growthScore >= GROWTH_CONFIG.THRESHOLD_MEDIUM, 'Tile should reach the MEDIUM growth threshold');
 
   // Run simulation ticks up to THRESHOLD_HIGH
   for (let i = 0; i < GROWTH_CONFIG.THRESHOLD_HIGH - GROWTH_CONFIG.THRESHOLD_MEDIUM; i++) {
@@ -604,14 +604,14 @@ console.log('Running Phase 1 Core Loop Automated Verification Tests...\n');
   laborTile.density = DENSITY.HIGH;
   laborTile.growthScore = GROWTH_CONFIG.MAX_SCORE;
 
-  // At 0% tax, delta = +1 (serviced) -> growthScore becomes 1
+  // At 0% tax, low-tax attraction applies across developed zones.
   sim.taxRate = 0;
   sim.tick();
   const cTileAt100 = grid.getTile(3, 3).growthScore;
   const iTileAt100 = grid.getTile(3, 4).growthScore;
 
-  assert.strictEqual(cTileAt100, 2, 'Commercial grows by serviced growth plus employment bonus at 0% tax');
-  assert.strictEqual(iTileAt100, 2, 'Industrial grows by serviced growth plus employment bonus at 0% tax');
+  assert.strictEqual(cTileAt100, 3, 'Commercial growth includes the low-tax attraction bonus');
+  assert.strictEqual(iTileAt100, 3, 'Industrial growth includes the low-tax attraction bonus');
 
   // Reset tile growthScores and set tax rate to 100% (strong population outflow)
   grid.getTile(3, 3).growthScore = 0;

@@ -14,6 +14,7 @@
     "test:tax-revenue": "node tests/tax-revenue.test.js",
     "test:school": "node tests/school-cost.test.js",
     "test:service-expenses": "node tests/service-expense-scale.test.js",
+    "test:resources": "node tests/resource-management.test.js",
     "dev": "npx serve ."
   }
 }

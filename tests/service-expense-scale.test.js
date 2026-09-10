@@ -10,7 +10,7 @@ for (const row of grid.tiles) {
 
 const police = grid.placeProducer(3, 3, PRODUCER_TYPE.POLICE_STATION, 0);
 grid.placeRoad(2, 3);
-ServiceManager.updateServices(grid, 0, 1);
+ServiceManager.updateServices(grid, 1, 1);
 
 assert.ok(police.runningCost > 0, 'A staffed police station should have a running cost');
 assert.ok(police.runningCost < 20, 'Tiny-city service cost should not be based on total population');

@@ -23,6 +23,10 @@ simulation.computeStats();
 const populationAt40 = simulation.stats.population;
 const jobsAt40 = simulation.stats.totalJobsProvided;
 
+simulation.taxRate = 0;
+const lowTaxModifier = simulation.getTaxGrowthModifier();
+assert.ok(lowTaxModifier > 0, 'Zero tax should provide a positive residential attraction modifier');
+
 simulation.taxRate = 50;
 simulation.computeStats();
 assert.ok(simulation.stats.population <= populationAt40, 'Tax at 50% should stop population growth');

@@ -4,6 +4,7 @@ import { PollutionManager } from './PollutionManager.js';
 import { ServiceManager } from './ServiceManager.js';
 import { CrimeManager } from './CrimeManager.js';
 import { FireManager } from './FireManager.js';
+import { ResourceManager } from './ResourceManager.js';
 
 export class Simulation {
   constructor(grid) {
@@ -12,6 +13,7 @@ export class Simulation {
     this.isPaused = false;
     this.speed = 1;
     this.taxRate = 0;
+    this.resourceManager = new ResourceManager();
     this.stats = {
       population: 0,
       incomePerTick: 0,
@@ -36,6 +38,10 @@ export class Simulation {
       untreatedPatients: 0,
       fireInjuries: 0,
       displacedPopulation: 0,
+      happiness: 0,
+      happinessGrowthModifier: 0,
+      foodShortfall: 0,
+      resources: this.resourceManager.snapshot(),
       zones: {
         residential: { light: 0, medium: 0, high: 0 },
         commercial: { light: 0, medium: 0, high: 0 },
@@ -49,6 +55,7 @@ export class Simulation {
       this.tickCount++;
     }
 
+    this.resourceManager.prepareTick(this.grid);
     // Establish current population and job occupancy before allocating utilities.
     this.computeStats();
     UtilityManager.allocateAll(this.grid, this.getHourOfDay());
@@ -60,6 +67,8 @@ export class Simulation {
       this.relocateDisplacedPopulation(this.stats.displacedPopulation || 0);
       this.updateSurveys();
     }
+
+    this.resourceManager.update(this.grid, this.stats);
 
     // Refresh demand, income, and service capacity after this tick's updates.
     this.computeStats();
@@ -163,6 +172,7 @@ export class Simulation {
         delta += taxGrowthModifier;
 
         if (tile.zone === ZONE.RESIDENTIAL) {
+          delta += this.stats.happinessGrowthModifier || 0;
           // Forest desirability bonus
           if (this.hasNearbyForest(x, y)) {
             delta += SERVICE_GLOBAL_CONFIG.FOREST_DESIRABILITY_BONUS;
@@ -213,6 +223,9 @@ export class Simulation {
 
   computeStats() {
     const fireInjuries = this.stats.fireInjuries || 0;
+    const happiness = this.stats.happiness || 0;
+    const happinessGrowthModifier = this.stats.happinessGrowthModifier || 0;
+    const foodShortfall = this.stats.foodShortfall || 0;
     const stats = {
       population: 0,
       incomePerTick: 0,
@@ -235,6 +248,10 @@ export class Simulation {
       patientCapacity: 0,
       untreatedPatients: 0,
       fireInjuries,
+      happiness,
+      happinessGrowthModifier,
+      foodShortfall,
+      resources: this.resourceManager.snapshot(),
       zones: {
         residential: { light: 0, medium: 0, high: 0 },
         commercial: { light: 0, medium: 0, high: 0 },
@@ -288,7 +305,7 @@ export class Simulation {
           const cap = RESIDENTIAL_CAPACITY[tile.density] || 0;
           const pop = Math.min(
             cap,
-            Math.max(0, this.computeTilePopulation(tile, cap) + (tile.relocatedPopulation || 0) - (tile.fireDisplacedPopulation || 0)),
+            Math.max(0, this.computeTilePopulation(tile, cap) + (tile.relocatedPopulation || 0) - (tile.fireDisplacedPopulation || 0) - (tile.populationLoss || 0)),
           );
           tile.population = pop;
           tile.maxPopulation = cap;
@@ -388,7 +405,8 @@ export class Simulation {
   getTaxGrowthModifier() {
     const rate = Math.min(LABOR_TAX_GROWTH_CONFIG.MAX_TAX_RATE, Math.max(0, this.taxRate));
     if (rate <= LABOR_TAX_GROWTH_CONFIG.POPULATION_OUTFLOW_START_RATE) {
-      return -rate / LABOR_TAX_GROWTH_CONFIG.GROWTH_NEUTRAL_RATE;
+      return LABOR_TAX_GROWTH_CONFIG.LOW_TAX_GROWTH_BONUS -
+        rate / LABOR_TAX_GROWTH_CONFIG.GROWTH_NEUTRAL_RATE;
     }
 
     const outflowProgress = (rate - LABOR_TAX_GROWTH_CONFIG.POPULATION_OUTFLOW_START_RATE) /

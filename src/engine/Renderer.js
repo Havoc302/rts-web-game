@@ -1,4 +1,4 @@
-import { TERRAIN, ZONE, DENSITY, PRODUCER_TYPE, TILE_SIZE, ORE_CONFIG, NIGHT_TINT_ALPHA, RENDERER_CONFIG, POLLUTION_CONFIG } from '../config.js';
+import { TERRAIN, ZONE, DENSITY, PRODUCER_TYPE, PRODUCER_CONFIG, TILE_SIZE, ORE_CONFIG, NIGHT_TINT_ALPHA, RENDERER_CONFIG, POLLUTION_CONFIG } from '../config.js';
 
 export class Renderer {
   constructor(canvas, grid) {
@@ -758,6 +758,14 @@ export class Renderer {
       ctx.lineWidth = 2;
       ctx.stroke();
 
+    } else {
+      ctx.fillStyle = PRODUCER_CONFIG[prod.type]?.color || '#64748b';
+      ctx.fillRect(px + 2, py + 2, 28, 28);
+      ctx.fillStyle = '#f8fafc';
+      ctx.font = 'bold 8px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText((PRODUCER_CONFIG[prod.type]?.name || prod.type).slice(0, 5).toUpperCase(), px + 16, py + 16);
     }
 
     ctx.restore();

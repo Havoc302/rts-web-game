@@ -1,7 +1,7 @@
 import { Grid } from './engine/Grid.js';
 import { Simulation } from './engine/Simulation.js';
 import { Renderer } from './engine/Renderer.js';
-import { APP_VERSION, ZONE, TERRAIN, PRODUCER_TYPE, PRODUCER_CONFIG, COSTS, TILE_SIZE, STARTING_TREASURY, RESIDENTIAL_CAPACITY, JOBS_PROVIDED, FOREST_POLLUTION_ABSORPTION, FOREST_DESIRABILITY_RADIUS, CRIME_CONFIG, MEDICAL_CONFIG, POWER_PRODUCER_TYPES, POLLUTION_CONFIG, COAL_CONFIG, WIND_CONFIG, SOLAR_CONFIG, BATTERY_CONFIG, DENSITY, RENDERER_CONFIG, TERRAIN_GENERATION_CONFIG } from './config.js';
+import { APP_VERSION, ZONE, TERRAIN, PRODUCER_TYPE, PRODUCER_CONFIG, FACTORY_RECIPES, COSTS, TILE_SIZE, STARTING_TREASURY, RESIDENTIAL_CAPACITY, JOBS_PROVIDED, FOREST_POLLUTION_ABSORPTION, FOREST_DESIRABILITY_RADIUS, CRIME_CONFIG, MEDICAL_CONFIG, POWER_PRODUCER_TYPES, POLLUTION_CONFIG, COAL_CONFIG, WIND_CONFIG, SOLAR_CONFIG, BATTERY_CONFIG, DENSITY, RENDERER_CONFIG, TERRAIN_GENERATION_CONFIG } from './config.js';
 
 class GameApp {
   constructor() {
@@ -216,6 +216,12 @@ class GameApp {
 
     const empRateEl = document.getElementById('stat-emp-rate');
     if (empRateEl) empRateEl.textContent = `${Math.round(stats.employmentRate * 100)}%`;
+
+    const stockpile = stats.resources?.stockpile || {};
+    const resourcesEl = document.getElementById('stat-resources');
+    if (resourcesEl) {
+      resourcesEl.textContent = `Food ${Math.round(stockpile.food || 0)} | Coal ${Math.round(stockpile.coal || 0)} | Iron ${Math.round(stockpile.ironOre || 0)} | Bauxite ${Math.round(stockpile.bauxiteOre || 0)} | Goods ${Math.round(stockpile.consumerGoods || 0)}`;
+    }
 
     this.updateMeter('meter-power-text', 'meter-power-fill', stats.powerDemand, stats.powerCapacity, true);
     this.updateMeter('meter-water-text', 'meter-water-fill', stats.waterDemand, stats.waterCapacity, true);
@@ -551,6 +557,8 @@ class GameApp {
     document.getElementById('inspect-density').textContent = tile.zone !== ZONE.NONE ? tile.density : 'N/A';
 
     const popJobsEl = document.getElementById('inspect-pop-jobs');
+    const recipeRow = document.getElementById('industrial-recipe-row');
+    const recipeSelect = document.getElementById('industrial-recipe-select');
     if (popJobsEl) {
       if (tile.zone === ZONE.RESIDENTIAL) {
         const cur = (tile.population || 0).toLocaleString();
@@ -566,6 +574,18 @@ class GameApp {
         popJobsEl.textContent = `${filled} / ${total} jobs filled`;
       } else {
         popJobsEl.textContent = 'N/A';
+      }
+    }
+    if (recipeRow && recipeSelect) {
+      if (tile.zone === ZONE.INDUSTRIAL) {
+        recipeRow.style.display = '';
+        recipeSelect.innerHTML = Object.keys(FACTORY_RECIPES)
+          .map((key) => `<option value="${key}">${key.replace('_', ' ')}</option>`)
+          .join('');
+        recipeSelect.value = tile.recipe || 'CONSUMER_GOODS';
+        recipeSelect.onchange = () => { tile.recipe = recipeSelect.value; };
+      } else {
+        recipeRow.style.display = 'none';
       }
     }
 

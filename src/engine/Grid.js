@@ -91,8 +91,10 @@ export class Grid {
       zone: ZONE.NONE,
       density: DENSITY.LIGHT,
       growthScore: 0,
+      recipe: 'CONSUMER_GOODS',
       relocatedPopulation: 0,
       fireDisplacedPopulation: 0,
+      populationLoss: 0,
       producer: null,
       shortfall: { power: false, water: false, sewage: false },
       connected: false,
@@ -407,12 +409,17 @@ export class Grid {
   canPlaceProducer(x, y, producerType) {
     const tile = this.getTile(x, y);
     if (!tile) return false;
-    if (tile.terrain !== TERRAIN_TYPE.EMPTY || tile.destroyed || tile.hasRoad || tile.zone !== ZONE.NONE || tile.producer) return false;
+    const config = PRODUCER_CONFIG[producerType];
+    const isMine = Boolean(config?.requiresDiscoveredOre);
+    if ((tile.terrain !== TERRAIN_TYPE.EMPTY && (!isMine || tile.terrain === TERRAIN_TYPE.RIVER)) || tile.destroyed || tile.hasRoad || tile.zone !== ZONE.NONE || tile.producer) return false;
 
-    if (producerType) {
-      const config = PRODUCER_CONFIG[producerType];
-      if (config) {
+    if (config) {
         if (config.requiresWaterAdjacent && !this.isWaterAdjacent(x, y)) {
+          return false;
+        }
+        if (config.requiresDiscoveredOre && (
+          !tile.oreDiscovered || tile.discoveredOre !== config.requiresDiscoveredOre
+        )) {
           return false;
         }
         if (config.requiresBatteryAdjacent && !this.hasAdjacentBattery(x, y)) {
@@ -422,7 +429,6 @@ export class Grid {
           return false;
         }
       }
-    }
     return true;
   }
 
@@ -464,6 +470,7 @@ export class Grid {
       surveyProgress: 0,
       surveyRequired: 0,
       budget: SERVICE_GLOBAL_CONFIG.BUDGET_MAX_VALUE,
+      recipe: 'CONSUMER_GOODS',
       x,
       y,
     };
@@ -557,6 +564,7 @@ export class Grid {
       tile.growthScore = 0;
       tile.relocatedPopulation = 0;
       tile.fireDisplacedPopulation = 0;
+      tile.populationLoss = 0;
       tile.shortfall = { power: false, water: false, sewage: false };
       modified = true;
     }

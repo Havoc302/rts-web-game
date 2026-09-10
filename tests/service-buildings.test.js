@@ -41,7 +41,7 @@ const offlineFire = grid.placeProducer(5, 5, PRODUCER_TYPE.FIRE_STATION, 0);
 offlineFire.operational = false;
 ServiceManager.updateServices(grid, 0, 0);
 assert.strictEqual(offlineFire.totalJobs, 2, 'Offline fire stations should retain minimum staffing jobs');
-assert.strictEqual(offlineFire.filledJobs, 1, 'Offline fire stations should still fill available staffing jobs');
+assert.strictEqual(offlineFire.filledJobs, 0, 'Offline fire stations should not fill jobs without residents');
 
 power.capacity = 0;
 for (let tick = 1; tick <= SERVICE_GLOBAL_CONFIG.UTILITY_FAILURE_GRACE_TICKS; tick++) {

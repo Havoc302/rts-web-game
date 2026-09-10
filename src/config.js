@@ -55,6 +55,13 @@ export const PRODUCER_TYPE = {
   WATER_TOWER: 'water_tower',
   SEWAGE_PLANT: 'sewage_plant',
   SURVEY_STATION: 'survey_station',
+  MINE_IRON: 'mine_iron',
+  MINE_BAUXITE: 'mine_bauxite',
+  MINE_COAL: 'mine_coal',
+  WAREHOUSE_ORE: 'warehouse_ore',
+  WAREHOUSE_BAR: 'warehouse_bar',
+  WAREHOUSE_GOODS: 'warehouse_goods',
+  SMELTER: 'smelter',
   ...SERVICE_TYPE,
 };
 
@@ -106,6 +113,36 @@ export const ORE_CONFIG = {
   [ORE_TYPE.BAUXITE]: { name: 'Bauxite', color: '#c2410c' },
   [ORE_TYPE.COAL]: { name: 'Coal', color: '#1f2937' },
   [ORE_TYPE.OIL]: { name: 'Oil', color: '#111827' },
+};
+
+// Global production, storage, and consumption balance values.
+export const RESOURCE_CONFIG = {
+  FOOD_PER_RESIDENT: 0.05,              // Food consumed by each resident per tick
+  CONSUMER_GOODS_PER_RESIDENT: 0.08,    // Consumer goods demand per resident per tick
+  MINE_EXTRACTION_PER_JOB: 0.2,         // Raw resource extracted by one filled mine job per tick
+  WAREHOUSE_CAPACITY_PER_TILE: 500,     // Storage capacity provided by one warehouse building
+  SMELTER_ORE_PER_BAR: 1.0,             // Ore consumed to produce one metal bar
+  SMELTER_COAL_PER_BAR: 0.5,            // Coal consumed to produce one metal bar
+  SMELTER_BARS_PER_JOB: 0.2,            // Metal bars produced by one filled smelter job per tick
+  COAL_PLANT_FUEL_PER_MW: 0.02,         // Coal consumed per megawatt supplied by a coal plant
+};
+
+// Industrial recipe definitions. Input values are stockpile units per output unit.
+export const FACTORY_RECIPES = {
+  CONSUMER_GOODS: { inputs: {}, output: 'consumerGoods', rate: 0.2 },
+  FOOD: { inputs: {}, output: 'food', rate: 0.1 },
+  ARMS: { inputs: { ironBar: 0.5 }, output: 'arms', rate: 0.05 },
+  TANKS: { inputs: { ironBar: 1.0, bauxiteBar: 0.5 }, output: 'tanks', rate: 0.02 },
+};
+
+// Happiness feedback values shared by food and consumer-goods simulation.
+export const HAPPINESS_CONFIG = {
+  CONSUMER_GOODS_MAX_BONUS: 15,          // Maximum happiness points from meeting goods demand
+  UNFED_OUTFLOW_PERCENT: 0.05,            // Population fraction lost from an unfed residential tile per tick
+  GROWTH_DELTA_PER_POINT: 0.05,           // Residential growth delta per happiness point
+  UNTREATED_PATIENT_PENALTY: 0.5,         // Happiness penalty per untreated patient
+  CRIME_POINT_PENALTY: 0.5,               // Happiness penalty per crime point
+  FIRE_INJURY_PENALTY: 0.1,               // Happiness penalty per fire injury
 };
 
 export const ORE_GENERATION = {
@@ -281,6 +318,48 @@ export const PRODUCER_CONFIG = {
     surveyDuration: { standard: 10, mountain: 20 },
     unique: false,
   },
+  [PRODUCER_TYPE.MINE_IRON]: {
+    name: 'Iron Mine', category: 'resource', utility: 'resource', capacity: 0,
+    cost: 500 * MONEY_MULTIPLIER, color: '#94a3b8',
+    requiresDiscoveredOre: ORE_TYPE.IRON_ORE,
+    utilityUsage: { power: 1, water: 1, sewage: 1 },
+    jobs: { light: 10, medium: 10, high: 10 },
+  },
+  [PRODUCER_TYPE.MINE_BAUXITE]: {
+    name: 'Bauxite Mine', category: 'resource', utility: 'resource', capacity: 0,
+    cost: 500 * MONEY_MULTIPLIER, color: '#c2410c',
+    requiresDiscoveredOre: ORE_TYPE.BAUXITE,
+    utilityUsage: { power: 1, water: 1, sewage: 1 },
+    jobs: { light: 10, medium: 10, high: 10 },
+  },
+  [PRODUCER_TYPE.MINE_COAL]: {
+    name: 'Coal Mine', category: 'resource', utility: 'resource', capacity: 0,
+    cost: 500 * MONEY_MULTIPLIER, color: '#1f2937',
+    requiresDiscoveredOre: ORE_TYPE.COAL,
+    utilityUsage: { power: 1, water: 1, sewage: 1 },
+    jobs: { light: 10, medium: 10, high: 10 },
+  },
+  [PRODUCER_TYPE.WAREHOUSE_ORE]: {
+    name: 'Ore Warehouse', category: 'storage', utility: 'storage', capacity: 0,
+    cost: 400 * MONEY_MULTIPLIER, color: '#78716c',
+    utilityUsage: { power: 1, water: 0, sewage: 0 },
+  },
+  [PRODUCER_TYPE.WAREHOUSE_BAR]: {
+    name: 'Bar Warehouse', category: 'storage', utility: 'storage', capacity: 0,
+    cost: 500 * MONEY_MULTIPLIER, color: '#b45309',
+    utilityUsage: { power: 1, water: 0, sewage: 0 },
+  },
+  [PRODUCER_TYPE.WAREHOUSE_GOODS]: {
+    name: 'Goods Warehouse', category: 'storage', utility: 'storage', capacity: 0,
+    cost: 600 * MONEY_MULTIPLIER, color: '#2563eb',
+    utilityUsage: { power: 1, water: 0, sewage: 0 },
+  },
+  [PRODUCER_TYPE.SMELTER]: {
+    name: 'Smelter', category: 'factory', utility: 'factory', capacity: 0,
+    cost: 900 * MONEY_MULTIPLIER, color: '#dc2626',
+    utilityUsage: { power: 3, water: 2, sewage: 2 },
+    jobs: { light: 10, medium: 20, high: 40 },
+  },
   ...SERVICE_CONFIG,
 };
 
@@ -400,6 +479,7 @@ export const LABOR_TAX_GROWTH_CONFIG = {
   MIN_SERVICE_EMPLOYMENT_RATE: 0.3,
 
   // Tax pressure and its effect on population and jobs.
+  LOW_TAX_GROWTH_BONUS: 1,
   GROWTH_NEUTRAL_RATE: 40,
   POPULATION_OUTFLOW_START_RATE: 50,
   MAX_TAX_RATE: 100,
