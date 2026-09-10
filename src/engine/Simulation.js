@@ -1,4 +1,4 @@
-import { GROWTH_CONFIG, DENSITY, ZONE, TERRAIN, USAGE_RATES, POLLUTION_CONFIG, JOBS_PROVIDED, EMPLOYABLE_POPULATION, RESIDENTIAL_CAPACITY, LABOR_TAX_GROWTH_CONFIG, FOREST_DESIRABILITY_RADIUS, PRODUCER_TYPE, PRODUCER_CONFIG, POWER_PRODUCER_TYPES, ROAD_MAINTENANCE_COST, TAX_REVENUE_CONFIG, CRIME_CONFIG, MEDICAL_CONFIG, SERVICE_GLOBAL_CONFIG, TICKS_PER_HOUR, HOURS_PER_DAY, DAY_START_HOUR, NIGHT_START_HOUR } from '../config.js';
+import { GROWTH_CONFIG, DENSITY, ZONE, TERRAIN, USAGE_RATES, POLLUTION_CONFIG, JOBS_PROVIDED, EMPLOYABLE_POPULATION, RESIDENTIAL_CAPACITY, LABOR_TAX_GROWTH_CONFIG, FOREST_DESIRABILITY_RADIUS, PRODUCER_TYPE, PRODUCER_CONFIG, POWER_PRODUCER_TYPES, ROAD_MAINTENANCE_COST, TAX_REVENUE_CONFIG, CRIME_CONFIG, MEDICAL_CONFIG, HAPPINESS_CONFIG, SERVICE_GLOBAL_CONFIG, TICKS_PER_HOUR, HOURS_PER_DAY, DAY_START_HOUR, NIGHT_START_HOUR } from '../config.js';
 import { UtilityManager } from './UtilityManager.js';
 import { PollutionManager } from './PollutionManager.js';
 import { ServiceManager } from './ServiceManager.js';
@@ -38,9 +38,10 @@ export class Simulation {
       untreatedPatients: 0,
       fireInjuries: 0,
       displacedPopulation: 0,
-      happiness: 0,
+      happiness: HAPPINESS_CONFIG.BASE_SCORE,
       happinessGrowthModifier: 0,
       foodShortfall: 0,
+      taxRate: 0,
       resources: this.resourceManager.snapshot(),
       zones: {
         residential: { light: 0, medium: 0, high: 0 },
@@ -195,7 +196,7 @@ export class Simulation {
           if (jobsAvail <= 0 && delta > 0) {
             delta = 0;
           }
-        } else if (tile.zone === ZONE.COMMERCIAL || tile.zone === ZONE.INDUSTRIAL) {
+        } else if (tile.zone === ZONE.COMMERCIAL || tile.zone === ZONE.INDUSTRIAL || tile.zone === ZONE.AGRICULTURAL) {
           // Commercial & Industrial development rate depends on how many jobs are filled (empRate)
           let empBonus = 0;
           if (empRate >= LABOR_TAX_GROWTH_CONFIG.EMPLOYMENT_RATE_HIGH) {
@@ -223,7 +224,7 @@ export class Simulation {
 
   computeStats() {
     const fireInjuries = this.stats.fireInjuries || 0;
-    const happiness = this.stats.happiness || 0;
+    const happiness = this.stats.happiness ?? HAPPINESS_CONFIG.BASE_SCORE;
     const happinessGrowthModifier = this.stats.happinessGrowthModifier || 0;
     const foodShortfall = this.stats.foodShortfall || 0;
     const stats = {
@@ -251,6 +252,7 @@ export class Simulation {
       happiness,
       happinessGrowthModifier,
       foodShortfall,
+      taxRate: this.taxRate,
       resources: this.resourceManager.snapshot(),
       zones: {
         residential: { light: 0, medium: 0, high: 0 },
@@ -311,7 +313,7 @@ export class Simulation {
           tile.maxPopulation = cap;
           stats.population += pop;
           stats.totalEmployablePopulation += pop;
-        } else if (tile.zone === ZONE.COMMERCIAL || tile.zone === ZONE.INDUSTRIAL) {
+        } else if (tile.zone === ZONE.COMMERCIAL || tile.zone === ZONE.INDUSTRIAL || tile.zone === ZONE.AGRICULTURAL) {
           const jobs = JOBS_PROVIDED[tile.zone]?.[tile.density] || 0;
           tile.totalJobs = Math.max(0, Math.round(jobs * jobsMultiplier));
           stats.totalJobsProvided += tile.totalJobs;
@@ -332,7 +334,7 @@ export class Simulation {
     for (let y = 0; y < this.grid.height; y++) {
       for (let x = 0; x < this.grid.width; x++) {
         const tile = this.grid.getTile(x, y);
-        if (tile.zone === ZONE.COMMERCIAL || tile.zone === ZONE.INDUSTRIAL) {
+        if (tile.zone === ZONE.COMMERCIAL || tile.zone === ZONE.INDUSTRIAL || tile.zone === ZONE.AGRICULTURAL) {
           tile.filledJobs = Math.round((tile.totalJobs || 0) * stats.employmentRate);
         }
 
@@ -352,7 +354,7 @@ export class Simulation {
           totalPatientDemand += (tile.population || 0) * MEDICAL_CONFIG.PATIENTS_PER_RESIDENT;
         } else {
           tileBaseTax = (tile.filledJobs || 0) / TAX_REVENUE_CONFIG.EMPLOYED_PER_TAX_UNIT * TAX_REVENUE_CONFIG.MONEY_PER_TAX_UNIT * (this.taxRate / 100);
-          if (tile.zone === ZONE.INDUSTRIAL) {
+          if (tile.zone === ZONE.INDUSTRIAL || tile.zone === ZONE.AGRICULTURAL) {
             totalPatientDemand += (tile.filledJobs || 0) * MEDICAL_CONFIG.PATIENTS_PER_INDUSTRIAL_JOB;
           }
         }

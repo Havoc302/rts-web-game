@@ -426,6 +426,11 @@ class GameApp {
       if (this.treasury >= cost && this.grid.placeZone(tile.x, tile.y, ZONE.INDUSTRIAL)) {
         success = true;
       }
+    } else if (this.activeTool === 'zone_a') {
+      cost = COSTS.AGRICULTURAL_ZONE;
+      if (this.treasury >= cost && this.grid.placeZone(tile.x, tile.y, ZONE.AGRICULTURAL)) {
+        success = true;
+      }
     } else if (this.activeTool === 'survey') {
       if (this.grid.startSurvey(tile.x, tile.y)) {
         success = true;
@@ -571,7 +576,7 @@ class GameApp {
         const cur = (tile.population || 0).toLocaleString();
         const max = (tile.maxPopulation || RESIDENTIAL_CAPACITY[tile.density] || 0).toLocaleString();
         popJobsEl.textContent = `${cur} / ${max} residents`;
-      } else if (tile.zone === ZONE.COMMERCIAL || tile.zone === ZONE.INDUSTRIAL) {
+      } else if (tile.zone === ZONE.COMMERCIAL || tile.zone === ZONE.INDUSTRIAL || tile.zone === ZONE.AGRICULTURAL) {
         const filled = (tile.filledJobs || 0).toLocaleString();
         const total = (tile.totalJobs || JOBS_PROVIDED[tile.zone]?.[tile.density] || 0).toLocaleString();
         popJobsEl.textContent = `${filled} / ${total} jobs filled`;

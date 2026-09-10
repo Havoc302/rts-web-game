@@ -28,6 +28,7 @@ export const ZONE = {
   RESIDENTIAL: 'residential',
   COMMERCIAL: 'commercial',
   INDUSTRIAL: 'industrial',
+  AGRICULTURAL: 'agricultural',
 };
 
 export const DENSITY = {
@@ -128,6 +129,7 @@ export const RESOURCE_CONFIG = {
   SMELTER_BARS_PER_JOB: 0.2,            // Metal bars produced by one filled smelter job per tick
   COAL_PLANT_FUEL_PER_MW: 0.02,         // Coal consumed per megawatt supplied by a coal plant
   SILO_CAPACITY: 500,                   // Storage capacity provided by one silo
+  FOOD_PER_AGRICULTURAL_JOB: 0.1,        // Food produced by one filled agricultural job per tick
 };
 
 // Industrial recipe definitions. Input values are stockpile units per output unit.
@@ -140,8 +142,21 @@ export const FACTORY_RECIPES = {
 
 // Happiness feedback values shared by food and consumer-goods simulation.
 export const HAPPINESS_CONFIG = {
+  BASE_SCORE: 50,                         // Neutral city happiness before local conditions
+  MIN_SCORE: 0,                           // Lower bound for the city happiness scale
+  MAX_SCORE: 100,                         // Upper bound for the city happiness scale
   CONSUMER_GOODS_MAX_BONUS: 15,          // Maximum happiness points from meeting goods demand
   UNFED_OUTFLOW_PERCENT: 0.05,            // Population fraction lost from an unfed residential tile per tick
+  TAX_NEUTRAL_RATE: 40,                  // Tax rate that neither improves nor harms happiness
+  TAX_PENALTY_PER_POINT: 0.5,             // Happiness points lost per tax point above neutral
+  LOW_TAX_BONUS_PER_POINT: 0.25,          // Happiness points gained per tax point below neutral
+  EMPLOYMENT_MAX_BONUS: 15,               // Happiness bonus at full employment
+  UTILITY_SERVICE_BONUS: 10,              // Happiness bonus when all residential utilities are available
+  UTILITY_SHORTFALL_PENALTY: 15,          // Happiness penalty when residential utilities are missing
+  SERVICE_BONUS_PER_COVERAGE: 2,          // Happiness points per available civic service
+  POLLUTION_PENALTY_PER_POINT: 1,         // Happiness points lost per pollution point
+  CRIME_PENALTY_PER_POINT: 2,             // Happiness points lost per crime point
+  FOOD_SHORTFALL_PENALTY: 25,             // Happiness penalty when food demand is unmet
   GROWTH_DELTA_PER_POINT: 0.05,           // Residential growth delta per happiness point
   UNTREATED_PATIENT_PENALTY: 0.5,         // Happiness penalty per untreated patient
   CRIME_POINT_PENALTY: 0.5,               // Happiness penalty per crime point
@@ -395,6 +410,11 @@ export const USAGE_RATES = {
     [DENSITY.MEDIUM]: { power: 3, water: 2, sewage: 2 },
     [DENSITY.HIGH]: { power: 5, water: 3, sewage: 2 },
   },
+  [ZONE.AGRICULTURAL]: {
+    [DENSITY.LIGHT]: { power: 0.5, water: 2, sewage: 1 },
+    [DENSITY.MEDIUM]: { power: 1.5, water: 4, sewage: 1 },
+    [DENSITY.HIGH]: { power: 2.5, water: 6, sewage: 2 },
+  },
 };
 
 export const GROWTH_CONFIG = {
@@ -411,6 +431,7 @@ export const COSTS = {
   TUNNEL: 100 * MONEY_MULTIPLIER,
   ZONE: 20 * MONEY_MULTIPLIER,
   INDUSTRIAL_ZONE: 30 * MONEY_MULTIPLIER,
+  AGRICULTURAL_ZONE: 30 * MONEY_MULTIPLIER,
   BULLDOZE: 5 * MONEY_MULTIPLIER,
 };
 
@@ -437,6 +458,11 @@ export const BASE_INCOME = {
     [DENSITY.LIGHT]: 3 * MONEY_MULTIPLIER,
     [DENSITY.MEDIUM]: 6 * MONEY_MULTIPLIER,
     [DENSITY.HIGH]: 9 * MONEY_MULTIPLIER,
+  },
+  [ZONE.AGRICULTURAL]: {
+    [DENSITY.LIGHT]: 2 * MONEY_MULTIPLIER,
+    [DENSITY.MEDIUM]: 4 * MONEY_MULTIPLIER,
+    [DENSITY.HIGH]: 6 * MONEY_MULTIPLIER,
   },
 };
 
@@ -479,6 +505,11 @@ export const JOBS_PROVIDED = {
     [DENSITY.HIGH]: 600,
   },
   [ZONE.INDUSTRIAL]: {
+    [DENSITY.LIGHT]: 40,
+    [DENSITY.MEDIUM]: 200,
+    [DENSITY.HIGH]: 800,
+  },
+  [ZONE.AGRICULTURAL]: {
     [DENSITY.LIGHT]: 40,
     [DENSITY.MEDIUM]: 200,
     [DENSITY.HIGH]: 800,

@@ -47,14 +47,7 @@ export class ResourceManager {
     const foodResult = this.consumeFood(grid, stats.population || 0);
     const goodsDemand = (stats.population || 0) * RESOURCE_CONFIG.CONSUMER_GOODS_PER_RESIDENT;
     const goodsRatio = goodsDemand > 0 ? Math.min(1, this.stockpile.consumerGoods / goodsDemand) : 0;
-    const goodsBonus = goodsRatio * HAPPINESS_CONFIG.CONSUMER_GOODS_MAX_BONUS;
-    stats.happiness = Math.max(
-      0,
-      goodsBonus -
-        (stats.untreatedPatients || 0) * HAPPINESS_CONFIG.UNTREATED_PATIENT_PENALTY -
-        this.getCrimePenalty(grid) -
-        (stats.fireInjuries || 0) * HAPPINESS_CONFIG.FIRE_INJURY_PENALTY,
-    );
+    stats.happiness = this.calculateHappiness(grid, stats, goodsRatio, foodResult.shortfall > 0);
     stats.happinessGrowthModifier = stats.happiness * HAPPINESS_CONFIG.GROWTH_DELTA_PER_POINT;
     stats.foodShortfall = foodResult.shortfall;
     this.clampToCapacity();
@@ -119,6 +112,10 @@ export class ResourceManager {
 
   produceFactories(grid) {
     for (const tile of grid.tiles.flat()) {
+      if (tile.zone === ZONE.AGRICULTURAL && !tile.destroyed && !tile.onFire) {
+        this.stockpile.food += (tile.filledJobs || 0) * RESOURCE_CONFIG.FOOD_PER_AGRICULTURAL_JOB;
+        continue;
+      }
       if (tile.zone !== ZONE.INDUSTRIAL || tile.destroyed || tile.onFire) continue;
       const recipe = FACTORY_RECIPES[tile.recipe] || FACTORY_RECIPES.CONSUMER_GOODS;
       const requested = (tile.filledJobs || 0) * recipe.rate;
@@ -154,7 +151,7 @@ export class ResourceManager {
       for (const tile of grid.tiles.flat()) {
         if (tile.zone !== ZONE.RESIDENTIAL || tile.destroyed) continue;
         const loss = Math.ceil((tile.population || 0) * HAPPINESS_CONFIG.UNFED_OUTFLOW_PERCENT);
-        tile.populationLoss = (tile.populationLoss || 0) + loss;
+        tile.populationLoss = loss;
       }
     }
     return { shortfall };
@@ -162,6 +159,45 @@ export class ResourceManager {
 
   getCrimePenalty(grid) {
     return grid.tiles.flat().reduce((sum, tile) => sum + (tile.crime || 0), 0) * HAPPINESS_CONFIG.CRIME_POINT_PENALTY;
+  }
+
+  calculateHappiness(grid, stats, goodsRatio, hasFoodShortfall) {
+    const taxRate = stats.taxRate ?? 0;
+    const taxDelta = taxRate <= HAPPINESS_CONFIG.TAX_NEUTRAL_RATE
+      ? (HAPPINESS_CONFIG.TAX_NEUTRAL_RATE - taxRate) * HAPPINESS_CONFIG.LOW_TAX_BONUS_PER_POINT
+      : -(taxRate - HAPPINESS_CONFIG.TAX_NEUTRAL_RATE) * HAPPINESS_CONFIG.TAX_PENALTY_PER_POINT;
+    const employmentBonus = Math.min(1, Math.max(0, stats.employmentRate || 0)) * HAPPINESS_CONFIG.EMPLOYMENT_MAX_BONUS;
+    const residentialTiles = grid.tiles.flat().filter((tile) => tile.zone === ZONE.RESIDENTIAL && !tile.destroyed);
+    const servicedResidential = residentialTiles.filter((tile) => (
+      !tile.shortfall.power && !tile.shortfall.water && !tile.shortfall.sewage
+    )).length;
+    const serviceCoverage = residentialTiles.reduce((sum, tile) => (
+      sum + Object.values(tile.services || {}).filter(Boolean).length
+    ), 0);
+    const utilityScore = residentialTiles.length > 0
+      ? (servicedResidential / residentialTiles.length) * HAPPINESS_CONFIG.UTILITY_SERVICE_BONUS
+      : 0;
+    const utilityPenalty = residentialTiles.length > servicedResidential
+      ? HAPPINESS_CONFIG.UTILITY_SHORTFALL_PENALTY
+      : 0;
+    const averagePollution = residentialTiles.length > 0
+      ? residentialTiles.reduce((sum, tile) => sum + (tile.pollution || 0), 0) / residentialTiles.length
+      : 0;
+    const crimePenalty = residentialTiles.reduce((sum, tile) => sum + (tile.crime || 0), 0) * HAPPINESS_CONFIG.CRIME_PENALTY_PER_POINT;
+    const medicalPenalty = (stats.untreatedPatients || 0) * HAPPINESS_CONFIG.UNTREATED_PATIENT_PENALTY;
+    const firePenalty = (stats.fireInjuries || 0) * HAPPINESS_CONFIG.FIRE_INJURY_PENALTY;
+    return Math.min(
+      HAPPINESS_CONFIG.MAX_SCORE,
+      Math.max(
+        HAPPINESS_CONFIG.MIN_SCORE,
+        HAPPINESS_CONFIG.BASE_SCORE + taxDelta + employmentBonus + utilityScore +
+          serviceCoverage * HAPPINESS_CONFIG.SERVICE_BONUS_PER_COVERAGE +
+          goodsRatio * HAPPINESS_CONFIG.CONSUMER_GOODS_MAX_BONUS -
+          averagePollution * HAPPINESS_CONFIG.POLLUTION_PENALTY_PER_POINT -
+          crimePenalty - medicalPenalty - firePenalty - utilityPenalty -
+          (hasFoodShortfall ? HAPPINESS_CONFIG.FOOD_SHORTFALL_PENALTY : 0),
+      ),
+    );
   }
 
   clampToCapacity() {

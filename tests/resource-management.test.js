@@ -1,10 +1,16 @@
 import assert from 'assert';
 import { Grid } from '../src/engine/Grid.js';
 import { ResourceManager } from '../src/engine/ResourceManager.js';
-import { PRODUCER_TYPE, TERRAIN, ORE_TYPE, RESOURCE_CONFIG } from '../src/config.js';
+import { UtilityManager } from '../src/engine/UtilityManager.js';
+import { PRODUCER_TYPE, TERRAIN, ORE_TYPE, RESOURCE_CONFIG, USAGE_RATES, ZONE, DENSITY } from '../src/config.js';
 
 const grid = new Grid(10, 10, 7);
 for (const row of grid.tiles) for (const tile of row) tile.terrain = TERRAIN.FLAT;
+
+const agriculturalUsage = USAGE_RATES[ZONE.AGRICULTURAL][DENSITY.LIGHT];
+const industrialUsage = USAGE_RATES[ZONE.INDUSTRIAL][DENSITY.LIGHT];
+assert.ok(agriculturalUsage.power < industrialUsage.power, 'Agriculture should use less power than industry');
+assert.ok(agriculturalUsage.water > industrialUsage.water, 'Agriculture should use more water than industry');
 
 const mineTile = grid.getTile(2, 2);
 mineTile.oreDiscovered = true;
@@ -58,5 +64,8 @@ industrialTile.destroyed = true;
 manager.stockpile.food = 0;
 manager.update(grid, { population: 20, employmentRate: 1, untreatedPatients: 0, fireInjuries: 0 });
 assert.ok(residentialTile.populationLoss > 0, 'Food shortfall should create residential outflow');
+const firstFamineLoss = residentialTile.populationLoss;
+manager.update(grid, { population: 20, employmentRate: 1, untreatedPatients: 0, fireInjuries: 0 });
+assert.strictEqual(residentialTile.populationLoss, firstFamineLoss, 'Food outflow should be a per-tick effect, not cumulative permanent damage');
 
 console.log('Resource management tests passed.');

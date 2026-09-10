@@ -26,6 +26,9 @@ const jobsAt40 = simulation.stats.totalJobsProvided;
 simulation.taxRate = 0;
 const lowTaxModifier = simulation.getTaxGrowthModifier();
 assert.ok(lowTaxModifier > 0, 'Zero tax should provide a positive residential attraction modifier');
+simulation.taxRate = 0;
+simulation.computeStats();
+assert.ok(simulation.stats.happiness > 50, 'Zero tax should improve happiness above the neutral baseline');
 
 simulation.taxRate = 50;
 simulation.computeStats();
