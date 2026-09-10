@@ -297,6 +297,14 @@ body {
   gap: 6px;
 }
 
+.transport-group { order: 1; }
+.general-group { order: 0; }
+.zoning-group { order: 2; }
+.utility-producers-group { order: 3; }
+.civic-services-group { order: 4; }
+.production-group { order: 5; }
+.exploration-group { order: 6; }
+
 .group-title {
   font-size: 0.65rem;
   font-family: var(--font-mono);

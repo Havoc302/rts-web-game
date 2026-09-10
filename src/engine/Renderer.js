@@ -382,6 +382,17 @@ export class Renderer {
   }
 
   renderRoadTile(ctx, tile, px, py) {
+    if (tile.hasTunnel) {
+      ctx.fillStyle = '#1e293b';
+      ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+      ctx.fillStyle = '#64748b';
+      ctx.fillRect(px + 4, py + 8, TILE_SIZE - 8, TILE_SIZE - 8);
+      ctx.fillStyle = '#0f172a';
+      ctx.beginPath();
+      ctx.arc(px + TILE_SIZE / 2, py + TILE_SIZE / 2, 7, Math.PI, 0);
+      ctx.fill();
+      return;
+    }
     const n = this.grid.getTile(tile.x, tile.y - 1)?.hasRoad;
     const e = this.grid.getTile(tile.x + 1, tile.y)?.hasRoad;
     const s = this.grid.getTile(tile.x, tile.y + 1)?.hasRoad;

@@ -19,4 +19,11 @@ grid.placeBridge(3, 3);
 simulation.computeStats();
 assert.strictEqual(simulation.stats.roadExpenses, 3, 'Each road and bridge tile should cost one per tick');
 
+grid.tiles[4][4].terrain = TERRAIN.MOUNTAIN;
+assert.strictEqual(grid.canPlaceTunnel(4, 4), true, 'Tunnels should be placeable on mountain tiles');
+assert.strictEqual(grid.placeTunnel(4, 4), true, 'Tunnel placement should succeed on mountain tiles');
+assert.strictEqual(grid.getTile(4, 4).hasRoad, true, 'Tunnels should participate in the road network');
+assert.strictEqual(grid.bulldoze(4, 4), true, 'Tunnels should be removable by bulldozing');
+assert.strictEqual(grid.getTile(4, 4).hasTunnel, false, 'Bulldozing should clear the tunnel');
+
 console.log('Road maintenance tests passed.');

@@ -406,6 +406,11 @@ class GameApp {
       if (this.treasury >= cost && this.grid.placeBridge(tile.x, tile.y)) {
         success = true;
       }
+    } else if (this.activeTool === 'tunnel') {
+      cost = COSTS.TUNNEL;
+      if (this.treasury >= cost && this.grid.placeTunnel(tile.x, tile.y)) {
+        success = true;
+      }
     } else if (this.activeTool === 'zone_r') {
       cost = COSTS.ZONE;
       if (this.treasury >= cost && this.grid.placeZone(tile.x, tile.y, ZONE.RESIDENTIAL)) {
@@ -559,6 +564,8 @@ class GameApp {
     const popJobsEl = document.getElementById('inspect-pop-jobs');
     const recipeRow = document.getElementById('industrial-recipe-row');
     const recipeSelect = document.getElementById('industrial-recipe-select');
+    const storageRow = document.getElementById('storage-type-row');
+    const storageSelect = document.getElementById('storage-type-select');
     if (popJobsEl) {
       if (tile.zone === ZONE.RESIDENTIAL) {
         const cur = (tile.population || 0).toLocaleString();
@@ -586,6 +593,17 @@ class GameApp {
         recipeSelect.onchange = () => { tile.recipe = recipeSelect.value; };
       } else {
         recipeRow.style.display = 'none';
+      }
+    }
+    if (storageRow && storageSelect) {
+      const storageTypes = tile.producer && PRODUCER_CONFIG[tile.producer.type]?.storageTypes;
+      if (storageTypes) {
+        storageRow.style.display = '';
+        storageSelect.innerHTML = storageTypes.map((type) => `<option value="${type}">${type.toUpperCase()}</option>`).join('');
+        storageSelect.value = tile.producer.storageType || storageTypes[0];
+        storageSelect.onchange = () => { tile.producer.storageType = storageSelect.value; };
+      } else {
+        storageRow.style.display = 'none';
       }
     }
 

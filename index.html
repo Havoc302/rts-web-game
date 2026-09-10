@@ -150,7 +150,7 @@
 
       <!-- Left Tools Drawer -->
       <aside class="tool-drawer glass">
-        <div class="tool-group">
+        <div class="tool-group general-group">
           <span class="group-title">GENERAL</span>
           <button class="tool-btn mobile-only-control active" data-tool="pan">
             <span class="icon">✋</span>
@@ -159,14 +159,6 @@
           <button class="tool-btn" data-tool="inspect">
             <span class="icon">🔍</span>
             <span class="name">Inspect Tile</span>
-          </button>
-          <button class="tool-btn" data-tool="road">
-            <span class="icon">🛣️</span>
-            <span class="name">Road ($100)</span>
-          </button>
-          <button class="tool-btn" data-tool="bridge">
-            <span class="icon">🌉</span>
-            <span class="name">Bridge ($500)</span>
           </button>
           <button class="tool-btn danger" data-tool="bulldoze">
             <span class="icon">🚜</span>
@@ -178,7 +170,23 @@
           </label>
         </div>
 
-        <div class="tool-group">
+        <div class="tool-group transport-group">
+          <span class="group-title">TRANSPORT</span>
+          <button class="tool-btn" data-tool="road">
+            <span class="icon">🛣️</span>
+            <span class="name">Road ($100)</span>
+          </button>
+          <button class="tool-btn" data-tool="bridge">
+            <span class="icon">🌉</span>
+            <span class="name">Bridge ($500)</span>
+          </button>
+          <button class="tool-btn" data-tool="tunnel">
+            <span class="icon">🚇</span>
+            <span class="name">Tunnel ($1,000)</span>
+          </button>
+        </div>
+
+        <div class="tool-group zoning-group">
           <span class="group-title">ZONING</span>
           <button class="tool-btn" data-tool="zone_r">
             <span class="icon">🏡</span>
@@ -194,7 +202,7 @@
           </button>
         </div>
 
-        <div class="tool-group">
+        <div class="tool-group utility-producers-group">
           <span class="group-title">UTILITY PRODUCERS</span>
           <button class="tool-btn" data-tool="producer_windmill">
             <span class="icon">🌬️</span>
@@ -224,6 +232,12 @@
             <span class="icon">☣️</span>
             <span class="name">Sewage Plant ($4,000)</span>
           </button>
+          <button class="tool-btn" data-tool="producer_oil_derrick"><span class="icon">🛢️</span><span class="name">Oil Derrick ($7,000)</span></button>
+          <button class="tool-btn" data-tool="producer_silo"><span class="icon">🏗️</span><span class="name">Silo ($4,500)</span></button>
+        </div>
+
+        <div class="tool-group production-group">
+          <span class="group-title">PRODUCTION</span>
           <button class="tool-btn" data-tool="producer_mine_iron"><span class="icon">⛏️</span><span class="name">Iron Mine ($5,000)</span></button>
           <button class="tool-btn" data-tool="producer_mine_bauxite"><span class="icon">⛏️</span><span class="name">Bauxite Mine ($5,000)</span></button>
           <button class="tool-btn" data-tool="producer_mine_coal"><span class="icon">⛏️</span><span class="name">Coal Mine ($5,000)</span></button>
@@ -233,7 +247,7 @@
           <button class="tool-btn" data-tool="producer_smelter"><span class="icon">🔥</span><span class="name">Smelter ($9,000)</span></button>
         </div>
 
-        <div class="tool-group">
+        <div class="tool-group civic-services-group">
           <span class="group-title">CIVIC SERVICES</span>
           <button class="tool-btn" data-tool="producer_police_station">
             <span class="icon">🚓</span>
@@ -261,7 +275,7 @@
           </button>
         </div>
 
-        <div class="tool-group">
+        <div class="tool-group exploration-group">
           <span class="group-title">EXPLORATION</span>
           <button class="tool-btn" data-tool="producer_survey_station">
             <span class="icon">📡</span>
@@ -297,6 +311,7 @@
           <div class="info-row"><span class="label">Density:</span><span class="val" id="inspect-density">N/A</span></div>
           <div class="info-row"><span class="label">Block Pop / Jobs:</span><span class="val" id="inspect-pop-jobs">N/A</span></div>
           <div class="info-row" id="industrial-recipe-row" style="display:none;"><span class="label">Recipe:</span><select class="val" id="industrial-recipe-select"></select></div>
+          <div class="info-row" id="storage-type-row" style="display:none;"><span class="label">Storage:</span><select class="val" id="storage-type-select"></select></div>
           <div class="info-row"><span class="label">Growth Score:</span><span class="val" id="inspect-growth">0</span></div>
           <div class="info-row"><span class="label">Pollution:</span><span class="val" id="inspect-pollution">0</span></div>
           <div class="info-row"><span class="label">Crime:</span><span class="val" id="inspect-crime">Safe</span></div>

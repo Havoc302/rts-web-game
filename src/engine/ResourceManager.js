@@ -11,6 +11,8 @@ import {
 const EMPTY_STOCKPILE = {
   food: 0,
   coal: 0,
+  oil: 0,
+  fuel: 0,
   ironOre: 0,
   bauxiteOre: 0,
   ironBar: 0,
@@ -59,12 +61,13 @@ export class ResourceManager {
   }
 
   getWarehouseCapacity(grid) {
-    const capacity = { ore: 0, bar: 0, goods: 0 };
+    const capacity = { ore: 0, bar: 0, goods: 0, oil: 0, fuel: 0 };
     for (const producer of grid.producers) {
       if (!producer.operational) continue;
       if (producer.type === PRODUCER_TYPE.WAREHOUSE_ORE) capacity.ore += RESOURCE_CONFIG.WAREHOUSE_CAPACITY_PER_TILE;
       if (producer.type === PRODUCER_TYPE.WAREHOUSE_BAR) capacity.bar += RESOURCE_CONFIG.WAREHOUSE_CAPACITY_PER_TILE;
       if (producer.type === PRODUCER_TYPE.WAREHOUSE_GOODS) capacity.goods += RESOURCE_CONFIG.WAREHOUSE_CAPACITY_PER_TILE;
+      if (producer.type === PRODUCER_TYPE.SILO) capacity[producer.storageType || 'oil'] += RESOURCE_CONFIG.SILO_CAPACITY;
     }
     return capacity;
   }
@@ -84,6 +87,7 @@ export class ResourceManager {
       [PRODUCER_TYPE.MINE_IRON]: 'ironOre',
       [PRODUCER_TYPE.MINE_BAUXITE]: 'bauxiteOre',
       [PRODUCER_TYPE.MINE_COAL]: 'coal',
+      [PRODUCER_TYPE.OIL_DERRICK]: 'oil',
     };
     for (const producer of grid.producers) {
       const output = outputs[producer.type];
@@ -165,6 +169,8 @@ export class ResourceManager {
       ironOre: this.capacity.ore,
       bauxiteOre: this.capacity.ore,
       coal: this.capacity.ore,
+      oil: this.capacity.oil,
+      fuel: this.capacity.fuel,
       ironBar: this.capacity.bar,
       bauxiteBar: this.capacity.bar,
       food: this.capacity.goods,

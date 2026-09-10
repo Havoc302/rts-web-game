@@ -88,6 +88,7 @@ export class Grid {
       terrain: TERRAIN_TYPE.EMPTY,
       hasRoad: false,
       hasBridge: false,
+      hasTunnel: false,
       zone: ZONE.NONE,
       density: DENSITY.LIGHT,
       growthScore: 0,
@@ -445,6 +446,20 @@ export class Grid {
     return true;
   }
 
+  canPlaceTunnel(x, y) {
+    const tile = this.getTile(x, y);
+    if (!tile) return false;
+    return tile.terrain === TERRAIN.MOUNTAIN && !tile.destroyed && !tile.hasRoad && !tile.hasBridge && !tile.hasTunnel && tile.zone === ZONE.NONE && !tile.producer;
+  }
+
+  placeTunnel(x, y) {
+    if (!this.canPlaceTunnel(x, y)) return false;
+    const tile = this.getTile(x, y);
+    tile.hasTunnel = true;
+    tile.hasRoad = true;
+    return true;
+  }
+
   placeZone(x, y, zoneType) {
     if (!this.canZone(x, y)) return false;
     const tile = this.getTile(x, y);
@@ -471,6 +486,7 @@ export class Grid {
       surveyRequired: 0,
       budget: SERVICE_GLOBAL_CONFIG.BUDGET_MAX_VALUE,
       recipe: 'CONSUMER_GOODS',
+      storageType: PRODUCER_CONFIG[producerType]?.defaultStorageType || null,
       x,
       y,
     };
@@ -533,6 +549,11 @@ export class Grid {
     }
     if (tile.hasBridge) {
       tile.hasBridge = false;
+      tile.hasRoad = false;
+      modified = true;
+    }
+    if (tile.hasTunnel) {
+      tile.hasTunnel = false;
       tile.hasRoad = false;
       modified = true;
     }

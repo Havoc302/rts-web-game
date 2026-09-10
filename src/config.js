@@ -58,10 +58,12 @@ export const PRODUCER_TYPE = {
   MINE_IRON: 'mine_iron',
   MINE_BAUXITE: 'mine_bauxite',
   MINE_COAL: 'mine_coal',
+  OIL_DERRICK: 'oil_derrick',
   WAREHOUSE_ORE: 'warehouse_ore',
   WAREHOUSE_BAR: 'warehouse_bar',
   WAREHOUSE_GOODS: 'warehouse_goods',
   SMELTER: 'smelter',
+  SILO: 'silo',
   ...SERVICE_TYPE,
 };
 
@@ -125,6 +127,7 @@ export const RESOURCE_CONFIG = {
   SMELTER_COAL_PER_BAR: 0.5,            // Coal consumed to produce one metal bar
   SMELTER_BARS_PER_JOB: 0.2,            // Metal bars produced by one filled smelter job per tick
   COAL_PLANT_FUEL_PER_MW: 0.02,         // Coal consumed per megawatt supplied by a coal plant
+  SILO_CAPACITY: 500,                   // Storage capacity provided by one silo
 };
 
 // Industrial recipe definitions. Input values are stockpile units per output unit.
@@ -339,6 +342,13 @@ export const PRODUCER_CONFIG = {
     utilityUsage: { power: 1, water: 1, sewage: 1 },
     jobs: { light: 10, medium: 10, high: 10 },
   },
+  [PRODUCER_TYPE.OIL_DERRICK]: {
+    name: 'Oil Derrick', category: 'resource', utility: 'resource', capacity: 0,
+    cost: 700 * MONEY_MULTIPLIER, color: '#111827',
+    requiresDiscoveredOre: ORE_TYPE.OIL,
+    utilityUsage: { power: 1, water: 1, sewage: 1 },
+    jobs: { light: 10, medium: 10, high: 10 },
+  },
   [PRODUCER_TYPE.WAREHOUSE_ORE]: {
     name: 'Ore Warehouse', category: 'storage', utility: 'storage', capacity: 0,
     cost: 400 * MONEY_MULTIPLIER, color: '#78716c',
@@ -352,6 +362,12 @@ export const PRODUCER_CONFIG = {
   [PRODUCER_TYPE.WAREHOUSE_GOODS]: {
     name: 'Goods Warehouse', category: 'storage', utility: 'storage', capacity: 0,
     cost: 600 * MONEY_MULTIPLIER, color: '#2563eb',
+    utilityUsage: { power: 1, water: 0, sewage: 0 },
+  },
+  [PRODUCER_TYPE.SILO]: {
+    name: 'Silo', category: 'storage', utility: 'storage', capacity: 0,
+    cost: 450 * MONEY_MULTIPLIER, color: '#a16207',
+    storageTypes: ['oil', 'fuel'], defaultStorageType: 'oil',
     utilityUsage: { power: 1, water: 0, sewage: 0 },
   },
   [PRODUCER_TYPE.SMELTER]: {
@@ -392,6 +408,7 @@ export const GROWTH_CONFIG = {
 export const COSTS = {
   ROAD: 10 * MONEY_MULTIPLIER,
   BRIDGE: 50 * MONEY_MULTIPLIER,
+  TUNNEL: 100 * MONEY_MULTIPLIER,
   ZONE: 20 * MONEY_MULTIPLIER,
   INDUSTRIAL_ZONE: 30 * MONEY_MULTIPLIER,
   BULLDOZE: 5 * MONEY_MULTIPLIER,

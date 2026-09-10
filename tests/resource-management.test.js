@@ -16,6 +16,10 @@ mountainMineTile.terrain = TERRAIN.MOUNTAIN;
 mountainMineTile.oreDiscovered = true;
 mountainMineTile.discoveredOre = ORE_TYPE.BAUXITE;
 assert.ok(grid.placeProducer(3, 3, PRODUCER_TYPE.MINE_BAUXITE, 0), 'Mines should be placeable on discovered non-water ore terrain');
+const oilTile = grid.getTile(4, 4);
+oilTile.oreDiscovered = true;
+oilTile.discoveredOre = ORE_TYPE.OIL;
+assert.ok(grid.placeProducer(4, 4, PRODUCER_TYPE.OIL_DERRICK, 0), 'Oil derricks should require discovered oil');
 assert.ok(grid.placeProducer(4, 4, PRODUCER_TYPE.WAREHOUSE_ORE, 0));
 
 const manager = new ResourceManager();
@@ -29,6 +33,9 @@ assert.strictEqual(manager.capacity.ore, RESOURCE_CONFIG.WAREHOUSE_CAPACITY_PER_
 const smelter = grid.placeProducer(6, 6, PRODUCER_TYPE.SMELTER, 0);
 const barWarehouse = grid.placeProducer(7, 6, PRODUCER_TYPE.WAREHOUSE_BAR, 0);
 grid.placeProducer(7, 7, PRODUCER_TYPE.WAREHOUSE_GOODS, 0);
+const silo = grid.placeProducer(8, 6, PRODUCER_TYPE.SILO, 0);
+assert.strictEqual(silo.storageType, 'oil', 'Silos should default to oil storage');
+assert.strictEqual(manager.capacity.oil, 0, 'Silo capacity is calculated during a resource update');
 smelter.operational = true;
 smelter.filledJobs = 10;
 manager.stockpile.ironOre = 10;
