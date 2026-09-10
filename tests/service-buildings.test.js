@@ -2,6 +2,7 @@ import assert from 'assert';
 import { Grid } from '../src/engine/Grid.js';
 import { UtilityManager } from '../src/engine/UtilityManager.js';
 import { ServiceManager } from '../src/engine/ServiceManager.js';
+import { FireManager } from '../src/engine/FireManager.js';
 import { PRODUCER_TYPE, TERRAIN, DENSITY, SERVICE_CONFIG, SERVICE_GLOBAL_CONFIG } from '../src/config.js';
 
 const grid = new Grid(14, 14, 1);
@@ -43,6 +44,8 @@ ServiceManager.updateServices(grid, 0, 0);
 assert.strictEqual(offlineFire.totalJobs, 2, 'Offline fire stations should retain minimum staffing jobs');
 assert.strictEqual(offlineFire.filledJobs, 0, 'Offline fire stations should not fill jobs without residents');
 
+ServiceManager.updateServices(grid, 6, 1);
+assert.strictEqual(fire.filledJobs, 2, 'Fire station should receive two workers when the city has enough workers');
 power.capacity = 0;
 for (let tick = 1; tick <= SERVICE_GLOBAL_CONFIG.UTILITY_FAILURE_GRACE_TICKS; tick++) {
   UtilityManager.allocateAll(grid);
@@ -50,10 +53,18 @@ for (let tick = 1; tick <= SERVICE_GLOBAL_CONFIG.UTILITY_FAILURE_GRACE_TICKS; ti
 }
 UtilityManager.allocateAll(grid);
 assert.strictEqual(fire.operational, false, 'Fire station should go offline after the utility grace period');
+assert.strictEqual(fire.filledJobs, 2, 'Fire station staffing should remain visible while utilities are offline');
 power.capacity = 100;
 UtilityManager.allocateAll(grid);
 assert.strictEqual(fire.operational, true, 'Fire station should recover when utilities return');
 assert.strictEqual(fire.utilityFailureTicks, 0, 'Utility failure counter should reset after recovery');
+ServiceManager.updateServices(grid, 6, 1);
+const burningTile = grid.getTile(3, 3);
+burningTile.onFire = true;
+burningTile.fireDamage = 0;
+FireManager.updateFires(grid, { fireInjuries: 0, displacedPopulation: 0 });
+assert.strictEqual(burningTile.onFire, false, 'Operational staffed fire station should extinguish a nearby fire');
+assert.strictEqual(burningTile.fireDamage, 0, 'Suppressed fire should have no remaining damage');
 ServiceManager.updateServices(grid, 5000, 1);
 assert.strictEqual(police.density, DENSITY.HIGH, 'Police density should grow with population');
 assert.strictEqual(police.totalJobs, 5, 'Police should staff one officer per thousand residents');

@@ -791,7 +791,7 @@ export class Renderer {
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText('!', px + 7, py + 7);
-    } else if (prod.type === PRODUCER_TYPE.SURVEY_STATION && !prod.operational) {
+    } else if (!prod.operational) {
       ctx.fillStyle = '#f59e0b';
       ctx.fillRect(px + 2, py + 2, 10, 10);
       ctx.fillStyle = '#1c1917';

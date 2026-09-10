@@ -671,7 +671,7 @@ class GameApp {
       const prodHasRoad = this.grid.isRoadAdjacent(tile.producer.x, tile.producer.y);
       const isBatteryDependent = tile.producer.type === PRODUCER_TYPE.WINDMILL || tile.producer.type === PRODUCER_TYPE.SOLAR_PANEL;
       const roadStatusStr = prodHasRoad || isBatteryDependent ? '' : ' ⚠️ (Needs Road!)';
-      const utilityStatusStr = tile.producer.type === PRODUCER_TYPE.SURVEY_STATION && prodHasRoad && !tile.producer.operational
+      const utilityStatusStr = PRODUCER_CONFIG[tile.producer.type]?.utilityUsage && !tile.producer.operational
         ? ' ⚠️ (Needs Utilities!)'
         : '';
       const contaminatedStr = tile.producer.contaminated ? ' ☣️ Contaminated!' : '';

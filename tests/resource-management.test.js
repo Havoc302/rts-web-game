@@ -20,7 +20,7 @@ const oilTile = grid.getTile(4, 4);
 oilTile.oreDiscovered = true;
 oilTile.discoveredOre = ORE_TYPE.OIL;
 assert.ok(grid.placeProducer(4, 4, PRODUCER_TYPE.OIL_DERRICK, 0), 'Oil derricks should require discovered oil');
-assert.ok(grid.placeProducer(4, 4, PRODUCER_TYPE.WAREHOUSE_ORE, 0));
+assert.ok(grid.placeProducer(5, 4, PRODUCER_TYPE.WAREHOUSE_ORE, 0));
 
 const manager = new ResourceManager();
 const mine = grid.producers.find((producer) => producer.type === PRODUCER_TYPE.MINE_IRON);

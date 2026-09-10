@@ -80,9 +80,7 @@ export class ServiceManager {
           prod.runningCost = 0;
           return;
         }
-        const maxRadius = populationStaffedTypes.includes(type)
-          ? Math.min(config.radius[density] || 0, prod.filledJobs)
-          : config.radius[density] || SERVICE_GLOBAL_CONFIG.DEFAULT_SERVICE_RADIUS;
+        const maxRadius = config.radius[density] || SERVICE_GLOBAL_CONFIG.DEFAULT_SERVICE_RADIUS;
         // Coverage range scales with filled jobs
         prod.effectiveRadius = budgetRatio > 0
           ? Math.max(SERVICE_GLOBAL_CONFIG.MIN_EFFECTIVE_SERVICE_RADIUS, Math.round(maxRadius * budgetRatio * (SERVICE_GLOBAL_CONFIG.COVERAGE_MIN_FACTOR + SERVICE_GLOBAL_CONFIG.COVERAGE_MAX_FACTOR * fillRatio)))
