@@ -91,6 +91,8 @@ export class Grid {
       zone: ZONE.NONE,
       density: DENSITY.LIGHT,
       growthScore: 0,
+      relocatedPopulation: 0,
+      fireDisplacedPopulation: 0,
       producer: null,
       shortfall: { power: false, water: false, sewage: false },
       connected: false,
@@ -413,12 +415,21 @@ export class Grid {
         if (config.requiresWaterAdjacent && !this.isWaterAdjacent(x, y)) {
           return false;
         }
+        if (config.requiresBatteryAdjacent && !this.hasAdjacentBattery(x, y)) {
+          return false;
+        }
         if (config.unique && this.producers.some((p) => p.type === producerType)) {
           return false;
         }
       }
     }
     return true;
+  }
+
+  hasAdjacentBattery(x, y) {
+    return this.getNeighbors8(x, y).some((neighbor) => (
+      neighbor.producer?.type === PRODUCER_TYPE.BATTERY
+    ));
   }
 
   placeRoad(x, y) {
@@ -447,6 +458,7 @@ export class Grid {
       usedCapacity: 0,
       contaminated: false,
       utilityShortfall: { power: false, water: false, sewage: false },
+      utilityFailureTicks: 0,
       operational: true,
       surveyTarget: null,
       surveyProgress: 0,
@@ -508,6 +520,10 @@ export class Grid {
     if (!tile) return false;
 
     let modified = false;
+    if (tile.destroyed) {
+      tile.destroyed = false;
+      modified = true;
+    }
     if (tile.hasBridge) {
       tile.hasBridge = false;
       tile.hasRoad = false;
@@ -539,6 +555,8 @@ export class Grid {
       tile.zone = ZONE.NONE;
       tile.density = DENSITY.LIGHT;
       tile.growthScore = 0;
+      tile.relocatedPopulation = 0;
+      tile.fireDisplacedPopulation = 0;
       tile.shortfall = { power: false, water: false, sewage: false };
       modified = true;
     }

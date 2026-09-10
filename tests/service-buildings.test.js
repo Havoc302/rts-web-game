@@ -2,7 +2,7 @@ import assert from 'assert';
 import { Grid } from '../src/engine/Grid.js';
 import { UtilityManager } from '../src/engine/UtilityManager.js';
 import { ServiceManager } from '../src/engine/ServiceManager.js';
-import { PRODUCER_TYPE, TERRAIN, DENSITY, SERVICE_CONFIG } from '../src/config.js';
+import { PRODUCER_TYPE, TERRAIN, DENSITY, SERVICE_CONFIG, SERVICE_GLOBAL_CONFIG } from '../src/config.js';
 
 const grid = new Grid(14, 14, 1);
 for (const row of grid.tiles) {
@@ -36,6 +36,24 @@ const lightRadius = police.effectiveRadius;
 assert.strictEqual(lightJobs, 2, 'Police should start with a minimum of two officers');
 assert.strictEqual(fire.totalJobs, 2, 'Fire should start with a minimum of two firefighters');
 assert.strictEqual(hospital.totalJobs, 2, 'Hospital should start with a minimum of two staff');
+
+const offlineFire = grid.placeProducer(5, 5, PRODUCER_TYPE.FIRE_STATION, 0);
+offlineFire.operational = false;
+ServiceManager.updateServices(grid, 0, 0);
+assert.strictEqual(offlineFire.totalJobs, 2, 'Offline fire stations should retain minimum staffing jobs');
+assert.strictEqual(offlineFire.filledJobs, 1, 'Offline fire stations should still fill available staffing jobs');
+
+power.capacity = 0;
+for (let tick = 1; tick <= SERVICE_GLOBAL_CONFIG.UTILITY_FAILURE_GRACE_TICKS; tick++) {
+  UtilityManager.allocateAll(grid);
+  assert.strictEqual(fire.operational, true, `Fire station should remain operational during utility grace tick ${tick}`);
+}
+UtilityManager.allocateAll(grid);
+assert.strictEqual(fire.operational, false, 'Fire station should go offline after the utility grace period');
+power.capacity = 100;
+UtilityManager.allocateAll(grid);
+assert.strictEqual(fire.operational, true, 'Fire station should recover when utilities return');
+assert.strictEqual(fire.utilityFailureTicks, 0, 'Utility failure counter should reset after recovery');
 ServiceManager.updateServices(grid, 5000, 1);
 assert.strictEqual(police.density, DENSITY.HIGH, 'Police density should grow with population');
 assert.strictEqual(police.totalJobs, 5, 'Police should staff one officer per thousand residents');

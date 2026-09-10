@@ -35,6 +35,7 @@ export class Simulation {
       patientCapacity: 0,
       untreatedPatients: 0,
       fireInjuries: 0,
+      displacedPopulation: 0,
       zones: {
         residential: { light: 0, medium: 0, high: 0 },
         commercial: { light: 0, medium: 0, high: 0 },
@@ -48,15 +49,19 @@ export class Simulation {
       this.tickCount++;
     }
 
+    // Establish current population and job occupancy before allocating utilities.
+    this.computeStats();
     UtilityManager.allocateAll(this.grid, this.getHourOfDay());
     PollutionManager.computePollution(this.grid);
     ServiceManager.updateServices(this.grid, this.stats.population, this.stats.employmentRate);
     if (advanceWorld) {
       CrimeManager.updateCrime(this.grid, this.stats);
       FireManager.updateFires(this.grid, this.stats);
+      this.relocateDisplacedPopulation(this.stats.displacedPopulation || 0);
       this.updateSurveys();
     }
 
+    // Refresh demand, income, and service capacity after this tick's updates.
     this.computeStats();
     if (advanceWorld) {
       this.updateGrowthAndDensity();
@@ -82,6 +87,32 @@ export class Simulation {
       surveyor.surveyTarget = null;
       surveyor.surveyProgress = 0;
       surveyor.surveyRequired = 0;
+    }
+  }
+
+  relocateDisplacedPopulation(population) {
+    if (population <= 0) return;
+
+    const candidates = this.grid.tiles.flat().filter((tile) => (
+      tile.zone === ZONE.RESIDENTIAL && !tile.destroyed
+    )).sort((a, b) => {
+      const suitability = (tile) => {
+        const serviceScore = Object.values(tile.services || {}).filter(Boolean).length;
+        const shortfallScore = Object.values(tile.shortfall || {}).filter(Boolean).length;
+        return serviceScore * 100 - shortfallScore * 25 - (tile.pollution || 0) - (tile.crime || 0);
+      };
+      return suitability(b) - suitability(a);
+    });
+
+    let remaining = population;
+    for (const tile of candidates) {
+      if (remaining <= 0) break;
+      const capacity = RESIDENTIAL_CAPACITY[tile.density] || 0;
+      const currentPopulation = tile.population || 0;
+      const room = Math.max(0, capacity - currentPopulation);
+      const moved = Math.min(remaining, room);
+      tile.relocatedPopulation = (tile.relocatedPopulation || 0) + moved;
+      remaining -= moved;
     }
   }
 
@@ -245,10 +276,9 @@ export class Simulation {
 
         if (!tile || tile.zone === ZONE.NONE) continue;
 
-        const rates = USAGE_RATES[tile.zone]?.[tile.density] || { power: 0, water: 0, sewage: 0 };
-        stats.powerDemand += rates.power;
-        stats.waterDemand += rates.water;
-        stats.sewageDemand += rates.sewage;
+        stats.powerDemand += UtilityManager.getTileUtilityUsage(tile, 'power');
+        stats.waterDemand += UtilityManager.getTileUtilityUsage(tile, 'water');
+        stats.sewageDemand += UtilityManager.getTileUtilityUsage(tile, 'sewage');
 
         if (stats.zones[tile.zone]) {
           stats.zones[tile.zone][tile.density]++;
@@ -256,7 +286,10 @@ export class Simulation {
 
         if (tile.zone === ZONE.RESIDENTIAL) {
           const cap = RESIDENTIAL_CAPACITY[tile.density] || 0;
-          const pop = this.computeTilePopulation(tile, cap);
+          const pop = Math.min(
+            cap,
+            Math.max(0, this.computeTilePopulation(tile, cap) + (tile.relocatedPopulation || 0) - (tile.fireDisplacedPopulation || 0)),
+          );
           tile.population = pop;
           tile.maxPopulation = cap;
           stats.population += pop;

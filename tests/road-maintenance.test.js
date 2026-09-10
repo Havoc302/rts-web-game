@@ -17,6 +17,6 @@ grid.placeRoad(1, 1);
 grid.placeRoad(1, 2);
 grid.placeBridge(3, 3);
 simulation.computeStats();
-assert.strictEqual(simulation.stats.roadExpenses, 30, 'Each road and bridge tile should cost ten per tick after scaling');
+assert.strictEqual(simulation.stats.roadExpenses, 3, 'Each road and bridge tile should cost one per tick');
 
 console.log('Road maintenance tests passed.');

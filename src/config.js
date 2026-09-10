@@ -211,6 +211,7 @@ export const PRODUCER_CONFIG = {
     cost: 150 * MONEY_MULTIPLIER,
     color: '#94a3b8',
     requiresWaterAdjacent: false,
+    requiresBatteryAdjacent: true,
   },
   [PRODUCER_TYPE.SOLAR_PANEL]: {
     name: 'Solar Panel',
@@ -219,6 +220,7 @@ export const PRODUCER_CONFIG = {
     cost: 200 * MONEY_MULTIPLIER,
     color: '#fbbf24',
     requiresWaterAdjacent: false,
+    requiresBatteryAdjacent: true,
   },
   [PRODUCER_TYPE.BATTERY]: {
     name: 'Battery Storage',
@@ -313,7 +315,7 @@ export const COSTS = {
   BULLDOZE: 5 * MONEY_MULTIPLIER,
 };
 
-export const ROAD_MAINTENANCE_COST = 1 * MONEY_MULTIPLIER;
+export const ROAD_MAINTENANCE_COST = 1; // Maintenance cost per road or bridge tile per tick
 
 export const TAX_REVENUE_CONFIG = {
   RESIDENTS_PER_TAX_UNIT: 100,
@@ -436,10 +438,13 @@ export const MEDICAL_CONFIG = {
 };
 
 export const FIRE_CONFIG = {
-  BASE_IGNITION_CHANCE: 0.002,            // Baseline chance per tick for an eligible tile to catch fire
-  INDUSTRIAL_IGNITION_MULTIPLIER: 3.0,    // Industrial tiles are 3x more likely to ignite
+  BASE_IGNITION_CHANCE: 0.0001,           // Fixed standalone infrastructure chance: 0.01% per tick
+  FOREST_IGNITION_CHANCE: 0.0001,         // Fixed forest ignition chance: 0.01% per tick
+  MAX_IGNITION_CHANCE_NON_INDUSTRIAL: 0.01, // Maximum occupied tile risk (1% per tick)
+  MAX_IGNITION_CHANCE_INDUSTRIAL: 0.02,   // Maximum occupied industrial tile risk (2% per tick)
   HIGH_POLLUTION_IGNITION_THRESHOLD: 5,   // Pollution level at which ignition becomes more likely
   HIGH_POLLUTION_IGNITION_BONUS: 0.003,   // Extra chance if tile pollution >= 5
+  BURNING_POPULATION_RELOCATION_RATE: 0.5, // Share of residents relocated from a burning home tile per fire tick
   DAMAGE_PER_TICK: 10,                    // Fire damage accumulated per tick (10 ticks to reach 100)
   MAX_DAMAGE: 100,                         // Damage threshold that destroys the burning building
   SPREAD_CHANCE_PER_TICK: 0.15,           // Chance to ignite an adjacent non-dirt/road tile per tick
@@ -450,6 +455,7 @@ export const FIRE_CONFIG = {
 // Global service staffing, coverage, and operating-cost balance controls.
 export const SERVICE_GLOBAL_CONFIG = {
   BUDGET_MAX_VALUE: 100,                  // Maximum service budget slider value
+  UTILITY_FAILURE_GRACE_TICKS: 5,         // Consecutive failed utility ticks tolerated before a building goes offline
   MIN_STAFFING_BASELINE: 2,               // Minimum staff for population-scaled services
   DEFAULT_SERVICE_RADIUS: 10,             // Fallback radius when a service tier omits one
   MIN_EFFECTIVE_SERVICE_RADIUS: 1,         // Smallest non-zero radius for staffed coverage

@@ -45,11 +45,6 @@ export class ServiceManager {
       producers.forEach((prod) => {
         if (!prod.operational) {
           prod.density = DENSITY.LIGHT;
-          prod.totalJobs = 0;
-          prod.filledJobs = 0;
-          prod.effectiveRadius = 0;
-          prod.runningCost = 0;
-          return;
         }
 
         // Determine building density/tier based on city population thresholds
@@ -78,6 +73,11 @@ export class ServiceManager {
         prod.filledJobs = Math.min(budgetedJobs, Math.round(budgetedJobs * Math.max(LABOR_TAX_GROWTH_CONFIG.MIN_SERVICE_EMPLOYMENT_RATE, employmentRate)));
 
         const fillRatio = prod.totalJobs > 0 ? prod.filledJobs / prod.totalJobs : 0;
+        if (!prod.operational) {
+          prod.effectiveRadius = 0;
+          prod.runningCost = 0;
+          return;
+        }
         const maxRadius = populationStaffedTypes.includes(type)
           ? Math.min(config.radius[density] || 0, prod.filledJobs)
           : config.radius[density] || SERVICE_GLOBAL_CONFIG.DEFAULT_SERVICE_RADIUS;

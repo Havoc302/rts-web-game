@@ -348,6 +348,10 @@ body {
   cursor: pointer;
 }
 
+.mobile-only-control {
+  display: none;
+}
+
 /* Right Inspector Panel */
 .inspector-panel {
   position: absolute;
@@ -435,6 +439,10 @@ h4 {
 
 /* Mobile layout: side panels become off-canvas drawers so the map is never blocked */
 @media (max-width: 820px) {
+  .mobile-only-control {
+    display: flex;
+  }
+
   .header-bar {
     flex-wrap: wrap;
     gap: 8px;

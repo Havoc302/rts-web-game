@@ -4,7 +4,7 @@ import { Simulation } from '../src/engine/Simulation.js';
 import { UtilityManager } from '../src/engine/UtilityManager.js';
 import { PollutionManager } from '../src/engine/PollutionManager.js';
 import { FireManager } from '../src/engine/FireManager.js';
-import { PRODUCER_TYPE, ZONE, DENSITY, GROWTH_CONFIG, MAP_WIDTH, MAP_HEIGHT, TERRAIN_TYPE, CRIME_CONFIG, MEDICAL_CONFIG } from '../src/config.js';
+import { PRODUCER_TYPE, ZONE, DENSITY, GROWTH_CONFIG, MAP_WIDTH, MAP_HEIGHT, TERRAIN_TYPE, TERRAIN, CRIME_CONFIG, MEDICAL_CONFIG, FIRE_CONFIG, USAGE_RATES } from '../src/config.js';
 
 console.log('Running Phase 1 Core Loop Automated Verification Tests...\n');
 
@@ -47,8 +47,13 @@ console.log('Running Phase 1 Core Loop Automated Verification Tests...\n');
     }
   }
 
-  const windmill = grid.placeProducer(2, 2, PRODUCER_TYPE.WINDMILL, 40);
+  assert.strictEqual(
+    grid.placeProducer(2, 2, PRODUCER_TYPE.WINDMILL, 40),
+    null,
+    'Windmill placement should require an adjacent battery',
+  );
   const battery = grid.placeProducer(3, 2, PRODUCER_TYPE.BATTERY, 400);
+  const windmill = grid.placeProducer(2, 2, PRODUCER_TYPE.WINDMILL, 40);
   grid.placeRoad(3, 3);
 
   UtilityManager.allocateAll(grid);
@@ -78,7 +83,71 @@ console.log('Running Phase 1 Core Loop Automated Verification Tests...\n');
   assert.strictEqual(tile.producer, null, 'A windmill at maximum fire damage should be destroyed');
   assert.strictEqual(grid.producers.includes(windmill), false, 'Destroyed windmill should leave the producer list');
   assert.strictEqual(tile.destroyed, true, 'Destroyed tile should remain marked as destroyed');
+  assert.strictEqual(grid.bulldoze(tile.x, tile.y), true, 'Bulldozing a destroyed tile should succeed');
+  assert.strictEqual(tile.destroyed, false, 'Bulldozing should clear the destroyed state');
+  assert.strictEqual(grid.canPlaceRoad(tile.x, tile.y), true, 'Cleared destroyed tile should be reusable');
   console.log('✔ Test 1c Passed: Fire destroys windmills at maximum damage');
+}
+
+// Test 1c2: Residents begin relocating as soon as their home tile catches fire
+{
+  const grid = new Grid(8, 8);
+  for (let y = 0; y < 8; y++) {
+    for (let x = 0; x < 8; x++) {
+      grid.tiles[y][x].terrain = 'flat';
+    }
+  }
+
+  grid.placeRoad(2, 1);
+  grid.placeRoad(5, 4);
+  grid.placeZone(2, 2, ZONE.RESIDENTIAL);
+  grid.placeZone(5, 5, ZONE.RESIDENTIAL);
+  const source = grid.getTile(2, 2);
+  const destination = grid.getTile(5, 5);
+  source.growthScore = GROWTH_CONFIG.THRESHOLD_MEDIUM;
+  source.onFire = true;
+
+  const simulation = new Simulation(grid);
+  simulation.tick();
+
+  assert.strictEqual(source.destroyed, false, 'The home tile should still exist before reaching maximum damage');
+  assert.ok(source.population < 25, 'Population should immediately decline on a burning tile');
+  assert.ok(destination.population > 0, 'Residents should move to another suitable residential tile');
+  console.log('✔ Test 1c2 Passed: Residents relocate from burning homes');
+}
+
+// Test 1d: Fire risk scales with occupancy and respects zone caps
+{
+  const residentialTile = { zone: ZONE.RESIDENTIAL, population: 0, maxPopulation: 100, pollution: 0 };
+  const industrialTile = { zone: ZONE.INDUSTRIAL, filledJobs: 100, totalJobs: 100, pollution: 0 };
+
+  assert.strictEqual(FireManager.getIgnitionChance(residentialTile), 0, 'Empty residential tiles should have no occupancy-based fire risk');
+  assert.strictEqual(FireManager.getIgnitionChance({ ...residentialTile, population: 50 }), 0.005, 'Half-full residential tiles should have 0.5% fire risk');
+  assert.strictEqual(FireManager.getIgnitionChance({ ...residentialTile, population: 100 }), FIRE_CONFIG.MAX_IGNITION_CHANCE_NON_INDUSTRIAL, 'Full residential tiles should cap at 1% fire risk');
+  assert.strictEqual(FireManager.getIgnitionChance(industrialTile), FIRE_CONFIG.MAX_IGNITION_CHANCE_INDUSTRIAL, 'Full industrial tiles should cap at 2% fire risk');
+  assert.strictEqual(FireManager.getIgnitionChance({ ...industrialTile, pollution: 100 }), FIRE_CONFIG.MAX_IGNITION_CHANCE_INDUSTRIAL, 'Pollution must not exceed the industrial fire risk cap');
+  assert.strictEqual(FireManager.getIgnitionChance({ terrain: TERRAIN.FOREST, pollution: 100, population: 100, maxPopulation: 100 }), FIRE_CONFIG.FOREST_IGNITION_CHANCE, 'Forest tiles should use the fixed 0.01% fire risk');
+  assert.strictEqual(FireManager.getIgnitionChance({ terrain: TERRAIN.FLAT, zone: ZONE.NONE, pollution: 100 }), FIRE_CONFIG.BASE_IGNITION_CHANCE, 'Standalone infrastructure should use the fixed 0.01% fire risk');
+  console.log('✔ Test 1d Passed: Fire risk scales with occupancy and respects caps');
+}
+
+// Test 1e: Commercial utility usage scales with jobs taken
+{
+  const emptyCommercial = {
+    zone: ZONE.COMMERCIAL,
+    density: DENSITY.LIGHT,
+    filledJobs: 0,
+    totalJobs: 30,
+  };
+  const fullCommercial = { ...emptyCommercial, filledJobs: 30 };
+
+  assert.strictEqual(UtilityManager.getTileUtilityUsage(emptyCommercial, 'power'), 0, 'Empty commercial tiles should use no power');
+  assert.strictEqual(
+    UtilityManager.getTileUtilityUsage(fullCommercial, 'power'),
+    USAGE_RATES[ZONE.COMMERCIAL][DENSITY.LIGHT].power,
+    'Fully occupied commercial tiles should use their configured power rate',
+  );
+  console.log('✔ Test 1e Passed: Commercial utility usage scales with jobs taken');
 }
 
 // Test 2: Nearest-served-first allocation (Power / Water)
@@ -104,6 +173,11 @@ console.log('Running Phase 1 Core Loop Automated Verification Tests...\n');
 
   // Far zone at (2, 8) (usage = 1)
   grid.placeZone(2, 8, ZONE.RESIDENTIAL);
+
+  for (const tile of [grid.getTile(2, 2), grid.getTile(2, 4), grid.getTile(2, 8)]) {
+    tile.population = 25;
+    tile.maxPopulation = 25;
+  }
 
   UtilityManager.allocateAll(grid);
 
@@ -143,6 +217,11 @@ console.log('Running Phase 1 Core Loop Automated Verification Tests...\n');
 
   // Far zone at (2, 9)
   grid.placeZone(2, 9, ZONE.RESIDENTIAL);
+
+  for (const tile of [grid.getTile(2, 2), grid.getTile(2, 5), grid.getTile(2, 9)]) {
+    tile.population = 25;
+    tile.maxPopulation = 25;
+  }
 
   UtilityManager.allocateAll(grid);
 
@@ -295,6 +374,7 @@ console.log('Running Phase 1 Core Loop Automated Verification Tests...\n');
   grid.placeProducer(1, 1, PRODUCER_TYPE.SEWAGE_PLANT, 0);
   grid.placeRoad(1, 2);
   grid.placeZone(2, 2, ZONE.RESIDENTIAL);
+  grid.getTile(2, 2).growthScore = GROWTH_CONFIG.THRESHOLD_MEDIUM;
 
   const sim = new Simulation(grid);
   sim.tick();

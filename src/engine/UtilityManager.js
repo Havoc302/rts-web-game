@@ -1,4 +1,4 @@
-import { PRODUCER_TYPE, PRODUCER_CONFIG, USAGE_RATES, POWER_PRODUCER_TYPES, WIND_CONFIG, SOLAR_CONFIG, BATTERY_CONFIG, DAY_START_HOUR, NIGHT_START_HOUR } from '../config.js';
+import { PRODUCER_TYPE, PRODUCER_CONFIG, SERVICE_GLOBAL_CONFIG, USAGE_RATES, POWER_PRODUCER_TYPES, WIND_CONFIG, SOLAR_CONFIG, BATTERY_CONFIG, DAY_START_HOUR, NIGHT_START_HOUR } from '../config.js';
 import { RoadNetwork } from './RoadNetwork.js';
 
 export class UtilityManager {
@@ -96,7 +96,7 @@ export class UtilityManager {
       if (!usage) continue;
 
       producer.utilityShortfall = { power: false, water: false, sewage: false };
-      producer.operational = true;
+      let hasUtilityShortfall = false;
       const activeUsage = producer.type === PRODUCER_TYPE.SURVEY_STATION && producer.surveyTarget
         ? config.activeUtilityUsage || {}
         : {};
@@ -118,8 +118,16 @@ export class UtilityManager {
           available.producer.usedCapacity += required;
         } else {
           producer.utilityShortfall[utilityKey] = true;
-          producer.operational = false;
+          hasUtilityShortfall = true;
         }
+      }
+
+      if (hasUtilityShortfall) {
+        producer.utilityFailureTicks = (producer.utilityFailureTicks || 0) + 1;
+        producer.operational = producer.utilityFailureTicks <= SERVICE_GLOBAL_CONFIG.UTILITY_FAILURE_GRACE_TICKS;
+      } else {
+        producer.utilityFailureTicks = 0;
+        producer.operational = true;
       }
     }
   }
@@ -160,7 +168,7 @@ export class UtilityManager {
 
     for (const item of connectedZonedTiles) {
       const tile = item.tile;
-      const usage = USAGE_RATES[tile.zone]?.[tile.density]?.[utilityKey] || 0;
+      const usage = this.getTileUtilityUsage(tile, utilityKey);
 
       let chosenProducer = null;
 
@@ -195,5 +203,25 @@ export class UtilityManager {
         tile.shortfall[utilityKey] = true;
       }
     }
+  }
+
+  static getTileOccupancyRatio(tile) {
+    if (tile.destroyed) return 0;
+
+    let occupied = 0;
+    let capacity = 0;
+    if (tile.zone === 'residential') {
+      occupied = tile.population || 0;
+      capacity = tile.maxPopulation || 0;
+    } else if (tile.zone === 'commercial' || tile.zone === 'industrial') {
+      occupied = tile.filledJobs || 0;
+      capacity = tile.totalJobs || 0;
+    }
+    return capacity > 0 ? Math.min(1, Math.max(0, occupied / capacity)) : 0;
+  }
+
+  static getTileUtilityUsage(tile, utilityKey) {
+    const baseUsage = USAGE_RATES[tile.zone]?.[tile.density]?.[utilityKey] || 0;
+    return baseUsage * this.getTileOccupancyRatio(tile);
   }
 }

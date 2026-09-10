@@ -12,7 +12,7 @@ class GameApp {
 
     this.treasury = STARTING_TREASURY;
     this.activeTool = 'pan';
-    this.autoSwitchToPan = true;
+    this.autoSwitchToPan = false;
     this.isMouseDown = false;
     this.isRightMouseDown = false;
     this.lastMouseX = 0;
@@ -45,9 +45,9 @@ class GameApp {
   bindUIEvents() {
     const autoPanToggle = document.getElementById('auto-pan-toggle');
     if (autoPanToggle) {
-      this.autoSwitchToPan = autoPanToggle.checked;
+      this.autoSwitchToPan = this.isMobileLayout() && autoPanToggle.checked;
       autoPanToggle.addEventListener('change', () => {
-        this.autoSwitchToPan = autoPanToggle.checked;
+        this.autoSwitchToPan = this.isMobileLayout() && autoPanToggle.checked;
       });
     }
 
@@ -216,9 +216,9 @@ class GameApp {
     const empRateEl = document.getElementById('stat-emp-rate');
     if (empRateEl) empRateEl.textContent = `${Math.round(stats.employmentRate * 100)}%`;
 
-    this.updateMeter('meter-power-text', 'meter-power-fill', stats.powerDemand, stats.powerCapacity);
-    this.updateMeter('meter-water-text', 'meter-water-fill', stats.waterDemand, stats.waterCapacity);
-    this.updateMeter('meter-sewage-text', 'meter-sewage-fill', stats.sewageDemand, stats.sewageCapacity);
+    this.updateMeter('meter-power-text', 'meter-power-fill', stats.powerDemand, stats.powerCapacity, true);
+    this.updateMeter('meter-water-text', 'meter-water-fill', stats.waterDemand, stats.waterCapacity, true);
+    this.updateMeter('meter-sewage-text', 'meter-sewage-fill', stats.sewageDemand, stats.sewageCapacity, true);
     this.updateMeter('meter-hospital-text', 'meter-hospital-fill', stats.patientDemand, stats.patientCapacity);
 
     const pollEl = document.getElementById('meter-pollution-text');
@@ -230,8 +230,10 @@ class GameApp {
     }
   }
 
-  updateMeter(textId, fillId, demand, capacity) {
-    document.getElementById(textId).textContent = `${demand} / ${capacity}`;
+  updateMeter(textId, fillId, demand, capacity, formatDecimals = false) {
+    const displayDemand = formatDecimals ? demand.toFixed(2) : demand;
+    const displayCapacity = formatDecimals ? capacity.toFixed(2) : capacity;
+    document.getElementById(textId).textContent = `${displayDemand} / ${displayCapacity}`;
     const pct = capacity > 0 ? Math.min(100, Math.round((demand / capacity) * 100)) : 0;
     const fillEl = document.getElementById(fillId);
     fillEl.style.width = `${pct}%`;
@@ -444,11 +446,15 @@ class GameApp {
       }
       // Only single-placement buildings (producers) auto-revert to Pan; repeatable
       // tools like roads/zones/bulldoze stay active so you can keep placing.
-      if (this.autoSwitchToPan && this.activeTool.startsWith('producer_')) {
+      if (this.isMobileLayout() && this.autoSwitchToPan && this.activeTool.startsWith('producer_')) {
         this.setActiveTool('pan');
       }
     }
 
+  }
+
+  isMobileLayout() {
+    return typeof window !== 'undefined' && window.matchMedia('(max-width: 768px)').matches;
   }
 
   updateBuildInfoPanel(tool) {
@@ -552,6 +558,10 @@ class GameApp {
       } else if (tile.zone === ZONE.COMMERCIAL || tile.zone === ZONE.INDUSTRIAL) {
         const filled = (tile.filledJobs || 0).toLocaleString();
         const total = (tile.totalJobs || JOBS_PROVIDED[tile.zone]?.[tile.density] || 0).toLocaleString();
+        popJobsEl.textContent = `${filled} / ${total} jobs filled`;
+      } else if (tile.producer && PRODUCER_CONFIG[tile.producer.type]?.jobs) {
+        const filled = (tile.producer.filledJobs || 0).toLocaleString();
+        const total = (tile.producer.totalJobs || 0).toLocaleString();
         popJobsEl.textContent = `${filled} / ${total} jobs filled`;
       } else {
         popJobsEl.textContent = 'N/A';
