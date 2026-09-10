@@ -43,13 +43,13 @@ export class CrimeManager {
         continue;
       }
 
-      tile.crime = Math.min(10, (tile.crime || 0) + 2);
+      tile.crime = Math.min(CRIME_CONFIG.MAX_CRIME_LEVEL, (tile.crime || 0) + CRIME_CONFIG.CRIME_INCREMENT_PER_EVENT);
     }
 
     // 5. Diffuse crime to adjacent unpoliced zoned tiles
     const diffusions = [];
     for (const tile of zonedTiles) {
-      if (tile.crime > 4) {
+      if (tile.crime > CRIME_CONFIG.CRIME_DIFFUSION_THRESHOLD) {
         for (const neighbor of grid.getNeighbors(tile.x, tile.y)) {
           const isZoned = neighbor.zone === ZONE.RESIDENTIAL || neighbor.zone === ZONE.COMMERCIAL || neighbor.zone === ZONE.INDUSTRIAL;
           if (isZoned && !neighbor.services?.police) {
@@ -59,7 +59,7 @@ export class CrimeManager {
       }
     }
     for (const tile of diffusions) {
-      tile.crime = Math.min(10, (tile.crime || 0) + 1);
+      tile.crime = Math.min(CRIME_CONFIG.MAX_CRIME_LEVEL, (tile.crime || 0) + CRIME_CONFIG.CRIME_DIFFUSION_INCREMENT);
     }
   }
 

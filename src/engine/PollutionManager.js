@@ -18,8 +18,8 @@ export class PollutionManager {
         const tile = grid.getTile(x, y);
         if (!tile || tile.zone !== ZONE.INDUSTRIAL) continue;
 
-        const radius = POLLUTION_CONFIG.INDUSTRIAL_RADIUS[tile.density] || 3;
-        const emission = POLLUTION_CONFIG.INDUSTRIAL_EMISSION[tile.density] || 2;
+        const radius = POLLUTION_CONFIG.INDUSTRIAL_RADIUS[tile.density] || POLLUTION_CONFIG.DEFAULT_INDUSTRIAL_RADIUS;
+        const emission = POLLUTION_CONFIG.INDUSTRIAL_EMISSION[tile.density] || POLLUTION_CONFIG.DEFAULT_INDUSTRIAL_EMISSION;
 
         this.spreadPollution(grid, x, y, radius, emission);
       }
@@ -146,7 +146,7 @@ export class PollutionManager {
         const ndy = dy / dist;
 
         const isDownstream = curr.riverFlowDir
-          ? ndx * curr.riverFlowDir.x + ndy * curr.riverFlowDir.y > 0.5
+          ? ndx * curr.riverFlowDir.x + ndy * curr.riverFlowDir.y > POLLUTION_CONFIG.RIVER_FLOW_DOWNSTREAM_THRESHOLD
           : false;
 
         if (isDownstream) {

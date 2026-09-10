@@ -1,7 +1,7 @@
-import { TERRAIN, TERRAIN_TYPE, ZONE, DENSITY, MAP_WIDTH, MAP_HEIGHT, PRODUCER_CONFIG, PRODUCER_TYPE, ORE_CONFIG, ORE_GENERATION } from '../config.js';
+import { TERRAIN, TERRAIN_TYPE, ZONE, DENSITY, MAP_WIDTH, MAP_HEIGHT, PRODUCER_CONFIG, PRODUCER_TYPE, ORE_CONFIG, ORE_GENERATION, SERVICE_GLOBAL_CONFIG, TERRAIN_GENERATION_CONFIG } from '../config.js';
 
 export function createPRNG(seed) {
-  let h = Math.imul((parseInt(seed, 10) || 12345) ^ 0x6d2b79f5, 0x15a4e35d);
+  let h = Math.imul((parseInt(seed, 10) || TERRAIN_GENERATION_CONFIG.DEFAULT_RANDOM_SEED) ^ 0x6d2b79f5, 0x15a4e35d);
   h = Math.imul(h ^ (h >>> 15), 0x61243495);
   let s = (h ^ (h >>> 13)) >>> 0;
 
@@ -36,7 +36,7 @@ export class Grid {
       const savedSeed = parseInt(localStorage.getItem('metropolis_map_seed'), 10);
       if (!isNaN(savedSeed) && savedSeed > 0) return savedSeed;
     }
-    const newSeed = Math.floor(Math.random() * 9000000) + 100000;
+    const newSeed = Math.floor(Math.random() * TERRAIN_GENERATION_CONFIG.RANDOM_SEED_MAX) + TERRAIN_GENERATION_CONFIG.RANDOM_SEED_MIN;
     if (typeof localStorage !== 'undefined') {
       localStorage.setItem('metropolis_map_seed', newSeed);
     }
@@ -106,6 +106,7 @@ export class Grid {
       crime: 0,
       onFire: false,
       fireDamage: 0,
+      destroyed: false,
     };
   }
 
@@ -117,17 +118,18 @@ export class Grid {
     this.generateLakes();
 
     // 2. Scatter Forest Clusters — scaled to map area
-    const mapScale = (this.width * this.height) / 900;
-    const numForestClusters = Math.round(6 * mapScale);
+    const mapScale = (this.width * this.height) / TERRAIN_GENERATION_CONFIG.MAP_SCALE_BASE_AREA;
+    const numForestClusters = Math.round(TERRAIN_GENERATION_CONFIG.FOREST_CLUSTER_COUNT_SCALE * mapScale);
     for (let i = 0; i < numForestClusters; i++) {
-      const cx = Math.floor(this.random() * (this.width - 4)) + 2;
-      const cy = Math.floor(this.random() * (this.height - 4)) + 2;
-      const radius = 3 + Math.floor(this.random() * 5);
+      const margin = TERRAIN_GENERATION_CONFIG.FOREST_CLUSTER_CENTER_MARGIN;
+      const cx = Math.floor(this.random() * (this.width - margin)) + margin / 2;
+      const cy = Math.floor(this.random() * (this.height - margin)) + margin / 2;
+      const radius = TERRAIN_GENERATION_CONFIG.FOREST_CLUSTER_RADIUS_BASE + Math.floor(this.random() * TERRAIN_GENERATION_CONFIG.FOREST_CLUSTER_RADIUS_RANDOM);
 
       for (let y = Math.max(0, cy - radius); y <= Math.min(this.height - 1, cy + radius); y++) {
         for (let x = Math.max(0, cx - radius); x <= Math.min(this.width - 1, cx + radius); x++) {
           const dist = Math.sqrt((x - cx) ** 2 + (y - cy) ** 2);
-          if (dist <= radius + (this.random() * 0.8 - 0.4)) {
+          if (dist <= radius + (this.random() * TERRAIN_GENERATION_CONFIG.FOREST_CLUSTER_RADIUS_WOBBLE_RANGE - TERRAIN_GENERATION_CONFIG.FOREST_CLUSTER_RADIUS_WOBBLE_CENTER)) {
             const tile = this.tiles[y][x];
             if (tile.terrain === TERRAIN_TYPE.EMPTY) {
               tile.terrain = TERRAIN_TYPE.FOREST;
@@ -138,16 +140,17 @@ export class Grid {
     }
 
     // 3. Scatter Rock Clusters — scaled to map area
-    const numRockClusters = Math.round(4 * mapScale);
+    const numRockClusters = Math.round(TERRAIN_GENERATION_CONFIG.ROCK_CLUSTER_COUNT_SCALE * mapScale);
     for (let i = 0; i < numRockClusters; i++) {
-      const cx = Math.floor(this.random() * (this.width - 4)) + 2;
-      const cy = Math.floor(this.random() * (this.height - 4)) + 2;
-      const radius = 2 + Math.floor(this.random() * 4);
+      const margin = TERRAIN_GENERATION_CONFIG.ROCK_CLUSTER_CENTER_MARGIN;
+      const cx = Math.floor(this.random() * (this.width - margin)) + margin / 2;
+      const cy = Math.floor(this.random() * (this.height - margin)) + margin / 2;
+      const radius = TERRAIN_GENERATION_CONFIG.ROCK_CLUSTER_RADIUS_BASE + Math.floor(this.random() * TERRAIN_GENERATION_CONFIG.ROCK_CLUSTER_RADIUS_RANDOM);
 
       for (let y = Math.max(0, cy - radius); y <= Math.min(this.height - 1, cy + radius); y++) {
         for (let x = Math.max(0, cx - radius); x <= Math.min(this.width - 1, cx + radius); x++) {
           const dist = Math.sqrt((x - cx) ** 2 + (y - cy) ** 2);
-          if (dist <= radius + (this.random() * 0.6 - 0.3)) {
+          if (dist <= radius + (this.random() * TERRAIN_GENERATION_CONFIG.ROCK_CLUSTER_RADIUS_WOBBLE_RANGE - TERRAIN_GENERATION_CONFIG.ROCK_CLUSTER_RADIUS_WOBBLE_CENTER)) {
             const tile = this.tiles[y][x];
             if (tile.terrain === TERRAIN_TYPE.EMPTY) {
               tile.terrain = TERRAIN_TYPE.ROCK;
@@ -159,10 +162,10 @@ export class Grid {
   }
 
   generateLakes() {
-    const numLakes = Math.floor(this.random() * 6); // 0-5 lakes
+    const numLakes = Math.floor(this.random() * TERRAIN_GENERATION_CONFIG.LAKE_COUNT_RANDOM_RANGE); // 0-5 lakes
     for (let i = 0; i < numLakes; i++) {
-      const radius = 2 + Math.floor(this.random() * 6); // radius 2-7 for varying size
-      const margin = radius + 2;
+      const radius = TERRAIN_GENERATION_CONFIG.LAKE_RADIUS_MIN + Math.floor(this.random() * TERRAIN_GENERATION_CONFIG.LAKE_RADIUS_RANDOM_RANGE);
+      const margin = radius + TERRAIN_GENERATION_CONFIG.LAKE_MARGIN_BUFFER;
       if (this.width <= margin * 2 || this.height <= margin * 2) continue;
 
       const cx = margin + Math.floor(this.random() * (this.width - margin * 2));
@@ -171,7 +174,7 @@ export class Grid {
       for (let y = Math.max(0, cy - radius); y <= Math.min(this.height - 1, cy + radius); y++) {
         for (let x = Math.max(0, cx - radius); x <= Math.min(this.width - 1, cx + radius); x++) {
           const dist = Math.sqrt((x - cx) ** 2 + (y - cy) ** 2);
-          if (dist <= radius + (this.random() * 0.8 - 0.4)) {
+          if (dist <= radius + (this.random() * TERRAIN_GENERATION_CONFIG.LAKE_RADIUS_WOBBLE_RANGE - TERRAIN_GENERATION_CONFIG.LAKE_RADIUS_WOBBLE_CENTER)) {
             const tile = this.tiles[y][x];
             if (tile.terrain === TERRAIN_TYPE.EMPTY) {
               tile.terrain = TERRAIN_TYPE.RIVER;
@@ -196,8 +199,8 @@ export class Grid {
     const endPos1 = this.getRandomEdgePoint(endEdge1);
 
     // Pick interior junction point J
-    const marginX = Math.max(5, Math.floor(this.width * 0.25));
-    const marginY = Math.max(5, Math.floor(this.height * 0.25));
+    const marginX = Math.max(TERRAIN_GENERATION_CONFIG.RIVER_MARGIN_ABSOLUTE, Math.floor(this.width * TERRAIN_GENERATION_CONFIG.RIVER_MARGIN_SCALE));
+    const marginY = Math.max(TERRAIN_GENERATION_CONFIG.RIVER_MARGIN_ABSOLUTE, Math.floor(this.height * TERRAIN_GENERATION_CONFIG.RIVER_MARGIN_SCALE));
     const junction = {
       x: marginX + Math.floor(this.random() * (this.width - marginX * 2)),
       y: marginY + Math.floor(this.random() * (this.height - marginY * 2)),
@@ -209,11 +212,11 @@ export class Grid {
     // 30% Merge (2 starts -> 1 end, with junction)
     const mode = this.random();
 
-    if (mode < 0.4) {
+    if (mode < TERRAIN_GENERATION_CONFIG.RIVER_SIMPLE_PROBABILITY) {
       // SIMPLE: Direct path from Start1 to End1
       const path = this.traceRiverPath(startPos1, endPos1);
       this.paintRiverPath(path);
-    } else if (mode < 0.7) {
+    } else if (mode < TERRAIN_GENERATION_CONFIG.RIVER_SIMPLE_PROBABILITY + TERRAIN_GENERATION_CONFIG.RIVER_FORK_PROBABILITY) {
       // FORK: 1 Start, 2 Ends meeting at Junction
       const path1 = this.traceRiverPath(startPos1, junction);
       this.paintRiverPath(path1);
@@ -247,7 +250,7 @@ export class Grid {
   }
 
   getRandomEdgePoint(edge) {
-    const margin = Math.max(3, Math.floor(Math.min(this.width, this.height) * 0.1));
+    const margin = Math.max(TERRAIN_GENERATION_CONFIG.RIVER_EDGE_POINT_MARGIN_ABSOLUTE, Math.floor(Math.min(this.width, this.height) * TERRAIN_GENERATION_CONFIG.RIVER_EDGE_POINT_MARGIN_SCALE));
     switch (edge) {
       case 'top':    return { x: margin + Math.floor(this.random() * (this.width - margin * 2)), y: 0 };
       case 'bottom': return { x: margin + Math.floor(this.random() * (this.width - margin * 2)), y: this.height - 1 };
@@ -259,7 +262,7 @@ export class Grid {
   traceRiverPath(start, end) {
     const path = [{ x: start.x, y: start.y }];
     let x = start.x, y = start.y;
-    const maxSteps = (this.width + this.height) * 4;
+    const maxSteps = (this.width + this.height) * TERRAIN_GENERATION_CONFIG.RIVER_PATH_MAX_STEPS_MULTIPLIER;
 
     while (path.length < maxSteps) {
       const dx = end.x - x;
@@ -271,8 +274,8 @@ export class Grid {
       }
 
       // 65% move toward target, 35% wander for organic look
-      if (this.random() < 0.65) {
-        if (Math.abs(dx) > Math.abs(dy) || (Math.abs(dx) === Math.abs(dy) && this.random() < 0.5)) {
+      if (this.random() < TERRAIN_GENERATION_CONFIG.RIVER_PATH_TOWARD_TARGET_CHANCE) {
+        if (Math.abs(dx) > Math.abs(dy) || (Math.abs(dx) === Math.abs(dy) && this.random() < TERRAIN_GENERATION_CONFIG.RIVER_PATH_TIE_BREAK_CHANCE)) {
           x += Math.sign(dx);
         } else {
           y += Math.sign(dy);
@@ -280,9 +283,9 @@ export class Grid {
       } else {
         // Perpendicular wander
         if (Math.abs(dx) >= Math.abs(dy)) {
-          y += this.random() < 0.5 ? -1 : 1;
+          y += this.random() < TERRAIN_GENERATION_CONFIG.RIVER_PATH_TIE_BREAK_CHANCE ? -1 : 1;
         } else {
-          x += this.random() < 0.5 ? -1 : 1;
+          x += this.random() < TERRAIN_GENERATION_CONFIG.RIVER_PATH_TIE_BREAK_CHANCE ? -1 : 1;
         }
       }
 
@@ -386,13 +389,14 @@ export class Grid {
   canPlaceRoad(x, y) {
     const tile = this.getTile(x, y);
     if (!tile) return false;
-    return tile.terrain === TERRAIN_TYPE.EMPTY && !tile.hasRoad && tile.zone === ZONE.NONE && !tile.producer;
+    return tile.terrain === TERRAIN_TYPE.EMPTY && !tile.destroyed && !tile.hasRoad && tile.zone === ZONE.NONE && !tile.producer;
   }
 
   canZone(x, y) {
     const tile = this.getTile(x, y);
     if (!tile) return false;
     if (tile.terrain !== TERRAIN_TYPE.EMPTY) return false;
+    if (tile.destroyed) return false;
     if (tile.hasRoad || tile.producer) return false;
     if (tile.zone !== ZONE.NONE) return false;
     return this.isRoadAdjacent(x, y);
@@ -401,7 +405,7 @@ export class Grid {
   canPlaceProducer(x, y, producerType) {
     const tile = this.getTile(x, y);
     if (!tile) return false;
-    if (tile.terrain !== TERRAIN_TYPE.EMPTY || tile.hasRoad || tile.zone !== ZONE.NONE || tile.producer) return false;
+    if (tile.terrain !== TERRAIN_TYPE.EMPTY || tile.destroyed || tile.hasRoad || tile.zone !== ZONE.NONE || tile.producer) return false;
 
     if (producerType) {
       const config = PRODUCER_CONFIG[producerType];
@@ -447,7 +451,7 @@ export class Grid {
       surveyTarget: null,
       surveyProgress: 0,
       surveyRequired: 0,
-      budget: 100,
+      budget: SERVICE_GLOBAL_CONFIG.BUDGET_MAX_VALUE,
       x,
       y,
     };
@@ -477,7 +481,8 @@ export class Grid {
 
     surveyor.surveyTarget = { x, y };
     surveyor.surveyProgress = 0;
-    surveyor.surveyRequired = target.terrain === TERRAIN.MOUNTAIN ? 20 : 10;
+    const surveyDuration = PRODUCER_CONFIG[PRODUCER_TYPE.SURVEY_STATION].surveyDuration;
+    surveyor.surveyRequired = target.terrain === TERRAIN.MOUNTAIN ? surveyDuration.mountain : surveyDuration.standard;
     target.surveyingBy = surveyor.id;
     target.surveyProgress = 0;
     target.surveyRequired = surveyor.surveyRequired;

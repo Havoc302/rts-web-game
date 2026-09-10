@@ -9,6 +9,7 @@ export class FireManager {
     for (let y = 0; y < grid.height; y++) {
       for (let x = 0; x < grid.width; x++) {
         const tile = grid.tiles[y][x];
+        if (tile.destroyed) continue;
         if (tile.onFire) continue;
 
         const isBuilding = tile.zone !== ZONE.NONE || (tile.producer && tile.terrain !== TERRAIN_TYPE.RIVER);
@@ -16,7 +17,7 @@ export class FireManager {
 
         let chance = FIRE_CONFIG.BASE_IGNITION_CHANCE;
         if (tile.zone === ZONE.INDUSTRIAL) chance *= FIRE_CONFIG.INDUSTRIAL_IGNITION_MULTIPLIER;
-        if ((tile.pollution || 0) >= 5) chance += FIRE_CONFIG.HIGH_POLLUTION_IGNITION_BONUS;
+        if ((tile.pollution || 0) >= FIRE_CONFIG.HIGH_POLLUTION_IGNITION_THRESHOLD) chance += FIRE_CONFIG.HIGH_POLLUTION_IGNITION_BONUS;
 
         if (Math.random() < chance) {
           tile.onFire = true;
@@ -50,8 +51,9 @@ export class FireManager {
         }
 
         tile.fireDamage += FIRE_CONFIG.DAMAGE_PER_TICK;
-        if (tile.fireDamage >= 100) {
+        if (tile.fireDamage >= FIRE_CONFIG.MAX_DAMAGE) {
           grid.bulldoze(x, y);
+          tile.destroyed = true;
           tile.onFire = false;
           tile.fireDamage = 0;
         }

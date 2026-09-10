@@ -3,6 +3,7 @@ import { Grid } from '../src/engine/Grid.js';
 import { Simulation } from '../src/engine/Simulation.js';
 import { UtilityManager } from '../src/engine/UtilityManager.js';
 import { PollutionManager } from '../src/engine/PollutionManager.js';
+import { FireManager } from '../src/engine/FireManager.js';
 import { PRODUCER_TYPE, ZONE, DENSITY, GROWTH_CONFIG, MAP_WIDTH, MAP_HEIGHT, TERRAIN_TYPE, CRIME_CONFIG, MEDICAL_CONFIG } from '../src/config.js';
 
 console.log('Running Phase 1 Core Loop Automated Verification Tests...\n');
@@ -35,6 +36,49 @@ console.log('Running Phase 1 Core Loop Automated Verification Tests...\n');
   assert.strictEqual(tile.shortfall.power, false, 'Tile should be serviced by power');
   assert.strictEqual(tile.distanceToProducer.power, 4, 'Distance along road to producer connection point should be 4');
   console.log('✔ Test 1 Passed: Road Network BFS & distance computation correct');
+}
+
+// Test 1b: Windmills transmit through adjacent batteries without road access
+{
+  const grid = new Grid(8, 8);
+  for (let y = 0; y < 8; y++) {
+    for (let x = 0; x < 8; x++) {
+      grid.tiles[y][x].terrain = 'flat';
+    }
+  }
+
+  const windmill = grid.placeProducer(2, 2, PRODUCER_TYPE.WINDMILL, 40);
+  const battery = grid.placeProducer(3, 2, PRODUCER_TYPE.BATTERY, 400);
+  grid.placeRoad(3, 3);
+
+  UtilityManager.allocateAll(grid);
+
+  assert.strictEqual(windmill.hasBatteryConnection, true, 'Windmill should use adjacent battery transmission');
+  assert.ok(windmill.capacity > 0, 'Windmill should generate power without adjacent road access');
+  assert.ok(battery.storedEnergy > 0, 'Road-connected battery should receive surplus wind power');
+  console.log('✔ Test 1b Passed: Windmills use batteries instead of road access');
+}
+
+// Test 1c: Fire destroys a windmill at the configured damage threshold
+{
+  const grid = new Grid(8, 8);
+  for (let y = 0; y < 8; y++) {
+    for (let x = 0; x < 8; x++) {
+      grid.tiles[y][x].terrain = 'flat';
+    }
+  }
+
+  const windmill = grid.placeProducer(2, 2, PRODUCER_TYPE.WINDMILL, 40);
+  const tile = grid.getTile(2, 2);
+  tile.onFire = true;
+  tile.fireDamage = 90;
+
+  FireManager.updateFires(grid, { fireInjuries: 0 });
+
+  assert.strictEqual(tile.producer, null, 'A windmill at maximum fire damage should be destroyed');
+  assert.strictEqual(grid.producers.includes(windmill), false, 'Destroyed windmill should leave the producer list');
+  assert.strictEqual(tile.destroyed, true, 'Destroyed tile should remain marked as destroyed');
+  console.log('✔ Test 1c Passed: Fire destroys windmills at maximum damage');
 }
 
 // Test 2: Nearest-served-first allocation (Power / Water)

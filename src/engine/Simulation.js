@@ -1,4 +1,4 @@
-import { GROWTH_CONFIG, DENSITY, ZONE, TERRAIN, USAGE_RATES, POLLUTION_CONFIG, JOBS_PROVIDED, EMPLOYABLE_POPULATION, RESIDENTIAL_CAPACITY, LABOR_TAX_GROWTH_CONFIG, FOREST_DESIRABILITY_RADIUS, PRODUCER_TYPE, POWER_PRODUCER_TYPES, ROAD_MAINTENANCE_COST, TAX_REVENUE_CONFIG, CRIME_CONFIG, MEDICAL_CONFIG, TICKS_PER_HOUR, HOURS_PER_DAY, DAY_START_HOUR, NIGHT_START_HOUR } from '../config.js';
+import { GROWTH_CONFIG, DENSITY, ZONE, TERRAIN, USAGE_RATES, POLLUTION_CONFIG, JOBS_PROVIDED, EMPLOYABLE_POPULATION, RESIDENTIAL_CAPACITY, LABOR_TAX_GROWTH_CONFIG, FOREST_DESIRABILITY_RADIUS, PRODUCER_TYPE, PRODUCER_CONFIG, POWER_PRODUCER_TYPES, ROAD_MAINTENANCE_COST, TAX_REVENUE_CONFIG, CRIME_CONFIG, MEDICAL_CONFIG, SERVICE_GLOBAL_CONFIG, TICKS_PER_HOUR, HOURS_PER_DAY, DAY_START_HOUR, NIGHT_START_HOUR } from '../config.js';
 import { UtilityManager } from './UtilityManager.js';
 import { PollutionManager } from './PollutionManager.js';
 import { ServiceManager } from './ServiceManager.js';
@@ -125,7 +125,7 @@ export class Simulation {
         }
 
         if ((tile.crime || 0) >= CRIME_CONFIG.CRIME_PENALTY_THRESHOLD) {
-          delta += -2;
+          delta += CRIME_CONFIG.CRIME_GROWTH_PENALTY;
         }
 
         // Tax pressure applies continuously across all zone types.
@@ -134,16 +134,16 @@ export class Simulation {
         if (tile.zone === ZONE.RESIDENTIAL) {
           // Forest desirability bonus
           if (this.hasNearbyForest(x, y)) {
-            delta += 1;
+            delta += SERVICE_GLOBAL_CONFIG.FOREST_DESIRABILITY_BONUS;
           }
           // Essential services desirability bonuses
           if (tile.services) {
-            if (tile.services.police) delta += 1;
-            if (tile.services.fire) delta += 1;
-            if (tile.services.hospital) delta += 1;
-            if (tile.services.school) delta += 1;
-            if (tile.services.library) delta += 1;
-            if (tile.services.cityHall) delta += 2;
+            if (tile.services.police) delta += SERVICE_GLOBAL_CONFIG.POLICE_DESIRABILITY_BONUS;
+            if (tile.services.fire) delta += SERVICE_GLOBAL_CONFIG.FIRE_DESIRABILITY_BONUS;
+            if (tile.services.hospital) delta += SERVICE_GLOBAL_CONFIG.HOSPITAL_DESIRABILITY_BONUS;
+            if (tile.services.school) delta += SERVICE_GLOBAL_CONFIG.SCHOOL_DESIRABILITY_BONUS;
+            if (tile.services.library) delta += SERVICE_GLOBAL_CONFIG.LIBRARY_DESIRABILITY_BONUS;
+            if (tile.services.cityHall) delta += SERVICE_GLOBAL_CONFIG.CITY_HALL_DESIRABILITY_BONUS;
           }
           // Hospital capacity shortfall triggers a citywide public health penalty
           if (this.stats.untreatedPatients > 0) {
@@ -157,10 +157,10 @@ export class Simulation {
         } else if (tile.zone === ZONE.COMMERCIAL || tile.zone === ZONE.INDUSTRIAL) {
           // Commercial & Industrial development rate depends on how many jobs are filled (empRate)
           let empBonus = 0;
-          if (empRate >= 0.75) {
+          if (empRate >= LABOR_TAX_GROWTH_CONFIG.EMPLOYMENT_RATE_HIGH) {
             empBonus = LABOR_TAX_GROWTH_CONFIG.EMPLOYMENT_BONUS_MAX; // Strong worker supply boosts development
-          } else if (empRate < 0.25) {
-            empBonus = -1; // Worker shortage slows/stalls development
+          } else if (empRate < LABOR_TAX_GROWTH_CONFIG.EMPLOYMENT_RATE_LOW) {
+            empBonus = LABOR_TAX_GROWTH_CONFIG.EMPLOYMENT_SHORTAGE_PENALTY; // Worker shortage slows/stalls development
           }
           delta += empBonus;
         }
@@ -218,7 +218,7 @@ export class Simulation {
       if (p.type === 'sewage_plant') stats.sewageCapacity += p.capacity;
       if (p.runningCost) stats.serviceExpenses += p.runningCost;
       if (p.type === PRODUCER_TYPE.SURVEY_STATION && p.surveyTarget) {
-        stats.powerDemand += 10;
+        stats.powerDemand += PRODUCER_CONFIG[PRODUCER_TYPE.SURVEY_STATION].activeUtilityUsage.power;
       }
       if (p.totalJobs && p.totalJobs > 0) stats.totalJobsProvided += p.totalJobs;
       if (p.type === PRODUCER_TYPE.HOSPITAL && p.operational) {

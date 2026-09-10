@@ -1,7 +1,7 @@
 import { Grid } from './engine/Grid.js';
 import { Simulation } from './engine/Simulation.js';
 import { Renderer } from './engine/Renderer.js';
-import { ZONE, TERRAIN, PRODUCER_TYPE, PRODUCER_CONFIG, COSTS, TILE_SIZE, STARTING_TREASURY, RESIDENTIAL_CAPACITY, JOBS_PROVIDED, FOREST_POLLUTION_ABSORPTION, FOREST_DESIRABILITY_RADIUS, CRIME_CONFIG, MEDICAL_CONFIG, POWER_PRODUCER_TYPES, POLLUTION_CONFIG, COAL_CONFIG, WIND_CONFIG, SOLAR_CONFIG, BATTERY_CONFIG, DENSITY } from './config.js';
+import { ZONE, TERRAIN, PRODUCER_TYPE, PRODUCER_CONFIG, COSTS, TILE_SIZE, STARTING_TREASURY, RESIDENTIAL_CAPACITY, JOBS_PROVIDED, FOREST_POLLUTION_ABSORPTION, FOREST_DESIRABILITY_RADIUS, CRIME_CONFIG, MEDICAL_CONFIG, POWER_PRODUCER_TYPES, POLLUTION_CONFIG, COAL_CONFIG, WIND_CONFIG, SOLAR_CONFIG, BATTERY_CONFIG, DENSITY, RENDERER_CONFIG, TERRAIN_GENERATION_CONFIG } from './config.js';
 
 class GameApp {
   constructor() {
@@ -134,7 +134,7 @@ class GameApp {
     const regenBtn = document.getElementById('btn-regen-map');
     if (regenBtn) {
       regenBtn.addEventListener('click', () => {
-        const newSeed = Math.floor(Math.random() * 9000000) + 100000;
+        const newSeed = Math.floor(Math.random() * TERRAIN_GENERATION_CONFIG.RANDOM_SEED_MAX) + TERRAIN_GENERATION_CONFIG.RANDOM_SEED_MIN;
         this.resetMapWithSeed(newSeed);
       });
     }
@@ -305,7 +305,7 @@ class GameApp {
       const worldY = (mouseY - this.canvas.height / 2 - this.renderer.cameraY) / oldZoom;
 
       const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
-      const newZoom = Math.min(2.5, Math.max(0.4, oldZoom * zoomFactor));
+      const newZoom = Math.min(RENDERER_CONFIG.ZOOM_MAX, Math.max(RENDERER_CONFIG.ZOOM_MIN, oldZoom * zoomFactor));
 
       const newCameraX = mouseX - this.canvas.width / 2 - worldX * newZoom;
       const newCameraY = mouseY - this.canvas.height / 2 - worldY * newZoom;
@@ -620,14 +620,14 @@ class GameApp {
       prodPanel.style.display = 'block';
       const config = PRODUCER_CONFIG[tile.producer.type];
       const prodHasRoad = this.grid.isRoadAdjacent(tile.producer.x, tile.producer.y);
-      const roadStatusStr = prodHasRoad ? '' : ' ⚠️ (Needs Road!)';
+      const isBatteryDependent = tile.producer.type === PRODUCER_TYPE.WINDMILL || tile.producer.type === PRODUCER_TYPE.SOLAR_PANEL;
+      const roadStatusStr = prodHasRoad || isBatteryDependent ? '' : ' ⚠️ (Needs Road!)';
       const utilityStatusStr = tile.producer.type === PRODUCER_TYPE.SURVEY_STATION && prodHasRoad && !tile.producer.operational
         ? ' ⚠️ (Needs Utilities!)'
         : '';
       const contaminatedStr = tile.producer.contaminated ? ' ☣️ Contaminated!' : '';
       document.getElementById('inspect-producer-type').textContent = (config ? config.name : tile.producer.type) + roadStatusStr + utilityStatusStr + contaminatedStr;
 
-      const isBatteryDependent = tile.producer.type === PRODUCER_TYPE.WINDMILL || tile.producer.type === PRODUCER_TYPE.SOLAR_PANEL;
       if (isBatteryDependent && !tile.producer.hasBatteryConnection) {
         document.getElementById('inspect-producer-cap').textContent = '⚠️ Offline (Must be adjacent to Battery Storage)';
       } else if (tile.producer.type === PRODUCER_TYPE.BATTERY) {

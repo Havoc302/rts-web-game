@@ -211,7 +211,6 @@ export const PRODUCER_CONFIG = {
     cost: 150 * MONEY_MULTIPLIER,
     color: '#94a3b8',
     requiresWaterAdjacent: false,
-    utilityUsage: { water: 1, sewage: 1 },
   },
   [PRODUCER_TYPE.SOLAR_PANEL]: {
     name: 'Solar Panel',
@@ -220,7 +219,6 @@ export const PRODUCER_CONFIG = {
     cost: 200 * MONEY_MULTIPLIER,
     color: '#fbbf24',
     requiresWaterAdjacent: false,
-    utilityUsage: { water: 1, sewage: 1 },
   },
   [PRODUCER_TYPE.BATTERY]: {
     name: 'Battery Storage',
@@ -342,19 +340,27 @@ export const BASE_INCOME = {
 };
 
 export const POLLUTION_CONFIG = {
+  // Industrial pollution footprint and strength by zone density.
   INDUSTRIAL_RADIUS: { light: 3, medium: 5, high: 7 },
   INDUSTRIAL_EMISSION: { light: 2, medium: 5, high: 10 },
 
+  // Pollution created when sewage service is unavailable.
   SEWAGE_BACKUP_RADIUS: 4,
   SEWAGE_BACKUP_EMISSION: 6,
 
+  // Pollution lost by river water as it moves downstream.
   RIVER_SEWAGE_FALLOFF: 10,
+  RIVER_FLOW_DOWNSTREAM_THRESHOLD: 0.5,
 
+  // Pollution spread by a water tower supplied by contaminated water.
   CONTAMINATED_TOWER_RADIUS: 8,
   CONTAMINATED_TOWER_EMISSION: 15,
 
+  // Pollution levels that affect development and display.
   POLLUTION_GROWTH_PENALTY_THRESHOLD: 5,
   POLLUTION_GROWTH_PENALTY: -1,
+  RIVER_POLLUTION_LEVEL_MAX_DISPLAY: 30,
+  POLLUTION_DISPLAY_THRESHOLD: 0.5,
 
   RIVER_FLOW_DIRECTION: 'south',
 };
@@ -381,7 +387,14 @@ export const JOBS_PROVIDED = {
 export const EMPLOYABLE_POPULATION = RESIDENTIAL_CAPACITY;
 
 export const LABOR_TAX_GROWTH_CONFIG = {
+  // Employment thresholds and deltas used by commercial/industrial growth.
   EMPLOYMENT_BONUS_MAX: 1,
+  EMPLOYMENT_RATE_HIGH: 0.75,
+  EMPLOYMENT_RATE_LOW: 0.25,
+  EMPLOYMENT_SHORTAGE_PENALTY: -1,
+  MIN_SERVICE_EMPLOYMENT_RATE: 0.3,
+
+  // Tax pressure and its effect on population and jobs.
   GROWTH_NEUTRAL_RATE: 40,
   POPULATION_OUTFLOW_START_RATE: 50,
   MAX_TAX_RATE: 100,
@@ -393,12 +406,22 @@ export const FOREST_POLLUTION_ABSORPTION = 6;
 export const FOREST_DESIRABILITY_RADIUS = 3;
 
 export const CRIME_CONFIG = {
+  // Crime probability and event volume.
   BASE_CRIME_CHANCE: 0.05,            // Baseline probability of crime spawning per tick
   JOB_SCARCITY_CRIME_SCALER: 2.5,     // Scales crime probability with job scarcity (residents who want work but have none), not raw unemployment
   CRIME_EVENTS_PER_TICK_MAX: 15,      // Max zoned tiles hit per tick
   POLICE_SUPPRESSION_CHANCE: 0.85,    // 85% chance police presence cancels a crime event on a tile
+
+  // Crime severity, spread, decay, and growth impact.
   CRIME_PENALTY_THRESHOLD: 3,         // Crime level triggering growth score penalties
   CRIME_DISSIPATION_RATE: 1,          // Natural crime decay rate per tick
+  CRIME_GROWTH_PENALTY: -2,           // Growth delta applied when crime reaches the penalty threshold
+  CRIME_INCREMENT_PER_EVENT: 2,        // Crime points added by a successful event
+  CRIME_DIFFUSION_THRESHOLD: 4,        // Crime level required before spreading to neighbors
+  CRIME_DIFFUSION_INCREMENT: 1,        // Crime points added to each diffused neighbor
+  MAX_CRIME_LEVEL: 10,                 // Maximum crime points on one tile
+
+  // Tax loss caused by crime.
   TAX_LOSS_PER_CRIME_POINT: 0.05,     // Each crime point reduces tile tax yield by 5%
   MAX_TAX_LOSS_RATIO: 0.50,           // Capped at 50% max tax loss per tile
 };
@@ -415,11 +438,75 @@ export const MEDICAL_CONFIG = {
 export const FIRE_CONFIG = {
   BASE_IGNITION_CHANCE: 0.002,            // Baseline chance per tick for an eligible tile to catch fire
   INDUSTRIAL_IGNITION_MULTIPLIER: 3.0,    // Industrial tiles are 3x more likely to ignite
+  HIGH_POLLUTION_IGNITION_THRESHOLD: 5,   // Pollution level at which ignition becomes more likely
   HIGH_POLLUTION_IGNITION_BONUS: 0.003,   // Extra chance if tile pollution >= 5
-  DAMAGE_PER_TICK: 20,                    // Fire damage accumulated per tick (burns down at 100)
+  DAMAGE_PER_TICK: 10,                    // Fire damage accumulated per tick (10 ticks to reach 100)
+  MAX_DAMAGE: 100,                         // Damage threshold that destroys the burning building
   SPREAD_CHANCE_PER_TICK: 0.15,           // Chance to ignite an adjacent non-dirt/road tile per tick
   INJURIES_PER_BURNING_TILE: 5,           // Burn trauma patients added to hospital demand per active fire tick
   BASE_SUPPRESSION_POWER: 35,             // Base fire suppression points per tick from nearby fire stations
+};
+
+// Global service staffing, coverage, and operating-cost balance controls.
+export const SERVICE_GLOBAL_CONFIG = {
+  BUDGET_MAX_VALUE: 100,                  // Maximum service budget slider value
+  MIN_STAFFING_BASELINE: 2,               // Minimum staff for population-scaled services
+  DEFAULT_SERVICE_RADIUS: 10,             // Fallback radius when a service tier omits one
+  MIN_EFFECTIVE_SERVICE_RADIUS: 1,         // Smallest non-zero radius for staffed coverage
+  COVERAGE_MIN_FACTOR: 0.3,               // Coverage factor at zero effective staffing
+  COVERAGE_MAX_FACTOR: 0.7,               // Additional coverage factor at full staffing
+  UTILITY_DEMAND_COST_MULTIPLIER: 0.15,   // Running-cost increase per utility demand unit
+  FOREST_DESIRABILITY_BONUS: 1,           // Residential growth bonus near forest
+  POLICE_DESIRABILITY_BONUS: 1,           // Residential growth bonus for police coverage
+  FIRE_DESIRABILITY_BONUS: 1,             // Residential growth bonus for fire coverage
+  HOSPITAL_DESIRABILITY_BONUS: 1,         // Residential growth bonus for hospital coverage
+  SCHOOL_DESIRABILITY_BONUS: 1,           // Residential growth bonus for school coverage
+  LIBRARY_DESIRABILITY_BONUS: 1,          // Residential growth bonus for library coverage
+  CITY_HALL_DESIRABILITY_BONUS: 2,        // Residential growth bonus for city hall coverage
+};
+
+// Procedural map-generation balance controls. Adjust these to change map character.
+export const TERRAIN_GENERATION_CONFIG = {
+  RANDOM_SEED_MAX: 9000000,               // Upper bound for generated map seeds
+  RANDOM_SEED_MIN: 100000,                // Lower bound for generated map seeds
+  MAP_SCALE_BASE_AREA: 900,               // Map area represented by one terrain-generation scale unit
+  FOREST_CLUSTER_COUNT_SCALE: 6,          // Forest clusters per map-scale unit
+  FOREST_CLUSTER_CENTER_MARGIN: 4,        // Margin used when choosing forest cluster centers
+  FOREST_CLUSTER_RADIUS_BASE: 3,          // Minimum forest cluster radius
+  FOREST_CLUSTER_RADIUS_RANDOM: 5,        // Random forest radius range
+  FOREST_CLUSTER_RADIUS_WOBBLE_RANGE: 0.8, // Forest edge wobble range
+  FOREST_CLUSTER_RADIUS_WOBBLE_CENTER: 0.4, // Forest edge wobble midpoint
+  ROCK_CLUSTER_COUNT_SCALE: 4,            // Rock clusters per map-scale unit
+  ROCK_CLUSTER_CENTER_MARGIN: 4,          // Margin used when choosing rock cluster centers
+  ROCK_CLUSTER_RADIUS_BASE: 2,            // Minimum rock cluster radius
+  ROCK_CLUSTER_RADIUS_RANDOM: 4,          // Random rock radius range
+  ROCK_CLUSTER_RADIUS_WOBBLE_RANGE: 0.6,  // Rock edge wobble range
+  ROCK_CLUSTER_RADIUS_WOBBLE_CENTER: 0.3, // Rock edge wobble midpoint
+  LAKE_COUNT_RANDOM_RANGE: 6,             // Random lake count range, producing 0 through 5 lakes
+  LAKE_RADIUS_MIN: 2,                     // Minimum lake radius
+  LAKE_RADIUS_RANDOM_RANGE: 6,            // Random lake radius range
+  LAKE_MARGIN_BUFFER: 2,                  // Extra lake placement margin around its radius
+  LAKE_RADIUS_WOBBLE_RANGE: 0.8,           // Lake edge wobble range
+  LAKE_RADIUS_WOBBLE_CENTER: 0.4,          // Lake edge wobble midpoint
+  RIVER_SIMPLE_PROBABILITY: 0.4,           // Probability of a single uninterrupted river
+  RIVER_FORK_PROBABILITY: 0.3,             // Probability of a river fork
+  RIVER_MARGIN_SCALE: 0.25,               // Interior junction margin as a map fraction
+  RIVER_MARGIN_ABSOLUTE: 5,               // Minimum interior junction margin
+  RIVER_PATH_MAX_STEPS_MULTIPLIER: 4,     // Path length limit per map dimension
+  RIVER_PATH_TOWARD_TARGET_CHANCE: 0.65,  // Chance of moving toward the target
+  RIVER_PATH_TIE_BREAK_CHANCE: 0.5,        // Chance of choosing one axis when equally distant
+  RIVER_EDGE_POINT_MARGIN_SCALE: 0.1,      // Edge entry margin as a map fraction
+  RIVER_EDGE_POINT_MARGIN_ABSOLUTE: 3,     // Minimum edge entry margin
+};
+
+// Renderer tuning controls. These affect presentation and frame-time behavior.
+export const RENDERER_CONFIG = {
+  DEFAULT_ZOOM: 1.0,                       // Initial camera zoom
+  ZOOM_MAX: 2.5,                           // Maximum camera zoom
+  ZOOM_MIN: 0.4,                           // Minimum camera zoom
+  LOW_DETAIL_THRESHOLD: 0.7,               // Zoom below which low-detail rendering is used
+  DELTA_TIME_MAX: 0.1,                     // Maximum animation time accumulated per frame
+  TERRAIN_BUILD_BUDGET: 1200,              // Terrain-cache tiles built per frame
 };
 
 

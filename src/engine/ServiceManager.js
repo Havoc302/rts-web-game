@@ -1,4 +1,4 @@
-import { SERVICE_TYPE, SERVICE_CONFIG, DENSITY } from '../config.js';
+import { SERVICE_TYPE, SERVICE_CONFIG, SERVICE_GLOBAL_CONFIG, LABOR_TAX_GROWTH_CONFIG, DENSITY } from '../config.js';
 import { RoadNetwork } from './RoadNetwork.js';
 
 export class ServiceManager {
@@ -61,9 +61,9 @@ export class ServiceManager {
         }
         prod.density = density;
 
-        const budgetRatio = Math.max(0, Math.min(100, prod.budget ?? 100)) / 100;
-        const maxJobs = config.jobs[density] || 10;
-        const populationOfficers = Math.max(2, Math.ceil(totalPopulation / (config.officersPerPopulation || Infinity)));
+        const budgetRatio = Math.max(0, Math.min(SERVICE_GLOBAL_CONFIG.BUDGET_MAX_VALUE, prod.budget ?? SERVICE_GLOBAL_CONFIG.BUDGET_MAX_VALUE)) / SERVICE_GLOBAL_CONFIG.BUDGET_MAX_VALUE;
+        const maxJobs = config.jobs[density] || SERVICE_GLOBAL_CONFIG.MIN_STAFFING_BASELINE;
+        const populationOfficers = Math.max(SERVICE_GLOBAL_CONFIG.MIN_STAFFING_BASELINE, Math.ceil(totalPopulation / (config.officersPerPopulation || Infinity)));
         const populationStaffedTypes = [
           SERVICE_TYPE.POLICE_STATION,
           SERVICE_TYPE.FIRE_STATION,
@@ -75,19 +75,19 @@ export class ServiceManager {
         const budgetedJobs = Math.round(staffedBase * budgetRatio);
         prod.totalJobs = budgetedJobs;
         // Jobs filled scale with city employment rate (min 30% baseline staff)
-        prod.filledJobs = Math.min(budgetedJobs, Math.round(budgetedJobs * Math.max(0.3, employmentRate)));
+        prod.filledJobs = Math.min(budgetedJobs, Math.round(budgetedJobs * Math.max(LABOR_TAX_GROWTH_CONFIG.MIN_SERVICE_EMPLOYMENT_RATE, employmentRate)));
 
         const fillRatio = prod.totalJobs > 0 ? prod.filledJobs / prod.totalJobs : 0;
         const maxRadius = populationStaffedTypes.includes(type)
           ? Math.min(config.radius[density] || 0, prod.filledJobs)
-          : config.radius[density] || 10;
+          : config.radius[density] || SERVICE_GLOBAL_CONFIG.DEFAULT_SERVICE_RADIUS;
         // Coverage range scales with filled jobs
         prod.effectiveRadius = budgetRatio > 0
-          ? Math.max(1, Math.round(maxRadius * budgetRatio * (0.3 + 0.7 * fillRatio)))
+          ? Math.max(SERVICE_GLOBAL_CONFIG.MIN_EFFECTIVE_SERVICE_RADIUS, Math.round(maxRadius * budgetRatio * (SERVICE_GLOBAL_CONFIG.COVERAGE_MIN_FACTOR + SERVICE_GLOBAL_CONFIG.COVERAGE_MAX_FACTOR * fillRatio)))
           : 0;
         const baseCost = config.runningCost?.[density] || 0;
         const utilityDemand = Object.values(config.utilityUsage || {}).reduce((sum, amount) => sum + amount, 0);
-        const demandFactor = 1 + utilityDemand * 0.15;
+        const demandFactor = 1 + utilityDemand * SERVICE_GLOBAL_CONFIG.UTILITY_DEMAND_COST_MULTIPLIER;
         const staffingFactor = populationStaffedTypes.includes(type) && maxJobs > 0
           ? prod.totalJobs / maxJobs
           : 1;

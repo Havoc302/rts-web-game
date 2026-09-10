@@ -1,4 +1,4 @@
-import { TERRAIN, ZONE, DENSITY, PRODUCER_TYPE, TILE_SIZE, ORE_CONFIG, NIGHT_TINT_ALPHA } from '../config.js';
+import { TERRAIN, ZONE, DENSITY, PRODUCER_TYPE, TILE_SIZE, ORE_CONFIG, NIGHT_TINT_ALPHA, RENDERER_CONFIG, POLLUTION_CONFIG } from '../config.js';
 
 export class Renderer {
   constructor(canvas, grid) {
@@ -8,7 +8,7 @@ export class Renderer {
 
     this.cameraX = 40;
     this.cameraY = 40;
-    this.zoom = 1.0;
+    this.zoom = RENDERER_CONFIG.DEFAULT_ZOOM;
 
     this.overlayMode = 'normal';
     this.selectedTile = null;
@@ -24,7 +24,7 @@ export class Renderer {
   setCamera(x, y, zoom = this.zoom) {
     this.cameraX = x;
     this.cameraY = y;
-    this.zoom = Math.min(2.5, Math.max(0.4, zoom));
+    this.zoom = Math.min(RENDERER_CONFIG.ZOOM_MAX, Math.max(RENDERER_CONFIG.ZOOM_MIN, zoom));
   }
 
   setOverlayMode(mode) {
@@ -33,8 +33,8 @@ export class Renderer {
 
   render(simulation) {
     const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
-    if (this.zoom < 0.7 && this.lastRenderTime > 0 && now - this.lastRenderTime < 33) return;
-    const elapsed = this.lastRenderTime > 0 ? Math.min(0.1, (now - this.lastRenderTime) / 1000) : 0;
+    if (this.zoom < RENDERER_CONFIG.LOW_DETAIL_THRESHOLD && this.lastRenderTime > 0 && now - this.lastRenderTime < 33) return;
+    const elapsed = this.lastRenderTime > 0 ? Math.min(RENDERER_CONFIG.DELTA_TIME_MAX, (now - this.lastRenderTime) / 1000) : 0;
     this.lastRenderTime = now;
     this.animTime += elapsed;
 
@@ -53,7 +53,7 @@ export class Renderer {
     const mapPixelHeight = this.grid.height * TILE_SIZE;
     const startX = -mapPixelWidth / 2;
     const startY = -mapPixelHeight / 2;
-    const lowDetail = this.zoom < 0.7;
+    const lowDetail = this.zoom < RENDERER_CONFIG.LOW_DETAIL_THRESHOLD;
 
     // Only visit tiles whose world-space bounds intersect the viewport.
     const visibleLeft = (-width / 2 - this.cameraX) / this.zoom;
@@ -128,6 +128,10 @@ export class Renderer {
           this.renderOverlay(ctx, tile, px, py);
         }
 
+        if (tile.destroyed) {
+          this.renderDestroyedTile(ctx, px, py);
+        }
+
         if (this.highlightWaterAdjacent && tile.terrain === TERRAIN.FLAT && this.grid.isWaterAdjacent(x, y) && !tile.producer && !tile.hasRoad && tile.zone === ZONE.NONE) {
           ctx.strokeStyle = '#38bdf8';
           ctx.lineWidth = 2;
@@ -180,7 +184,7 @@ export class Renderer {
 
     const cacheContext = this.terrainCacheContext;
     const totalTiles = this.grid.width * this.grid.height;
-    const buildBudget = 1200;
+    const buildBudget = RENDERER_CONFIG.TERRAIN_BUILD_BUDGET;
     const endIndex = Math.min(totalTiles, this.terrainBuildIndex + buildBudget);
     for (; this.terrainBuildIndex < endIndex; this.terrainBuildIndex++) {
       const x = this.terrainBuildIndex % this.grid.width;
@@ -219,6 +223,15 @@ export class Renderer {
       ctx.fillStyle = '#f59e0b';
       ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
     }
+
+    if (tile.destroyed) {
+      this.renderDestroyedTile(ctx, px, py);
+    }
+  }
+
+  renderDestroyedTile(ctx, px, py) {
+    ctx.fillStyle = 'rgba(31, 41, 55, 0.88)';
+    ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
   }
 
   renderTerrainTile(ctx, tile, px, py, animateWater = true) {
@@ -274,8 +287,8 @@ export class Renderer {
       const wave = animateWater ? Math.sin(this.animTime * 3 - flowPos * 1.5) * 0.1 : 0;
       
       if (isPollutedWater) {
-        const pollutionLevel = Math.min(1, (tile.riverPollution || 0) / 30);
-        ctx.fillStyle = pollutionLevel > 0.5
+        const pollutionLevel = Math.min(1, (tile.riverPollution || 0) / POLLUTION_CONFIG.RIVER_POLLUTION_LEVEL_MAX_DISPLAY);
+        ctx.fillStyle = pollutionLevel > POLLUTION_CONFIG.POLLUTION_DISPLAY_THRESHOLD
           ? (wave > 0 ? '#4d7c0f' : '#3f6212')
           : (wave > 0 ? '#65a30d' : '#4d7c0f');
       } else {
@@ -750,7 +763,8 @@ export class Renderer {
     ctx.restore();
 
     const hasRoad = this.grid.isRoadAdjacent(tile.x, tile.y);
-    if (!hasRoad) {
+    const isBatteryDependent = prod.type === PRODUCER_TYPE.WINDMILL || prod.type === PRODUCER_TYPE.SOLAR_PANEL;
+    if (!hasRoad && !isBatteryDependent) {
       ctx.fillStyle = '#ef4444';
       ctx.fillRect(px + 2, py + 2, 10, 10);
       ctx.fillStyle = '#ffffff';
