@@ -1,3 +1,6 @@
+// Current public release version. Increment patch for fixes, minor for compatible features, major for breaking changes.
+export const APP_VERSION = '0.1.0';
+
 export const MAP_WIDTH = 200;
 export const MAP_HEIGHT = 200;
 export const GRID_WIDTH = MAP_WIDTH;

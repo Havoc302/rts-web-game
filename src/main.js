@@ -1,7 +1,7 @@
 import { Grid } from './engine/Grid.js';
 import { Simulation } from './engine/Simulation.js';
 import { Renderer } from './engine/Renderer.js';
-import { ZONE, TERRAIN, PRODUCER_TYPE, PRODUCER_CONFIG, COSTS, TILE_SIZE, STARTING_TREASURY, RESIDENTIAL_CAPACITY, JOBS_PROVIDED, FOREST_POLLUTION_ABSORPTION, FOREST_DESIRABILITY_RADIUS, CRIME_CONFIG, MEDICAL_CONFIG, POWER_PRODUCER_TYPES, POLLUTION_CONFIG, COAL_CONFIG, WIND_CONFIG, SOLAR_CONFIG, BATTERY_CONFIG, DENSITY, RENDERER_CONFIG, TERRAIN_GENERATION_CONFIG } from './config.js';
+import { APP_VERSION, ZONE, TERRAIN, PRODUCER_TYPE, PRODUCER_CONFIG, COSTS, TILE_SIZE, STARTING_TREASURY, RESIDENTIAL_CAPACITY, JOBS_PROVIDED, FOREST_POLLUTION_ABSORPTION, FOREST_DESIRABILITY_RADIUS, CRIME_CONFIG, MEDICAL_CONFIG, POWER_PRODUCER_TYPES, POLLUTION_CONFIG, COAL_CONFIG, WIND_CONFIG, SOLAR_CONFIG, BATTERY_CONFIG, DENSITY, RENDERER_CONFIG, TERRAIN_GENERATION_CONFIG } from './config.js';
 
 class GameApp {
   constructor() {
@@ -9,6 +9,7 @@ class GameApp {
     this.grid = new Grid();
     this.simulation = new Simulation(this.grid);
     this.renderer = new Renderer(this.canvas, this.grid);
+    document.getElementById('app-version').textContent = `v${APP_VERSION}`;
 
     this.treasury = STARTING_TREASURY;
     this.activeTool = 'pan';
@@ -454,7 +455,7 @@ class GameApp {
   }
 
   isMobileLayout() {
-    return typeof window !== 'undefined' && window.matchMedia('(max-width: 768px)').matches;
+    return typeof window !== 'undefined' && window.matchMedia('(max-width: 820px) and (hover: none) and (pointer: coarse)').matches;
   }
 
   updateBuildInfoPanel(tool) {
