@@ -51,6 +51,7 @@ body {
 /* Header */
 .header-bar {
   display: flex;
+  flex-wrap: nowrap;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
@@ -103,6 +104,7 @@ body {
   align-items: center;
   gap: 5px;
   flex-shrink: 0;
+  cursor: default;
 }
 
 .stat-icon {
@@ -478,6 +480,33 @@ h4 {
   margin-bottom: 8px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
+}
+
+/* Compact the top bar on 1080p and scaled laptop viewports */
+@media (max-width: 1600px), (max-height: 900px) {
+  .header-bar {
+    gap: 8px;
+    padding: 5px 10px;
+    margin: 6px 6px 0 6px;
+  }
+
+  .stats-counter {
+    gap: 8px;
+  }
+
+  .brand h1 {
+    font-size: 0.82rem;
+  }
+}
+
+@media (max-width: 1366px) {
+  .brand h1 {
+    display: none;
+  }
+
+  .seed-label {
+    display: none;
+  }
 }
 
 /* Mobile drawer toggle buttons (hidden on desktop, shown via the media query below) */
