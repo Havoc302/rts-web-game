@@ -218,10 +218,15 @@ class GameApp {
     if (empRateEl) empRateEl.textContent = `${Math.round(stats.employmentRate * 100)}%`;
 
     const stockpile = stats.resources?.stockpile || {};
-    const resourcesEl = document.getElementById('stat-resources');
-    if (resourcesEl) {
-      resourcesEl.textContent = `Food ${Math.round(stockpile.food || 0)} | Coal ${Math.round(stockpile.coal || 0)} | Iron ${Math.round(stockpile.ironOre || 0)} | Bauxite ${Math.round(stockpile.bauxiteOre || 0)} | Goods ${Math.round(stockpile.consumerGoods || 0)}`;
-    }
+    const setStock = (id, value) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = Math.round(value || 0);
+    };
+    setStock('stat-food', stockpile.food);
+    setStock('stat-coal', stockpile.coal);
+    setStock('stat-iron', stockpile.ironOre);
+    setStock('stat-bauxite', stockpile.bauxiteOre);
+    setStock('stat-goods', stockpile.consumerGoods);
 
     this.updateMeter('meter-power-text', 'meter-power-fill', stats.powerDemand, stats.powerCapacity, true);
     this.updateMeter('meter-water-text', 'meter-water-fill', stats.waterDemand, stats.waterCapacity, true);
