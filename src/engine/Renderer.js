@@ -214,7 +214,10 @@ export class Renderer {
     ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
 
     if (tile.zone !== ZONE.NONE) {
-      ctx.fillStyle = tile.zone === ZONE.RESIDENTIAL ? '#10b98188' : tile.zone === ZONE.COMMERCIAL ? '#3b82f688' : '#f59e0b88';
+      ctx.fillStyle = tile.zone === ZONE.RESIDENTIAL ? '#10b98188'
+        : tile.zone === ZONE.COMMERCIAL ? '#3b82f688'
+        : tile.zone === ZONE.AGRICULTURAL ? '#84cc1688'
+        : '#f59e0b88';
       ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
     } else if (tile.hasRoad) {
       ctx.fillStyle = '#475569';
@@ -423,6 +426,7 @@ export class Renderer {
     if (tile.zone === ZONE.RESIDENTIAL) baseColor = '#10b981';
     else if (tile.zone === ZONE.COMMERCIAL) baseColor = '#3b82f6';
     else if (tile.zone === ZONE.INDUSTRIAL) baseColor = '#f59e0b';
+    else if (tile.zone === ZONE.AGRICULTURAL) baseColor = '#84cc16';
 
     ctx.fillStyle = baseColor + '33';
     ctx.fillRect(px + 2, py + 2, TILE_SIZE - 4, TILE_SIZE - 4);
@@ -436,6 +440,8 @@ export class Renderer {
       this.renderCommercialArt(ctx, tile.density, px, py);
     } else if (tile.zone === ZONE.INDUSTRIAL) {
       this.renderIndustrialArt(ctx, tile.density, px, py);
+    } else if (tile.zone === ZONE.AGRICULTURAL) {
+      this.renderAgriculturalArt(ctx, tile.density, px, py);
     }
   }
 
@@ -549,6 +555,42 @@ export class Renderer {
       ctx.arc(px + 23 - smokeOffset, py + 2, 4, 0, Math.PI * 2);
       ctx.fill();
     }
+  }
+
+  renderAgriculturalArt(ctx, density, px, py) {
+    const scale = density === DENSITY.HIGH ? 1.35 : density === DENSITY.MEDIUM ? 1.0 : 0.62;
+    const cx = px + TILE_SIZE / 2;
+    const cy = py + TILE_SIZE / 2;
+    ctx.save();
+    ctx.translate(cx, cy + 4);
+    ctx.scale(scale, scale);
+    ctx.translate(-cx, -(cy + 4));
+
+    ctx.fillStyle = '#4d7c0f';
+    ctx.fillRect(cx - 1.5, cy - 2, 3, 12);
+
+    ctx.fillStyle = '#65a30d';
+    ctx.beginPath();
+    ctx.ellipse(cx - 6, cy - 1, 6, 3.5, -0.6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(cx + 6, cy - 1, 6, 3.5, 0.6, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#84cc16';
+    ctx.beginPath();
+    ctx.ellipse(cx - 4, cy - 7, 4.5, 3, -0.35, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(cx + 4, cy - 7, 4.5, 3, 0.35, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#a3e635';
+    ctx.beginPath();
+    ctx.ellipse(cx, cy - 11, 4, 4.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
   }
 
   renderProducerTile(ctx, tile, px, py) {
