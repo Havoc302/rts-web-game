@@ -235,8 +235,6 @@ class GameApp {
     if (schoolAgeEl) schoolAgeEl.textContent = (stats.schoolAge || 0).toLocaleString();
     const retireesEl = document.getElementById('stat-retirees');
     if (retireesEl) retireesEl.textContent = (stats.retirees || 0).toLocaleString();
-    const pensionEl = document.getElementById('stat-pension-expenses');
-    if (pensionEl) pensionEl.textContent = `-$${(stats.pensionExpenses || 0).toLocaleString()}`;
 
     const stockpile = stats.resources?.stockpile || {};
     const setStock = (id, value) => {
