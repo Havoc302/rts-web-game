@@ -4,7 +4,7 @@ import { Simulation } from '../src/engine/Simulation.js';
 import { UtilityManager } from '../src/engine/UtilityManager.js';
 import { PollutionManager } from '../src/engine/PollutionManager.js';
 import { FireManager } from '../src/engine/FireManager.js';
-import { PRODUCER_TYPE, ZONE, DENSITY, GROWTH_CONFIG, MAP_WIDTH, MAP_HEIGHT, TERRAIN_TYPE, TERRAIN, CRIME_CONFIG, MEDICAL_CONFIG, FIRE_CONFIG, USAGE_RATES } from '../src/config.js';
+import { PRODUCER_TYPE, ZONE, DENSITY, GROWTH_CONFIG, MAP_WIDTH, MAP_HEIGHT, TERRAIN_TYPE, TERRAIN, CRIME_CONFIG, MEDICAL_CONFIG, FIRE_CONFIG, USAGE_RATES, JOBS_PROVIDED } from '../src/config.js';
 
 console.log('Running Phase 1 Core Loop Automated Verification Tests...\n');
 
@@ -496,7 +496,7 @@ console.log('Running Phase 1 Core Loop Automated Verification Tests...\n');
 
   const sim = new Simulation(grid);
 
-  // 1 Commercial Light = 30 jobs, 1 Industrial Medium = 200 jobs -> total 230 jobs
+  // 1 Commercial Light + 1 Industrial Medium, no residents yet
   const cTile = grid.getTile(1, 1);
   cTile.zone = ZONE.COMMERCIAL;
   cTile.density = DENSITY.LIGHT;
@@ -512,10 +512,11 @@ console.log('Running Phase 1 Core Loop Automated Verification Tests...\n');
 
   sim.computeStats();
 
-  assert.strictEqual(sim.stats.totalJobsProvided, 230, 'Total jobs provided should be 230');
+  const expectedJobs = JOBS_PROVIDED[ZONE.COMMERCIAL][DENSITY.LIGHT] + JOBS_PROVIDED[ZONE.INDUSTRIAL][DENSITY.MEDIUM];
+  assert.strictEqual(sim.stats.totalJobsProvided, expectedJobs, 'Total jobs provided should match population-relative zone capacities');
   assert.strictEqual(sim.stats.totalEmployablePopulation, 0, 'Total employable pop should start at 0');
-  assert.strictEqual(sim.stats.jobsFilled, 0, 'Jobs filled should be min(230, 0) = 0');
-  assert.strictEqual(sim.stats.jobsAvailable, 230, 'Jobs available should be 230 - 0 = 230');
+  assert.strictEqual(sim.stats.jobsFilled, 0, 'Jobs filled should be 0 with no workforce');
+  assert.strictEqual(sim.stats.jobsAvailable, expectedJobs, 'Jobs available should equal unfilled job slots');
   assert.strictEqual(sim.stats.employmentRate, 0, 'Employment rate should be 0 with no population yet');
   console.log('✔ Test 11 Passed: City-wide labor market aggregates correct');
 }

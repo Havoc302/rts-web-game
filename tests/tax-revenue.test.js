@@ -22,11 +22,11 @@ simulation.taxRate = 100;
 simulation.computeStats();
 
 assert.strictEqual(simulation.stats.population, 500, 'Test population should be fully occupied');
-assert.strictEqual(simulation.stats.jobsFilled, 15, 'High tax pressure should reduce available jobs before worker tax is collected');
-assert.strictEqual(simulation.stats.incomePerTick, 52, 'Residents and employed workers should each be taxed at ten per 100 after scaling');
+assert.strictEqual(simulation.stats.jobsFilled, 7, 'High tax pressure should reduce available jobs before worker tax is collected');
+assert.strictEqual(simulation.stats.incomePerTick, 51, 'Residents and employed workers should each be taxed at ten per 100 after scaling');
 
 simulation.taxRate = 50;
 simulation.computeStats();
-assert.strictEqual(simulation.stats.incomePerTick, 27, 'Tax rate should scale total resident and worker revenue');
+assert.strictEqual(simulation.stats.incomePerTick, 26, 'Tax rate should scale total resident and worker revenue');
 
 console.log('Resident and worker tax revenue tests passed.');

@@ -1,4 +1,5 @@
 import {
+  DEMOGRAPHICS_CONFIG,
   FACTORY_RECIPES,
   HAPPINESS_CONFIG,
   LABOR_TAX_GROWTH_CONFIG,
@@ -113,7 +114,10 @@ export class ResourceManager {
   produceFactories(grid) {
     for (const tile of grid.tiles.flat()) {
       if (tile.zone === ZONE.AGRICULTURAL && !tile.destroyed && !tile.onFire) {
-        this.stockpile.food += (tile.filledJobs || 0) * RESOURCE_CONFIG.FOOD_PER_AGRICULTURAL_JOB;
+        const yieldAtFull = DEMOGRAPHICS_CONFIG.AGRICULTURAL_FOOD_YIELD[tile.density] || 0;
+        const jobCapacity = tile.totalJobs || 0;
+        const fillRatio = jobCapacity > 0 ? Math.min(1, (tile.filledJobs || 0) / jobCapacity) : 0;
+        this.stockpile.food += fillRatio * yieldAtFull;
         continue;
       }
       if (tile.zone !== ZONE.INDUSTRIAL || tile.destroyed || tile.onFire) continue;

@@ -1,7 +1,7 @@
 import { Grid } from './engine/Grid.js';
 import { Simulation } from './engine/Simulation.js';
 import { Renderer } from './engine/Renderer.js';
-import { APP_VERSION, ZONE, TERRAIN, PRODUCER_TYPE, PRODUCER_CONFIG, FACTORY_RECIPES, COSTS, TILE_SIZE, STARTING_TREASURY, RESIDENTIAL_CAPACITY, JOBS_PROVIDED, FOREST_POLLUTION_ABSORPTION, FOREST_DESIRABILITY_RADIUS, CRIME_CONFIG, MEDICAL_CONFIG, POWER_PRODUCER_TYPES, POLLUTION_CONFIG, COAL_CONFIG, WIND_CONFIG, SOLAR_CONFIG, BATTERY_CONFIG, DENSITY, RENDERER_CONFIG, TERRAIN_GENERATION_CONFIG } from './config.js';
+import { APP_VERSION, ZONE, TERRAIN, PRODUCER_TYPE, PRODUCER_CONFIG, FACTORY_RECIPES, COSTS, TILE_SIZE, STARTING_TREASURY, RESIDENTIAL_CAPACITY, JOBS_PROVIDED, FOREST_POLLUTION_ABSORPTION, FOREST_DESIRABILITY_RADIUS, CRIME_CONFIG, MEDICAL_CONFIG, POWER_PRODUCER_TYPES, POLLUTION_CONFIG, COAL_CONFIG, WIND_CONFIG, SOLAR_CONFIG, BATTERY_CONFIG, DENSITY, RENDERER_CONFIG, TERRAIN_GENERATION_CONFIG, splitDemographics } from './config.js';
 
 class GameApp {
   constructor() {
@@ -95,6 +95,18 @@ class GameApp {
         this.updateHUD();
       });
     });
+
+    const pensionSlider = document.getElementById('pension-budget-slider');
+    if (pensionSlider) {
+      pensionSlider.addEventListener('input', (e) => {
+        const budget = parseInt(e.target.value, 10);
+        this.simulation.pensionBudget = budget;
+        const value = document.getElementById('pension-budget-value');
+        if (value) value.textContent = `${budget}%`;
+        this.simulation.computeStats();
+        this.updateHUD();
+      });
+    }
 
     const taxSlider = document.getElementById('tax-slider');
     if (taxSlider) {
@@ -216,6 +228,15 @@ class GameApp {
 
     const empRateEl = document.getElementById('stat-emp-rate');
     if (empRateEl) empRateEl.textContent = `${Math.round(stats.employmentRate * 100)}%`;
+
+    const workforceEl = document.getElementById('stat-workforce');
+    if (workforceEl) workforceEl.textContent = (stats.totalEmployablePopulation || 0).toLocaleString();
+    const schoolAgeEl = document.getElementById('stat-school-age');
+    if (schoolAgeEl) schoolAgeEl.textContent = (stats.schoolAge || 0).toLocaleString();
+    const retireesEl = document.getElementById('stat-retirees');
+    if (retireesEl) retireesEl.textContent = (stats.retirees || 0).toLocaleString();
+    const pensionEl = document.getElementById('stat-pension-expenses');
+    if (pensionEl) pensionEl.textContent = `-$${(stats.pensionExpenses || 0).toLocaleString()}`;
 
     const stockpile = stats.resources?.stockpile || {};
     const setStock = (id, value) => {
@@ -576,20 +597,30 @@ class GameApp {
     const recipeSelect = document.getElementById('industrial-recipe-select');
     const storageRow = document.getElementById('storage-type-row');
     const storageSelect = document.getElementById('storage-type-select');
+    const demographicsRow = document.getElementById('demographics-row');
+    const demographicsVal = document.getElementById('inspect-demographics');
     if (popJobsEl) {
       if (tile.zone === ZONE.RESIDENTIAL) {
         const cur = (tile.population || 0).toLocaleString();
         const max = (tile.maxPopulation || RESIDENTIAL_CAPACITY[tile.density] || 0).toLocaleString();
         popJobsEl.textContent = `${cur} / ${max} residents`;
+        const demo = splitDemographics(tile.population || 0);
+        if (demographicsRow && demographicsVal) {
+          demographicsRow.style.display = '';
+          demographicsVal.textContent = `${demo.workforce} / ${demo.schoolAge} / ${demo.retirees}`;
+        }
       } else if (tile.zone === ZONE.COMMERCIAL || tile.zone === ZONE.INDUSTRIAL || tile.zone === ZONE.AGRICULTURAL) {
+        if (demographicsRow) demographicsRow.style.display = 'none';
         const filled = (tile.filledJobs || 0).toLocaleString();
         const total = (tile.totalJobs || JOBS_PROVIDED[tile.zone]?.[tile.density] || 0).toLocaleString();
         popJobsEl.textContent = `${filled} / ${total} jobs filled`;
       } else if (tile.producer && PRODUCER_CONFIG[tile.producer.type]?.jobs) {
+        if (demographicsRow) demographicsRow.style.display = 'none';
         const filled = (tile.producer.filledJobs || 0).toLocaleString();
         const total = (tile.producer.totalJobs || 0).toLocaleString();
         popJobsEl.textContent = `${filled} / ${total} jobs filled`;
       } else {
+        if (demographicsRow) demographicsRow.style.display = 'none';
         popJobsEl.textContent = 'N/A';
       }
     }

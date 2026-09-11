@@ -1,5 +1,5 @@
 // Current public release version. Increment patch for fixes, minor for compatible features, major for breaking changes.
-export const APP_VERSION = '0.1.3';
+export const APP_VERSION = '0.1.4';
 
 export const MAP_WIDTH = 200;
 export const MAP_HEIGHT = 200;
@@ -129,7 +129,7 @@ export const RESOURCE_CONFIG = {
   SMELTER_BARS_PER_JOB: 0.2,            // Metal bars produced by one filled smelter job per tick
   COAL_PLANT_FUEL_PER_MW: 0.02,         // Coal consumed per megawatt supplied by a coal plant
   SILO_CAPACITY: 500,                   // Storage capacity provided by one silo
-  FOOD_PER_AGRICULTURAL_JOB: 0.1,        // Food produced by one filled agricultural job per tick
+  FOOD_PER_AGRICULTURAL_JOB: 0.1,        // Legacy per-job food rate; farm tiles now use AGRICULTURAL_FOOD_YIELD * fill ratio
 };
 
 // Industrial recipe definitions. Input values are stockpile units per output unit.
@@ -498,21 +498,61 @@ export const RESIDENTIAL_CAPACITY = {
   [DENSITY.HIGH]: 500,
 };
 
+// Australia-based age mix, with a simplified job mix for gameplay.
+// Age: 0-14 ~18%, 15-64 ~65%, 65+ ~17%. Compulsory school 5-17 ~16%.
+// Employment-to-population for people 15+ ~64% → about 52% of all residents work.
+export const DEMOGRAPHICS_CONFIG = {
+  SCHOOL_AGE_RATE: 0.16,
+  RETIREE_RATE: 0.17,
+  WORKFORCE_RATE: 0.52,
+  JOB_SHARE: {
+    [ZONE.COMMERCIAL]: 0.40,
+    [ZONE.INDUSTRIAL]: 0.40,
+    [ZONE.AGRICULTURAL]: 0.20,
+  },
+  PENSION_VS_WORKER_TAX: 0.5,
+  RETIREE_PATIENT_MULTIPLIER: 3,
+  RETIREE_UNDERFUND_PATIENT_SCALER: 4,
+  SCHOOL_UNMET_GROWTH_PENALTY: -1,
+  // Fully staffed farm output by density, matching the previous 40/200/800 jobs at 0.1 food/job.
+  AGRICULTURAL_FOOD_YIELD: {
+    [DENSITY.LIGHT]: 4,
+    [DENSITY.MEDIUM]: 20,
+    [DENSITY.HIGH]: 80,
+  },
+};
+
+export function splitDemographics(population) {
+  const pop = Math.max(0, population || 0);
+  return {
+    schoolAge: Math.round(pop * DEMOGRAPHICS_CONFIG.SCHOOL_AGE_RATE),
+    retirees: Math.round(pop * DEMOGRAPHICS_CONFIG.RETIREE_RATE),
+    workforce: Math.round(pop * DEMOGRAPHICS_CONFIG.WORKFORCE_RATE),
+  };
+}
+
+export function jobsProvidedFor(zone, density) {
+  const capacity = RESIDENTIAL_CAPACITY[density] || 0;
+  const share = DEMOGRAPHICS_CONFIG.JOB_SHARE[zone] || 0;
+  const maxShare = Math.max(...Object.values(DEMOGRAPHICS_CONFIG.JOB_SHARE));
+  return Math.max(1, Math.round(capacity * DEMOGRAPHICS_CONFIG.WORKFORCE_RATE * share / maxShare));
+}
+
 export const JOBS_PROVIDED = {
   [ZONE.COMMERCIAL]: {
-    [DENSITY.LIGHT]: 30,
-    [DENSITY.MEDIUM]: 150,
-    [DENSITY.HIGH]: 600,
+    [DENSITY.LIGHT]: jobsProvidedFor(ZONE.COMMERCIAL, DENSITY.LIGHT),
+    [DENSITY.MEDIUM]: jobsProvidedFor(ZONE.COMMERCIAL, DENSITY.MEDIUM),
+    [DENSITY.HIGH]: jobsProvidedFor(ZONE.COMMERCIAL, DENSITY.HIGH),
   },
   [ZONE.INDUSTRIAL]: {
-    [DENSITY.LIGHT]: 40,
-    [DENSITY.MEDIUM]: 200,
-    [DENSITY.HIGH]: 800,
+    [DENSITY.LIGHT]: jobsProvidedFor(ZONE.INDUSTRIAL, DENSITY.LIGHT),
+    [DENSITY.MEDIUM]: jobsProvidedFor(ZONE.INDUSTRIAL, DENSITY.MEDIUM),
+    [DENSITY.HIGH]: jobsProvidedFor(ZONE.INDUSTRIAL, DENSITY.HIGH),
   },
   [ZONE.AGRICULTURAL]: {
-    [DENSITY.LIGHT]: 40,
-    [DENSITY.MEDIUM]: 200,
-    [DENSITY.HIGH]: 800,
+    [DENSITY.LIGHT]: jobsProvidedFor(ZONE.AGRICULTURAL, DENSITY.LIGHT),
+    [DENSITY.MEDIUM]: jobsProvidedFor(ZONE.AGRICULTURAL, DENSITY.MEDIUM),
+    [DENSITY.HIGH]: jobsProvidedFor(ZONE.AGRICULTURAL, DENSITY.HIGH),
   },
 };
 

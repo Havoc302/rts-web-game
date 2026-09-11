@@ -15,6 +15,7 @@
     "test:school": "node tests/school-cost.test.js",
     "test:service-expenses": "node tests/service-expense-scale.test.js",
     "test:resources": "node tests/resource-management.test.js",
+    "test:demographics": "node tests/demographics.test.js",
     "dev": "npx serve ."
   }
 }

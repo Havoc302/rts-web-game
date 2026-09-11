@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Build &amp; Conquer 2000</title>
-  <link rel="stylesheet" href="style.css?v=0.1.3">
+  <link rel="stylesheet" href="style.css?v=0.1.4">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
@@ -238,6 +238,12 @@
           </div>
           <div class="progress-bar"><div class="fill sewage" id="meter-pollution-fill"></div></div>
         </div>
+        <div class="demographics-hud">
+          <h3>Population Mix</h3>
+          <div class="info-row"><span class="label">Workers:</span><span class="val" id="stat-workforce">0</span></div>
+          <div class="info-row"><span class="label">School-age:</span><span class="val" id="stat-school-age">0</span></div>
+          <div class="info-row"><span class="label">Retirees:</span><span class="val" id="stat-retirees">0</span></div>
+        </div>
         <div class="service-budgets">
           <h3>Service Budgets</h3>
           <label>Police <input type="range" min="0" max="100" step="5" value="100" data-service-budget="police_station"><span id="police_station-budget-value">100%</span></label>
@@ -245,6 +251,8 @@
           <label>Hospital <input type="range" min="0" max="100" step="5" value="100" data-service-budget="hospital"><span id="hospital-budget-value">100%</span></label>
           <label>School <input type="range" min="0" max="100" step="5" value="100" data-service-budget="school"><span id="school-budget-value">100%</span></label>
           <label>Library <input type="range" min="0" max="100" step="5" value="100" data-service-budget="library"><span id="library-budget-value">100%</span></label>
+          <label>Pensions <input type="range" min="0" max="100" step="5" value="100" id="pension-budget-slider"><span id="pension-budget-value">100%</span></label>
+          <div class="info-row pension-cost-row"><span class="label">Pension cost / tick:</span><span class="val" id="stat-pension-expenses">-$0</span></div>
         </div>
       </div>
 
@@ -414,6 +422,7 @@
           <div class="info-row"><span class="label">Zone:</span><span class="val" id="inspect-zone">Unzoned</span></div>
           <div class="info-row"><span class="label">Density:</span><span class="val" id="inspect-density">N/A</span></div>
           <div class="info-row"><span class="label">Block Pop / Jobs:</span><span class="val" id="inspect-pop-jobs">N/A</span></div>
+          <div class="info-row" id="demographics-row" style="display:none;"><span class="label">Workers / School / Retired:</span><span class="val" id="inspect-demographics">N/A</span></div>
           <div class="info-row" id="industrial-recipe-row" style="display:none;"><span class="label">Recipe:</span><select class="val" id="industrial-recipe-select"></select></div>
           <div class="info-row" id="storage-type-row" style="display:none;"><span class="label">Storage:</span><select class="val" id="storage-type-select"></select></div>
           <div class="info-row"><span class="label">Growth Score:</span><span class="val" id="inspect-growth">0</span></div>

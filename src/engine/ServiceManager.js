@@ -1,8 +1,8 @@
-import { SERVICE_TYPE, SERVICE_CONFIG, SERVICE_GLOBAL_CONFIG, LABOR_TAX_GROWTH_CONFIG, DENSITY } from '../config.js';
+import { SERVICE_TYPE, SERVICE_CONFIG, SERVICE_GLOBAL_CONFIG, LABOR_TAX_GROWTH_CONFIG, DENSITY, DEMOGRAPHICS_CONFIG } from '../config.js';
 import { RoadNetwork } from './RoadNetwork.js';
 
 export class ServiceManager {
-  static updateServices(grid, totalPopulation, employmentRate = 1.0) {
+  static updateServices(grid, totalPopulation, employmentRate = 1.0, workforce = null) {
     // 1. Reset tile service distances
     for (let y = 0; y < grid.height; y++) {
       for (let x = 0; x < grid.width; x++) {
@@ -34,7 +34,10 @@ export class ServiceManager {
       { type: SERVICE_TYPE.LIBRARY, key: 'library' },
       { type: SERVICE_TYPE.CITY_HALL, key: 'cityHall' },
     ];
-    let availableWorkers = Math.max(0, Math.floor(totalPopulation));
+    const workerPool = workforce == null
+      ? Math.round(Math.max(0, totalPopulation) * DEMOGRAPHICS_CONFIG.WORKFORCE_RATE)
+      : workforce;
+    let availableWorkers = Math.max(0, Math.floor(workerPool));
 
     for (const { type, key } of serviceKeys) {
       const config = SERVICE_CONFIG[type];

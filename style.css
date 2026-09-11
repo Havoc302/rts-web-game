@@ -159,17 +159,27 @@ body {
   cursor: pointer;
 }
 
-.service-budgets {
+.demographics-hud {
   margin-top: 14px;
 }
 
+.demographics-hud h3,
 .service-budgets h3 {
   margin-bottom: 8px;
 }
 
+.pension-cost-row {
+  margin-top: 8px;
+  font-size: 0.72rem;
+}
+
+.service-budgets {
+  margin-top: 14px;
+}
+
 .service-budgets label {
   display: grid;
-  grid-template-columns: 58px 1fr 38px;
+  grid-template-columns: 64px 1fr 38px;
   align-items: center;
   gap: 6px;
   font-size: 0.72rem;

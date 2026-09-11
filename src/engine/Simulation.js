@@ -1,4 +1,4 @@
-import { GROWTH_CONFIG, DENSITY, ZONE, TERRAIN, USAGE_RATES, POLLUTION_CONFIG, JOBS_PROVIDED, EMPLOYABLE_POPULATION, RESIDENTIAL_CAPACITY, LABOR_TAX_GROWTH_CONFIG, FOREST_DESIRABILITY_RADIUS, PRODUCER_TYPE, PRODUCER_CONFIG, POWER_PRODUCER_TYPES, ROAD_MAINTENANCE_COST, TAX_REVENUE_CONFIG, CRIME_CONFIG, MEDICAL_CONFIG, HAPPINESS_CONFIG, SERVICE_GLOBAL_CONFIG, TICKS_PER_HOUR, HOURS_PER_DAY, DAY_START_HOUR, NIGHT_START_HOUR } from '../config.js';
+import { GROWTH_CONFIG, DENSITY, ZONE, TERRAIN, USAGE_RATES, POLLUTION_CONFIG, JOBS_PROVIDED, RESIDENTIAL_CAPACITY, LABOR_TAX_GROWTH_CONFIG, FOREST_DESIRABILITY_RADIUS, PRODUCER_TYPE, PRODUCER_CONFIG, POWER_PRODUCER_TYPES, ROAD_MAINTENANCE_COST, TAX_REVENUE_CONFIG, CRIME_CONFIG, MEDICAL_CONFIG, HAPPINESS_CONFIG, SERVICE_GLOBAL_CONFIG, TICKS_PER_HOUR, HOURS_PER_DAY, DAY_START_HOUR, NIGHT_START_HOUR, DEMOGRAPHICS_CONFIG, splitDemographics } from '../config.js';
 import { UtilityManager } from './UtilityManager.js';
 import { PollutionManager } from './PollutionManager.js';
 import { ServiceManager } from './ServiceManager.js';
@@ -13,6 +13,7 @@ export class Simulation {
     this.isPaused = false;
     this.speed = 1;
     this.taxRate = 0;
+    this.pensionBudget = SERVICE_GLOBAL_CONFIG.BUDGET_MAX_VALUE;
     this.resourceManager = new ResourceManager();
     this.stats = {
       population: 0,
@@ -24,13 +25,17 @@ export class Simulation {
       sewageDemand: 0,
       sewageCapacity: 0,
       serviceExpenses: 0,
+      pensionExpenses: 0,
       roadExpenses: 0,
       avgPollution: 0,
       maxPollution: 0,
       totalJobsProvided: 0,
       totalEmployablePopulation: 0,
+      schoolAge: 0,
+      retirees: 0,
       jobsFilled: 0,
       jobsAvailable: 0,
+      unemployedWorkers: 0,
       employmentRate: 0,
       crimeTaxLoss: 0,
       patientDemand: 0,
@@ -61,7 +66,7 @@ export class Simulation {
     this.computeStats();
     UtilityManager.allocateAll(this.grid, this.getHourOfDay());
     PollutionManager.computePollution(this.grid);
-    ServiceManager.updateServices(this.grid, this.stats.population, this.stats.employmentRate);
+    ServiceManager.updateServices(this.grid, this.stats.population, this.stats.employmentRate, this.stats.totalEmployablePopulation);
     if (advanceWorld) {
       CrimeManager.updateCrime(this.grid, this.stats);
       FireManager.updateFires(this.grid, this.stats);
@@ -136,7 +141,6 @@ export class Simulation {
   }
 
   updateGrowthAndDensity() {
-    const jobsAvail = this.stats.jobsAvailable;
     const empRate = this.stats.employmentRate;
 
     const taxGrowthModifier = this.getTaxGrowthModifier();
@@ -191,9 +195,15 @@ export class Simulation {
           if (this.stats.untreatedPatients > 0) {
             delta += MEDICAL_CONFIG.UNHEALTHY_GROWTH_PENALTY;
           }
-          // Residential growthScore only increases if jobsAvailable > 0.
-          // No available jobs = positive growth stalls entirely.
-          if (jobsAvail <= 0 && delta > 0) {
+          const tileSchoolAge = splitDemographics(tile.population || 0).schoolAge;
+          if (tileSchoolAge > 0 && !tile.services?.school) {
+            delta += DEMOGRAPHICS_CONFIG.SCHOOL_UNMET_GROWTH_PENALTY;
+          }
+          // Residential growth stalls when workers cannot find matching jobs,
+          // or when the city has no workplaces at all.
+          const unemployed = this.stats.unemployedWorkers || 0;
+          const noJobMarket = (this.stats.totalJobsProvided || 0) === 0;
+          if ((unemployed > 0 || noJobMarket) && delta > 0) {
             delta = 0;
           }
         } else if (tile.zone === ZONE.COMMERCIAL || tile.zone === ZONE.INDUSTRIAL || tile.zone === ZONE.AGRICULTURAL) {
@@ -237,12 +247,16 @@ export class Simulation {
       sewageDemand: 0,
       sewageCapacity: 0,
       serviceExpenses: 0,
+      pensionExpenses: 0,
       avgPollution: 0,
       maxPollution: 0,
       totalJobsProvided: 0,
       totalEmployablePopulation: 0,
+      schoolAge: 0,
+      retirees: 0,
       jobsFilled: 0,
       jobsAvailable: 0,
+      unemployedWorkers: 0,
       employmentRate: 0,
       crimeTaxLoss: 0,
       patientDemand: 0,
@@ -312,7 +326,6 @@ export class Simulation {
           tile.population = pop;
           tile.maxPopulation = cap;
           stats.population += pop;
-          stats.totalEmployablePopulation += pop;
         } else if (tile.zone === ZONE.COMMERCIAL || tile.zone === ZONE.INDUSTRIAL || tile.zone === ZONE.AGRICULTURAL) {
           const jobs = JOBS_PROVIDED[tile.zone]?.[tile.density] || 0;
           tile.totalJobs = Math.max(0, Math.round(jobs * jobsMultiplier));
@@ -326,20 +339,33 @@ export class Simulation {
       }
     }
 
-    stats.jobsFilled = Math.min(stats.totalJobsProvided, stats.totalEmployablePopulation);
-    stats.jobsAvailable = Math.max(0, stats.totalJobsProvided - stats.totalEmployablePopulation);
+    const demographics = splitDemographics(stats.population);
+    stats.schoolAge = demographics.schoolAge;
+    stats.retirees = demographics.retirees;
+    stats.totalEmployablePopulation = demographics.workforce;
+
+    stats.jobsFilled = Math.min(stats.totalJobsProvided, demographics.workforce);
+    stats.jobsAvailable = Math.max(0, stats.totalJobsProvided - stats.jobsFilled);
+    stats.unemployedWorkers = Math.max(0, demographics.workforce - stats.jobsFilled);
     stats.employmentRate = stats.totalJobsProvided > 0 ? (stats.jobsFilled / stats.totalJobsProvided) : 0;
 
-    // Distribute filled jobs across C/I tiles proportionally
     for (let y = 0; y < this.grid.height; y++) {
       for (let x = 0; x < this.grid.width; x++) {
         const tile = this.grid.getTile(x, y);
         if (tile.zone === ZONE.COMMERCIAL || tile.zone === ZONE.INDUSTRIAL || tile.zone === ZONE.AGRICULTURAL) {
           tile.filledJobs = Math.round((tile.totalJobs || 0) * stats.employmentRate);
         }
-
       }
     }
+
+    const pensionRatio = Math.max(0, Math.min(SERVICE_GLOBAL_CONFIG.BUDGET_MAX_VALUE, this.pensionBudget ?? SERVICE_GLOBAL_CONFIG.BUDGET_MAX_VALUE)) / SERVICE_GLOBAL_CONFIG.BUDGET_MAX_VALUE;
+    const taxPerWorker = TAX_REVENUE_CONFIG.MONEY_PER_TAX_UNIT * (this.taxRate / 100) / TAX_REVENUE_CONFIG.RESIDENTS_PER_TAX_UNIT;
+    stats.pensionExpenses = Math.round(
+      demographics.retirees * taxPerWorker * DEMOGRAPHICS_CONFIG.PENSION_VS_WORKER_TAX * pensionRatio,
+    );
+    stats.serviceExpenses += stats.pensionExpenses;
+    const retireeHealthMultiplier = DEMOGRAPHICS_CONFIG.RETIREE_PATIENT_MULTIPLIER +
+      (1 - pensionRatio) * DEMOGRAPHICS_CONFIG.RETIREE_UNDERFUND_PATIENT_SCALER;
 
     // Deduct tax revenue lost to crime, and tally patient demand, on each zoned tile
     let totalPatientDemand = 0;
@@ -351,7 +377,10 @@ export class Simulation {
         let tileBaseTax = 0;
         if (tile.zone === ZONE.RESIDENTIAL) {
           tileBaseTax = (tile.population || 0) / TAX_REVENUE_CONFIG.RESIDENTS_PER_TAX_UNIT * TAX_REVENUE_CONFIG.MONEY_PER_TAX_UNIT * (this.taxRate / 100);
-          totalPatientDemand += (tile.population || 0) * MEDICAL_CONFIG.PATIENTS_PER_RESIDENT;
+          const tileDemo = splitDemographics(tile.population || 0);
+          const nonRetirees = Math.max(0, (tile.population || 0) - tileDemo.retirees);
+          totalPatientDemand += nonRetirees * MEDICAL_CONFIG.PATIENTS_PER_RESIDENT;
+          totalPatientDemand += tileDemo.retirees * MEDICAL_CONFIG.PATIENTS_PER_RESIDENT * retireeHealthMultiplier;
         } else {
           tileBaseTax = (tile.filledJobs || 0) / TAX_REVENUE_CONFIG.EMPLOYED_PER_TAX_UNIT * TAX_REVENUE_CONFIG.MONEY_PER_TAX_UNIT * (this.taxRate / 100);
           if (tile.zone === ZONE.INDUSTRIAL || tile.zone === ZONE.AGRICULTURAL) {
