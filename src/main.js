@@ -646,7 +646,7 @@ class GameApp {
       }
     }
 
-    document.getElementById('inspect-growth').textContent = tile.zone !== ZONE.NONE ? tile.growthScore : 'N/A';
+    document.getElementById('inspect-growth').textContent = tile.zone !== ZONE.NONE ? Number(tile.growthScore || 0).toFixed(2) : 'N/A';
     document.getElementById('inspect-pollution').textContent = tile.pollution;
 
     const crime = tile.crime || 0;
@@ -716,12 +716,28 @@ class GameApp {
       const contaminatedStr = tile.producer.contaminated ? ' ☣️ Contaminated!' : '';
       document.getElementById('inspect-producer-type').textContent = (config ? config.name : tile.producer.type) + roadStatusStr + utilityStatusStr + contaminatedStr;
 
+      const capLabel = document.getElementById('inspect-producer-cap-label');
+      const capVal = document.getElementById('inspect-producer-cap');
       if (isBatteryDependent && !tile.producer.hasBatteryConnection) {
-        document.getElementById('inspect-producer-cap').textContent = '⚠️ Offline (Must be adjacent to Battery Storage)';
+        capLabel.textContent = 'Load / Capacity:';
+        capVal.textContent = '⚠️ Offline (Must be adjacent to Battery Storage)';
       } else if (tile.producer.type === PRODUCER_TYPE.BATTERY) {
-        document.getElementById('inspect-producer-cap').textContent = `${tile.producer.usedCapacity} / ${tile.producer.capacity} (Stored: ${Math.round(tile.producer.storedEnergy || 0)} / ${tile.producer.maxStorage})`;
+        capLabel.textContent = 'Load / Capacity:';
+        capVal.textContent = `${tile.producer.usedCapacity} / ${tile.producer.capacity} (Stored: ${Math.round(tile.producer.storedEnergy || 0)} / ${tile.producer.maxStorage})`;
+      } else if (tile.producer.type === PRODUCER_TYPE.HOSPITAL) {
+        const staff = tile.producer.filledJobs || 0;
+        const patientCap = staff * MEDICAL_CONFIG.HOSPITAL_PATIENT_CAPACITY_PER_JOB;
+        capLabel.textContent = 'Patient Capacity:';
+        capVal.textContent = `${patientCap} (${staff} staffed)`;
+      } else if (config?.utility === 'power' || config?.utility === 'water' || config?.utility === 'sewage') {
+        capLabel.textContent = 'Load / Capacity:';
+        capVal.textContent = `${tile.producer.usedCapacity} / ${tile.producer.capacity ?? 0}`;
+      } else if (config?.jobs) {
+        capLabel.textContent = 'Staff:';
+        capVal.textContent = `${(tile.producer.filledJobs || 0).toLocaleString()} / ${(tile.producer.totalJobs || 0).toLocaleString()}`;
       } else {
-        document.getElementById('inspect-producer-cap').textContent = `${tile.producer.usedCapacity} / ${tile.producer.capacity}`;
+        capLabel.textContent = 'Load / Capacity:';
+        capVal.textContent = 'N/A';
       }
     } else {
       prodPanel.style.display = 'none';

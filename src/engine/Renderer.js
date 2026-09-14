@@ -558,13 +558,15 @@ export class Renderer {
   }
 
   renderAgriculturalArt(ctx, density, px, py) {
-    const scale = density === DENSITY.HIGH ? 1.35 : density === DENSITY.MEDIUM ? 1.0 : 0.62;
+    const scale = density === DENSITY.HIGH ? 1.12 : density === DENSITY.MEDIUM ? 1.0 : 0.62;
     const cx = px + TILE_SIZE / 2;
     const cy = py + TILE_SIZE / 2;
+    const stemBottom = cy + 10;
+    const groundY = py + TILE_SIZE - 3;
     ctx.save();
-    ctx.translate(cx, cy + 4);
+    ctx.translate(cx, groundY);
     ctx.scale(scale, scale);
-    ctx.translate(-cx, -(cy + 4));
+    ctx.translate(-cx, -stemBottom);
 
     ctx.fillStyle = '#4d7c0f';
     ctx.fillRect(cx - 1.5, cy - 2, 3, 12);

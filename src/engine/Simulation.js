@@ -217,10 +217,12 @@ export class Simulation {
           delta += empBonus;
         }
 
-        tile.growthScore = Math.min(
-          GROWTH_CONFIG.MAX_SCORE,
-          Math.max(0, tile.growthScore + delta),
-        );
+        tile.growthScore = Math.round(
+          Math.min(
+            GROWTH_CONFIG.MAX_SCORE,
+            Math.max(0, tile.growthScore + delta),
+          ) * 100,
+        ) / 100;
 
         if (tile.density === DENSITY.LIGHT && tile.growthScore >= GROWTH_CONFIG.THRESHOLD_MEDIUM) {
           tile.density = DENSITY.MEDIUM;

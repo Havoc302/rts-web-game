@@ -475,7 +475,7 @@ export class Grid {
     const producer = {
       id: this.nextProducerId++,
       type: producerType,
-      capacity,
+      capacity: capacity ?? 0,
       usedCapacity: 0,
       contaminated: false,
       utilityShortfall: { power: false, water: false, sewage: false },

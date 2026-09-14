@@ -539,27 +539,35 @@ h4 {
   }
 
   .header-bar {
-    flex-wrap: wrap;
-    gap: 8px;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    gap: 10px;
     padding: 6px 10px;
     margin: 8px 8px 0 8px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+    scrollbar-width: thin;
+    touch-action: pan-x;
   }
 
   .brand h1 { font-size: 0.9rem; }
   .brand .badge { display: none; }
 
   .stats-counter {
-    order: 3;
-    width: 100%;
+    flex: 0 0 auto;
+    width: max-content;
+    overflow: visible;
     gap: 12px;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    padding-bottom: 2px;
   }
 
   .stat-item { flex: 0 0 auto; }
 
-  .speed-controls { gap: 4px; }
+  .speed-controls {
+    gap: 4px;
+    margin-left: auto;
+  }
   .seed-control { display: none; }
 
   .viewport { margin: 8px; }
