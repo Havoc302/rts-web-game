@@ -491,3 +491,7 @@ Validation:
 - Grid.generateProceduralTerrain accepts biome directly and scales terrain correctly.
 - Arms and Tanks chips display in top HUD.
 - docs/DESIGN.md updated to rev 5.
+
+Current task: Move Silo and Oil Derrick tool buttons to the Production group in the toolbar.
+
+- [in progress] Move Oil Derrick and Silo buttons from Utility Producers to Production group in index.html.
