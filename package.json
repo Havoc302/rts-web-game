@@ -1,9 +1,9 @@
 {
   "name": "rts-web-game",
-  "version": "0.1.1",
+  "version": "0.1.5",
   "type": "module",
   "scripts": {
-    "test": "node tests/simulation.test.js",
+    "test": "node tests/run-all.js",
     "test:ore": "node tests/ore-survey.test.js",
     "test:river": "node tests/river-pollution.test.js",
     "test:services": "node tests/service-buildings.test.js",

@@ -1,4 +1,5 @@
 import { TERRAIN, ZONE, DENSITY, PRODUCER_TYPE, PRODUCER_CONFIG, TILE_SIZE, ORE_CONFIG, NIGHT_TINT_ALPHA, RENDERER_CONFIG, POLLUTION_CONFIG } from '../config.js';
+import { UtilityManager } from './UtilityManager.js';
 
 export class Renderer {
   constructor(canvas, grid) {
@@ -17,8 +18,8 @@ export class Renderer {
 
     this.animTime = 0;
     this.lastRenderTime = 0;
-    this.terrainCache = null;
-    this.terrainCacheVersion = -1;
+    this.terrainChunks = [];
+    this.terrainChunksVersion = -1;
   }
 
   setCamera(x, y, zoom = this.zoom) {
@@ -65,23 +66,9 @@ export class Renderer {
     const endTileX = Math.min(this.grid.width - 1, Math.ceil((visibleRight - startX) / TILE_SIZE) + 1);
     const endTileY = Math.min(this.grid.height - 1, Math.ceil((visibleBottom - startY) / TILE_SIZE) + 1);
 
-    const terrainCacheReady = !lowDetail && this.ensureTerrainCache(mapPixelWidth, mapPixelHeight);
+    const terrainCacheReady = !lowDetail && this.ensureVisibleTerrainChunks(startTileX, startTileY, endTileX, endTileY);
     if (terrainCacheReady) {
-      const sourceX = startTileX * TILE_SIZE;
-      const sourceY = startTileY * TILE_SIZE;
-      const sourceWidth = (endTileX - startTileX + 1) * TILE_SIZE;
-      const sourceHeight = (endTileY - startTileY + 1) * TILE_SIZE;
-      ctx.drawImage(
-        this.terrainCache,
-        sourceX,
-        sourceY,
-        sourceWidth,
-        sourceHeight,
-        startX + sourceX,
-        startY + sourceY,
-        sourceWidth,
-        sourceHeight,
-      );
+      this.blitVisibleTerrainChunks(ctx, startX, startY, startTileX, startTileY, endTileX, endTileY);
     }
 
     for (let y = startTileY; y <= endTileY; y++) {
@@ -170,35 +157,100 @@ export class Renderer {
     ctx.restore();
   }
 
-  ensureTerrainCache(width, height) {
-    if (this.terrainCache && this.terrainCacheVersion === this.grid.terrainVersion) return true;
-
-    if (!this.terrainCache || this.terrainBuildVersion !== this.grid.terrainVersion) {
-      this.terrainCache = document.createElement('canvas');
-      this.terrainCache.width = width;
-      this.terrainCache.height = height;
-      this.terrainCacheContext = this.terrainCache.getContext('2d');
-      this.terrainBuildVersion = this.grid.terrainVersion;
-      this.terrainBuildIndex = 0;
+  ensureVisibleTerrainChunks(startTileX, startTileY, endTileX, endTileY) {
+    const chunkTiles = RENDERER_CONFIG.TERRAIN_CHUNK_TILES;
+    if (this.terrainChunksVersion !== this.grid.terrainVersion) {
+      const chunksX = Math.ceil(this.grid.width / chunkTiles);
+      const chunksY = Math.ceil(this.grid.height / chunkTiles);
+      this.terrainChunks = [];
+      for (let cy = 0; cy < chunksY; cy++) {
+        this.terrainChunks[cy] = [];
+        for (let cx = 0; cx < chunksX; cx++) {
+          const tilesW = Math.min(chunkTiles, this.grid.width - cx * chunkTiles);
+          const tilesH = Math.min(chunkTiles, this.grid.height - cy * chunkTiles);
+          const canvas = document.createElement('canvas');
+          canvas.width = tilesW * TILE_SIZE;
+          canvas.height = tilesH * TILE_SIZE;
+          this.terrainChunks[cy][cx] = {
+            canvas,
+            ctx: canvas.getContext('2d'),
+            tileX: cx * chunkTiles,
+            tileY: cy * chunkTiles,
+            tilesW,
+            tilesH,
+            built: 0,
+            ready: false,
+          };
+        }
+      }
+      this.terrainChunksVersion = this.grid.terrainVersion;
     }
 
-    const cacheContext = this.terrainCacheContext;
-    const totalTiles = this.grid.width * this.grid.height;
-    const buildBudget = RENDERER_CONFIG.TERRAIN_BUILD_BUDGET;
-    const endIndex = Math.min(totalTiles, this.terrainBuildIndex + buildBudget);
-    for (; this.terrainBuildIndex < endIndex; this.terrainBuildIndex++) {
-      const x = this.terrainBuildIndex % this.grid.width;
-      const y = Math.floor(this.terrainBuildIndex / this.grid.width);
-      const tile = this.grid.tiles[y][x];
-      this.renderTerrainTile(cacheContext, tile, x * TILE_SIZE, y * TILE_SIZE, false);
-      cacheContext.strokeStyle = 'rgba(255, 255, 255, 0.04)';
-      cacheContext.lineWidth = 1;
-      cacheContext.strokeRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
-    }
+    const c0x = Math.floor(startTileX / chunkTiles);
+    const c0y = Math.floor(startTileY / chunkTiles);
+    const c1x = Math.floor(endTileX / chunkTiles);
+    const c1y = Math.floor(endTileY / chunkTiles);
+    let budget = RENDERER_CONFIG.TERRAIN_BUILD_BUDGET;
+    let allReady = true;
 
-    if (this.terrainBuildIndex < totalTiles) return false;
-    this.terrainCacheVersion = this.grid.terrainVersion;
-    return true;
+    for (let cy = c0y; cy <= c1y; cy++) {
+      for (let cx = c0x; cx <= c1x; cx++) {
+        const chunk = this.terrainChunks[cy]?.[cx];
+        if (!chunk) continue;
+        if (!chunk.ready) {
+          const total = chunk.tilesW * chunk.tilesH;
+          const toBuild = Math.min(budget, total - chunk.built);
+          for (let n = 0; n < toBuild; n++) {
+            const index = chunk.built + n;
+            const lx = index % chunk.tilesW;
+            const ly = Math.floor(index / chunk.tilesW);
+            const x = chunk.tileX + lx;
+            const y = chunk.tileY + ly;
+            const tile = this.grid.tiles[y][x];
+            this.renderTerrainTile(chunk.ctx, tile, lx * TILE_SIZE, ly * TILE_SIZE, false);
+            chunk.ctx.strokeStyle = 'rgba(255, 255, 255, 0.04)';
+            chunk.ctx.lineWidth = 1;
+            chunk.ctx.strokeRect(lx * TILE_SIZE, ly * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+          }
+          chunk.built += toBuild;
+          budget -= toBuild;
+          if (chunk.built >= total) chunk.ready = true;
+        }
+        if (!chunk.ready) allReady = false;
+        if (budget <= 0 && !allReady) return false;
+      }
+    }
+    return allReady;
+  }
+
+  blitVisibleTerrainChunks(ctx, startX, startY, startTileX, startTileY, endTileX, endTileY) {
+    const chunkTiles = RENDERER_CONFIG.TERRAIN_CHUNK_TILES;
+    const c0x = Math.floor(startTileX / chunkTiles);
+    const c0y = Math.floor(startTileY / chunkTiles);
+    const c1x = Math.floor(endTileX / chunkTiles);
+    const c1y = Math.floor(endTileY / chunkTiles);
+    for (let cy = c0y; cy <= c1y; cy++) {
+      for (let cx = c0x; cx <= c1x; cx++) {
+        const chunk = this.terrainChunks[cy]?.[cx];
+        if (!chunk?.ready) continue;
+        const visX0 = Math.max(startTileX, chunk.tileX);
+        const visY0 = Math.max(startTileY, chunk.tileY);
+        const visX1 = Math.min(endTileX, chunk.tileX + chunk.tilesW - 1);
+        const visY1 = Math.min(endTileY, chunk.tileY + chunk.tilesH - 1);
+        if (visX1 < visX0 || visY1 < visY0) continue;
+        const sx = (visX0 - chunk.tileX) * TILE_SIZE;
+        const sy = (visY0 - chunk.tileY) * TILE_SIZE;
+        const sw = (visX1 - visX0 + 1) * TILE_SIZE;
+        const sh = (visY1 - visY0 + 1) * TILE_SIZE;
+        ctx.drawImage(
+          chunk.canvas,
+          sx, sy, sw, sh,
+          startX + visX0 * TILE_SIZE,
+          startY + visY0 * TILE_SIZE,
+          sw, sh,
+        );
+      }
+    }
   }
 
   renderLowDetailTile(ctx, tile, px, py) {
@@ -800,6 +852,16 @@ export class Renderer {
       ctx.fillRect(px + 15, py + 2, 2, 8);
       ctx.fillStyle = '#ef4444';
       ctx.fillRect(px + 17, py + 2, 4, 3);
+    } else if (prod.type === PRODUCER_TYPE.REFINERY) {
+      ctx.fillStyle = '#7c2d12';
+      ctx.fillRect(px + 2, py + 2, 28, 28);
+      ctx.fillStyle = '#ea580c';
+      ctx.fillRect(px + 5, py + 14, 22, 14);
+      ctx.fillStyle = '#9a3412';
+      ctx.fillRect(px + 7, py + 4, 5, 18);
+      ctx.fillRect(px + 20, py + 6, 5, 16);
+      ctx.fillStyle = '#fed7aa';
+      ctx.fillRect(px + 8, py + 18, 16, 6);
     } else if (prod.type === PRODUCER_TYPE.SURVEY_STATION) {
       ctx.fillStyle = '#0f766e';
       ctx.fillRect(px + 2, py + 2, 28, 28);
@@ -825,9 +887,11 @@ export class Renderer {
 
     ctx.restore();
 
-    const hasRoad = this.grid.isRoadAdjacent(tile.x, tile.y);
     const isBatteryDependent = prod.type === PRODUCER_TYPE.WINDMILL || prod.type === PRODUCER_TYPE.SOLAR_PANEL;
-    if (!hasRoad && !isBatteryDependent) {
+    const gridConnected = isBatteryDependent
+      ? UtilityManager.contributesPowerToGrid(this.grid, prod)
+      : this.grid.isRoadAdjacent(tile.x, tile.y);
+    if (!gridConnected) {
       ctx.fillStyle = '#ef4444';
       ctx.fillRect(px + 2, py + 2, 10, 10);
       ctx.fillStyle = '#ffffff';

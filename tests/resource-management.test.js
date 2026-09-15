@@ -67,5 +67,8 @@ assert.ok(residentialTile.populationLoss > 0, 'Food shortfall should create resi
 const firstFamineLoss = residentialTile.populationLoss;
 manager.update(grid, { population: 20, employmentRate: 1, untreatedPatients: 0, fireInjuries: 0 });
 assert.strictEqual(residentialTile.populationLoss, firstFamineLoss, 'Food outflow should be a per-tick effect, not cumulative permanent damage');
+manager.stockpile.food = 100;
+manager.update(grid, { population: 20, employmentRate: 1, untreatedPatients: 0, fireInjuries: 0 });
+assert.strictEqual(residentialTile.populationLoss, 0, 'Restored food should clear famine populationLoss');
 
 console.log('Resource management tests passed.');

@@ -1,11 +1,13 @@
 import assert from 'assert';
-import { BASE_INCOME, COSTS, DENSITY, ZONE } from '../src/config.js';
+import { COSTS, JOBS_PROVIDED, DENSITY, ZONE } from '../src/config.js';
 
 assert.strictEqual(COSTS.INDUSTRIAL_ZONE, 300, 'Industrial zones should cost $300 to build');
+assert.strictEqual(COSTS.AGRICULTURAL_ZONE, 300, 'Agricultural zones should cost $300 to build');
 for (const density of Object.values(DENSITY)) {
-  assert.ok(
-    BASE_INCOME[ZONE.INDUSTRIAL][density] > BASE_INCOME[ZONE.COMMERCIAL][density],
-    `Industrial income should exceed commercial income at ${density} density`,
+  assert.strictEqual(
+    JOBS_PROVIDED[ZONE.INDUSTRIAL][density],
+    JOBS_PROVIDED[ZONE.COMMERCIAL][density],
+    `Industrial and commercial job tables should match at ${density} density`,
   );
 }
 

@@ -452,3 +452,42 @@ Validation:
 - All test suites pass unchanged (no test places Windmill/Solar Panel producers): `npm test`, test:ore, test:river, test:services, test:tax, test:roads, test:income, test:industrial, test:tax-revenue, test:school, test:service-expenses.
 - Manual node script confirmed: a windmill diagonally adjacent to a battery generates power normally (`hasBatteryConnection: true`, nonzero capacity); a solar panel with no adjacent battery is gated to `capacity: 0` (`hasBatteryConnection: false`).
 
+Current task: Fix correctness bugs and architectural issues identified in project review (Part 1).
+
+- [done] Stop ResourceManager from overwriting civic service staffing (`updateProducerJobs` limited to resource/factory categories).
+- [done] Fix placement economic tick: placement no longer adds income or advances time, runs preview tick(false) only; simTick() is the only income/expense path.
+- [done] Fix pause state leaking into resources: gate ResourceManager.update and prepareTick on advanceWorld.
+- [done] Make preview tick(false) non-mutating: power allocation in preview mode skips wind rerolls and battery charge/discharge writes.
+- [done] Clear sticky famine populationLoss when food shortfall is 0.
+- [done] Align wind/solar HUD capacity and battery charging: unified `contributesPowerToGrid` connectivity check.
+- [done] Make agricultural tiles first-class: implement occupancy from filled jobs, utility consumption, fire ignition/spread, crime inclusion, and zone counters.
+- [done] Define TERRAIN_GENERATION_CONFIG.DEFAULT_RANDOM_SEED (12345) and implement Overworld Biome generation (Plains, Hilly, Mountainous, Swamp).
+- [done] Implement consumer goods consumption each advancing tick; commercial tax doubles when supplied with consumer goods; goods serve as happiness bonus.
+- [done] Add Oil Refinery producer and fuel economy: oil derrick produces ~100 oil/tick, refinery refines 100 oil into 50 fuel/tick; fuel demand across residential/commercial/industrial/agricultural; fuel shortfall halves taxes.
+- [done] Expose Police, Fire, and Hospital overlay buttons in toolbar.
+- [done] Version sync: created src/version.js (0.1.5), synced package.json, automated version test.
+- [done] Removed unused BASE_INCOME table and retargeted industrial economics tests.
+- [done] Renamed seed storage key to bc2000_map_seed with legacy migration.
+- [done] Created test manager `tests/run-all.js` running all 21 test suites via `npm test`.
+- [done] Implement realistic fire model: unoccupied zones and roads do not burn; mountains, forests, and inhabited zones burn; extinguished fires repair gradually and produce 0 tax until repaired; boosted fire suppression power to 55.
+- [done] Removed MONEY_MULTIPLIER and hardcoded 10x pre-scaled values; kept road maintenance at $1.
+- [done] Chunked 64x64 terrain cache in Renderer.js (max 2048px canvases).
+
+Validation:
+- `node tests/run-all.js` passes all 21 test suites.
+
+Current task: Complete remaining review items (Part 2).
+
+- [done] Add arms and tanks stockpile chips to HUD and main.js updater.
+- [done] Fix desktop Pan tool left-drag camera panning and prevent non-repeatable tools from drag-painting.
+- [done] Update Grid.generateProceduralTerrain to accept direct `biome` parameter.
+- [done] Add refinery and oil derrick build info details to `updateBuildInfoPanel`.
+- [done] Update `docs/DESIGN.md` with all agreed user specifications and architectural rules (rev 5).
+
+Validation:
+- `npm test` runs `tests/run-all.js` and all 21 test suites pass with 0 failures.
+- Desktop left-drag with Pan tool pans camera; click without drag inspects tile.
+- Drag-painting restricted to repeatable tools (roads, bridges, tunnels, zones, bulldoze).
+- Grid.generateProceduralTerrain accepts biome directly and scales terrain correctly.
+- Arms and Tanks chips display in top HUD.
+- docs/DESIGN.md updated to rev 5.

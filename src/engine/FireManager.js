@@ -2,29 +2,40 @@ import { FIRE_CONFIG, PRODUCER_TYPE, ZONE, TERRAIN, TERRAIN_TYPE } from '../conf
 import { RoadNetwork } from './RoadNetwork.js';
 
 export class FireManager {
+  static isRoadLike(tile) {
+    return Boolean(tile.hasRoad || tile.hasBridge || tile.hasTunnel);
+  }
+
+  static isFlammable(tile) {
+    if (!tile || tile.destroyed) return false;
+    if (tile.terrain === TERRAIN.WATER || tile.terrain === TERRAIN_TYPE.RIVER) return false;
+    if (this.isRoadLike(tile)) return false;
+    if (tile.terrain === TERRAIN.FOREST || tile.terrain === TERRAIN.MOUNTAIN) return true;
+    if (tile.producer) return true;
+    if (tile.zone !== ZONE.NONE && this.getOccupancyRatio(tile) > 0) return true;
+    return false;
+  }
+
   static updateFires(grid, stats) {
     stats.fireInjuries = 0;
 
-    // 1. Random ignition roll on placed buildings (zoned tiles and non-water producers)
     for (let y = 0; y < grid.height; y++) {
       for (let x = 0; x < grid.width; x++) {
         const tile = grid.tiles[y][x];
-        if (tile.destroyed) continue;
-        if (tile.onFire) continue;
-
-        const isBuilding = tile.zone !== ZONE.NONE || (tile.producer && tile.terrain !== TERRAIN_TYPE.RIVER);
-        if (!isBuilding) continue;
+        if (tile.destroyed || tile.onFire) continue;
+        if ((tile.fireRepair ?? 1) < 1) {
+          tile.fireRepair = Math.min(1, (tile.fireRepair || 0) + FIRE_CONFIG.REPAIR_PER_TICK);
+        }
+        if (!this.isFlammable(tile)) continue;
 
         const chance = this.getIgnitionChance(tile);
-
-        if (Math.random() < chance) {
+        if (chance > 0 && Math.random() < chance) {
           tile.onFire = true;
           tile.fireDamage = 0;
         }
       }
     }
 
-    // 2. Suppression & damage phase
     const { roadDistancesMap } = RoadNetwork.computeProducerDistances(grid, PRODUCER_TYPE.FIRE_STATION);
     const burningTiles = [];
 
@@ -48,10 +59,12 @@ export class FireManager {
         if (station) {
           const staffRatio = station.totalJobs > 0 ? station.filledJobs / station.totalJobs : 0;
           const suppression = FIRE_CONFIG.BASE_SUPPRESSION_POWER * staffRatio;
-          tile.fireDamage = Math.max(0, tile.fireDamage - suppression);
+          const damageBefore = tile.fireDamage || 0;
+          tile.fireDamage = Math.max(0, damageBefore - suppression);
           if (tile.fireDamage <= 0) {
             tile.onFire = false;
             tile.fireDamage = 0;
+            if (damageBefore > 0) tile.fireRepair = 0;
             continue;
           }
         }
@@ -66,16 +79,16 @@ export class FireManager {
           tile.destroyed = true;
           tile.onFire = false;
           tile.fireDamage = 0;
+          tile.fireRepair = 1;
         }
       }
     }
 
-    // 3. Fire spread phase
     for (const tile of burningTiles) {
-      if (!tile.onFire) continue; // may have been suppressed or destroyed above
+      if (!tile.onFire) continue;
       for (const neighbor of grid.getNeighbors8(tile.x, tile.y)) {
-        if (neighbor.onFire) continue;
-        if (neighbor.terrain === TERRAIN_TYPE.EMPTY || neighbor.terrain === TERRAIN_TYPE.RIVER || neighbor.hasRoad || neighbor.hasBridge) continue;
+        if (neighbor.onFire || neighbor.destroyed) continue;
+        if (!this.isFlammable(neighbor)) continue;
         if (Math.random() < FIRE_CONFIG.SPREAD_CHANCE_PER_TICK) {
           neighbor.onFire = true;
           neighbor.fireDamage = 0;
@@ -90,7 +103,7 @@ export class FireManager {
     if (tile.zone === ZONE.RESIDENTIAL) {
       occupied = tile.population || 0;
       capacity = tile.maxPopulation || 0;
-    } else if (tile.zone === ZONE.COMMERCIAL || tile.zone === ZONE.INDUSTRIAL) {
+    } else if (tile.zone === ZONE.COMMERCIAL || tile.zone === ZONE.INDUSTRIAL || tile.zone === ZONE.AGRICULTURAL) {
       occupied = tile.filledJobs || 0;
       capacity = tile.totalJobs || 0;
     }
@@ -98,18 +111,25 @@ export class FireManager {
   }
 
   static getIgnitionChance(tile) {
+    if (!this.isFlammable(tile)) return 0;
     if (tile.terrain === TERRAIN.FOREST) {
       return FIRE_CONFIG.FOREST_IGNITION_CHANCE;
     }
-    if (tile.zone === ZONE.NONE) {
-      return FIRE_CONFIG.BASE_IGNITION_CHANCE;
+    if (tile.terrain === TERRAIN.MOUNTAIN && tile.zone === ZONE.NONE && !tile.producer) {
+      return FIRE_CONFIG.MOUNTAIN_IGNITION_CHANCE;
     }
+    if (tile.zone === ZONE.NONE) {
+      return tile.producer ? FIRE_CONFIG.BASE_IGNITION_CHANCE : 0;
+    }
+
+    const occupancy = this.getOccupancyRatio(tile);
+    if (occupancy <= 0 && !tile.producer) return 0;
 
     const maxChance = tile.zone === ZONE.INDUSTRIAL
       ? FIRE_CONFIG.MAX_IGNITION_CHANCE_INDUSTRIAL
       : FIRE_CONFIG.MAX_IGNITION_CHANCE_NON_INDUSTRIAL;
-    const chance = maxChance * this.getOccupancyRatio(tile);
-    const pollutionBonus = (tile.pollution || 0) >= FIRE_CONFIG.HIGH_POLLUTION_IGNITION_THRESHOLD
+    const chance = maxChance * occupancy;
+    const pollutionBonus = occupancy > 0 && (tile.pollution || 0) >= FIRE_CONFIG.HIGH_POLLUTION_IGNITION_THRESHOLD
       ? FIRE_CONFIG.HIGH_POLLUTION_IGNITION_BONUS
       : 0;
     return Math.min(maxChance, chance + pollutionBonus);

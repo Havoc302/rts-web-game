@@ -1,13 +1,16 @@
 import {
   DEMOGRAPHICS_CONFIG,
   FACTORY_RECIPES,
+  FUEL_CONFIG,
   HAPPINESS_CONFIG,
   LABOR_TAX_GROWTH_CONFIG,
   PRODUCER_CONFIG,
   PRODUCER_TYPE,
   RESOURCE_CONFIG,
+  RESOURCE_JOB_CATEGORIES,
   ZONE,
 } from '../config.js';
+import { UtilityManager } from './UtilityManager.js';
 
 const EMPTY_STOCKPILE = {
   food: 0,
@@ -43,14 +46,19 @@ export class ResourceManager {
     this.updateProducerJobs(grid, stats.employmentRate || 0);
     this.extractFromMines(grid);
     this.smelt(grid);
+    this.refineOil(grid);
     this.produceFactories(grid);
     this.consumeCoalForPower(grid);
     const foodResult = this.consumeFood(grid, stats.population || 0);
-    const goodsDemand = (stats.population || 0) * RESOURCE_CONFIG.CONSUMER_GOODS_PER_RESIDENT;
-    const goodsRatio = goodsDemand > 0 ? Math.min(1, this.stockpile.consumerGoods / goodsDemand) : 0;
-    stats.happiness = this.calculateHappiness(grid, stats, goodsRatio, foodResult.shortfall > 0);
+    const goodsResult = this.consumeConsumerGoods(stats.population || 0);
+    const fuelResult = this.consumeFuel(grid);
+    stats.happiness = this.calculateHappiness(grid, stats, goodsResult.goodsRatio, foodResult.shortfall > 0);
     stats.happinessGrowthModifier = stats.happiness * HAPPINESS_CONFIG.GROWTH_DELTA_PER_POINT;
     stats.foodShortfall = foodResult.shortfall;
+    stats.goodsRatio = goodsResult.goodsRatio;
+    stats.fuelDemand = fuelResult.demand;
+    stats.fuelConsumed = fuelResult.consumed;
+    stats.fuelShortfall = fuelResult.shortfall;
     this.clampToCapacity();
   }
 
@@ -69,7 +77,8 @@ export class ResourceManager {
   updateProducerJobs(grid, employmentRate) {
     for (const producer of grid.producers) {
       const config = PRODUCER_CONFIG[producer.type];
-      if (!config?.jobs || producer.type === PRODUCER_TYPE.FIRE_STATION) continue;
+      if (!config?.jobs) continue;
+      if (!RESOURCE_JOB_CATEGORIES.includes(config.category)) continue;
       const maxJobs = config.jobs.light;
       producer.totalJobs = maxJobs;
       producer.filledJobs = Math.round(maxJobs * Math.max(LABOR_TAX_GROWTH_CONFIG.MIN_SERVICE_EMPLOYMENT_RATE, employmentRate));
@@ -86,7 +95,14 @@ export class ResourceManager {
     for (const producer of grid.producers) {
       const output = outputs[producer.type];
       if (!output || !producer.operational) continue;
-      const amount = (producer.filledJobs || 0) * RESOURCE_CONFIG.MINE_EXTRACTION_PER_JOB;
+      let amount;
+      if (producer.type === PRODUCER_TYPE.OIL_DERRICK) {
+        const jobs = producer.totalJobs || PRODUCER_CONFIG[PRODUCER_TYPE.OIL_DERRICK].jobs.light;
+        const fill = jobs > 0 ? Math.min(1, (producer.filledJobs || 0) / jobs) : 0;
+        amount = RESOURCE_CONFIG.OIL_DERRICK_OUTPUT_PER_TICK * fill;
+      } else {
+        amount = (producer.filledJobs || 0) * RESOURCE_CONFIG.MINE_EXTRACTION_PER_JOB;
+      }
       this.stockpile[output] += amount;
     }
   }
@@ -132,6 +148,16 @@ export class ResourceManager {
     }
   }
 
+  refineOil(grid) {
+    for (const producer of grid.producers) {
+      if (producer.type !== PRODUCER_TYPE.REFINERY || !producer.operational) continue;
+      const oil = Math.min(RESOURCE_CONFIG.REFINERY_OIL_PER_TICK, this.stockpile.oil);
+      if (oil <= 0) continue;
+      this.stockpile.oil -= oil;
+      this.stockpile.fuel += oil * RESOURCE_CONFIG.REFINERY_FUEL_PER_OIL;
+    }
+  }
+
   consumeCoalForPower(grid) {
     for (const producer of grid.producers) {
       if (producer.type !== PRODUCER_TYPE.COAL_PLANT) continue;
@@ -151,14 +177,34 @@ export class ResourceManager {
     const consumed = Math.min(this.stockpile.food, demand);
     const shortfall = Math.max(0, demand - consumed);
     this.stockpile.food -= consumed;
-    if (shortfall > 0) {
-      for (const tile of grid.tiles.flat()) {
-        if (tile.zone !== ZONE.RESIDENTIAL || tile.destroyed) continue;
-        const loss = Math.ceil((tile.population || 0) * HAPPINESS_CONFIG.UNFED_OUTFLOW_PERCENT);
-        tile.populationLoss = loss;
-      }
+    for (const tile of grid.tiles.flat()) {
+      if (tile.zone !== ZONE.RESIDENTIAL || tile.destroyed) continue;
+      tile.populationLoss = shortfall > 0
+        ? Math.ceil((tile.population || 0) * HAPPINESS_CONFIG.UNFED_OUTFLOW_PERCENT)
+        : 0;
     }
     return { shortfall };
+  }
+
+  consumeConsumerGoods(population) {
+    const demand = population * RESOURCE_CONFIG.CONSUMER_GOODS_PER_RESIDENT;
+    const consumed = Math.min(this.stockpile.consumerGoods, demand);
+    this.stockpile.consumerGoods -= consumed;
+    const goodsRatio = demand > 0 ? consumed / demand : 0;
+    return { demand, consumed, goodsRatio };
+  }
+
+  consumeFuel(grid) {
+    let demand = 0;
+    for (const tile of grid.tiles.flat()) {
+      if (tile.destroyed || tile.zone === ZONE.NONE) continue;
+      const perTile = FUEL_CONFIG.PER_TILE[tile.zone] || 0;
+      demand += perTile * UtilityManager.getTileOccupancyRatio(tile);
+    }
+    const consumed = Math.min(this.stockpile.fuel, demand);
+    this.stockpile.fuel -= consumed;
+    const shortfall = Math.max(0, demand - consumed);
+    return { demand, consumed, shortfall };
   }
 
   getCrimePenalty(grid) {

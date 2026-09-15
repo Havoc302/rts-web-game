@@ -4,7 +4,7 @@ import { Simulation } from '../src/engine/Simulation.js';
 import { UtilityManager } from '../src/engine/UtilityManager.js';
 import { PollutionManager } from '../src/engine/PollutionManager.js';
 import { FireManager } from '../src/engine/FireManager.js';
-import { PRODUCER_TYPE, ZONE, DENSITY, GROWTH_CONFIG, MAP_WIDTH, MAP_HEIGHT, TERRAIN_TYPE, TERRAIN, CRIME_CONFIG, MEDICAL_CONFIG, FIRE_CONFIG, USAGE_RATES, JOBS_PROVIDED } from '../src/config.js';
+import { PRODUCER_TYPE, ZONE, DENSITY, GROWTH_CONFIG, MAP_WIDTH, MAP_HEIGHT, TERRAIN_TYPE, TERRAIN, CRIME_CONFIG, MEDICAL_CONFIG, FIRE_CONFIG, HAPPINESS_CONFIG, USAGE_RATES, JOBS_PROVIDED } from '../src/config.js';
 
 console.log('Running Phase 1 Core Loop Automated Verification Tests...\n');
 
@@ -127,7 +127,9 @@ console.log('Running Phase 1 Core Loop Automated Verification Tests...\n');
   assert.strictEqual(FireManager.getIgnitionChance(industrialTile), FIRE_CONFIG.MAX_IGNITION_CHANCE_INDUSTRIAL, 'Full industrial tiles should cap at 2% fire risk');
   assert.strictEqual(FireManager.getIgnitionChance({ ...industrialTile, pollution: 100 }), FIRE_CONFIG.MAX_IGNITION_CHANCE_INDUSTRIAL, 'Pollution must not exceed the industrial fire risk cap');
   assert.strictEqual(FireManager.getIgnitionChance({ terrain: TERRAIN.FOREST, pollution: 100, population: 100, maxPopulation: 100 }), FIRE_CONFIG.FOREST_IGNITION_CHANCE, 'Forest tiles should use the fixed 0.01% fire risk');
-  assert.strictEqual(FireManager.getIgnitionChance({ terrain: TERRAIN.FLAT, zone: ZONE.NONE, pollution: 100 }), FIRE_CONFIG.BASE_IGNITION_CHANCE, 'Standalone infrastructure should use the fixed 0.01% fire risk');
+  assert.strictEqual(FireManager.getIgnitionChance({ terrain: TERRAIN.FLAT, zone: ZONE.NONE, pollution: 100 }), 0, 'Empty barren flat should not ignite');
+  assert.strictEqual(FireManager.getIgnitionChance({ terrain: TERRAIN.FLAT, zone: ZONE.NONE, producer: { type: 'power_plant' }, pollution: 0 }), FIRE_CONFIG.BASE_IGNITION_CHANCE, 'Standalone producers can ignite');
+  assert.strictEqual(FireManager.getIgnitionChance({ terrain: TERRAIN.MOUNTAIN, zone: ZONE.NONE, pollution: 0 }), FIRE_CONFIG.MOUNTAIN_IGNITION_CHANCE, 'Mountains can ignite');
   console.log('✔ Test 1d Passed: Fire risk scales with occupancy and respects caps');
 }
 
@@ -148,6 +150,23 @@ console.log('Running Phase 1 Core Loop Automated Verification Tests...\n');
     'Fully occupied commercial tiles should use their configured power rate',
   );
   console.log('✔ Test 1e Passed: Commercial utility usage scales with jobs taken');
+}
+
+{
+  const emptyFarm = {
+    zone: ZONE.AGRICULTURAL,
+    density: DENSITY.LIGHT,
+    filledJobs: 0,
+    totalJobs: 7,
+  };
+  const fullFarm = { ...emptyFarm, filledJobs: 7 };
+  assert.strictEqual(UtilityManager.getTileUtilityUsage(emptyFarm, 'water'), 0, 'Empty farms should use no water');
+  assert.strictEqual(
+    UtilityManager.getTileUtilityUsage(fullFarm, 'water'),
+    USAGE_RATES[ZONE.AGRICULTURAL][DENSITY.LIGHT].water,
+    'Occupied farms should use agricultural water rates',
+  );
+  console.log('✔ Test 1f Passed: Agricultural occupancy scales utility demand');
 }
 
 // Test 2: Nearest-served-first allocation (Power / Water)
@@ -276,11 +295,13 @@ console.log('Running Phase 1 Core Loop Automated Verification Tests...\n');
   const originalBaseCrimeChance = CRIME_CONFIG.BASE_CRIME_CHANCE;
   const originalUnemploymentScaler = CRIME_CONFIG.JOB_SCARCITY_CRIME_SCALER;
   const originalUnhealthyPenalty = MEDICAL_CONFIG.UNHEALTHY_GROWTH_PENALTY;
+  const originalHappinessGrowth = HAPPINESS_CONFIG.GROWTH_DELTA_PER_POINT;
   Math.random = () => 0.999;
   CRIME_CONFIG.BASE_CRIME_CHANCE = 0;
   CRIME_CONFIG.JOB_SCARCITY_CRIME_SCALER = 0;
   // No hospital built in this test; disable the unrelated health penalty so growth math stays deterministic.
   MEDICAL_CONFIG.UNHEALTHY_GROWTH_PENALTY = 0;
+  HAPPINESS_CONFIG.GROWTH_DELTA_PER_POINT = 0;
 
   // Run simulation ticks up to THRESHOLD_MEDIUM
   for (let i = 0; i < GROWTH_CONFIG.THRESHOLD_MEDIUM; i++) {
@@ -304,6 +325,7 @@ console.log('Running Phase 1 Core Loop Automated Verification Tests...\n');
   sim.updateGrowthAndDensity();
   assert.strictEqual(zTile.growthScore, GROWTH_CONFIG.MAX_SCORE, 'Growth score should cap at full population');
   MEDICAL_CONFIG.UNHEALTHY_GROWTH_PENALTY = originalUnhealthyPenalty;
+  HAPPINESS_CONFIG.GROWTH_DELTA_PER_POINT = originalHappinessGrowth;
   console.log('✔ Test 4 Passed: Growth score & density progression correct');
 }
 
@@ -332,13 +354,12 @@ console.log('Running Phase 1 Core Loop Automated Verification Tests...\n');
   sim.taxRate = 100;
   sim.computeStats();
   let income = sim.stats.incomePerTick;
-  assert.strictEqual(income, 5, 'Income at 100% tax should reflect scaled resident and worker revenue');
+  assert.strictEqual(income, 4, 'Income at 100% tax should be the rounded sum of per-tile resident and job tax');
 
-  // Change tax rate to 50%
   sim.taxRate = 50;
   sim.computeStats();
   income = sim.stats.incomePerTick;
-  assert.strictEqual(income, 3, 'Income at 50% tax should round half of the scaled population-based income');
+  assert.strictEqual(income, 2, 'Income at 50% tax should scale the same per-tile tax base');
   console.log('✔ Test 5 Passed: Tax income calculations per zone/density & tax rate multiplier correct');
 }
 

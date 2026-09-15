@@ -1,7 +1,7 @@
 import { Grid } from './engine/Grid.js';
 import { Simulation } from './engine/Simulation.js';
 import { Renderer } from './engine/Renderer.js';
-import { APP_VERSION, ZONE, TERRAIN, PRODUCER_TYPE, PRODUCER_CONFIG, FACTORY_RECIPES, COSTS, TILE_SIZE, STARTING_TREASURY, RESIDENTIAL_CAPACITY, JOBS_PROVIDED, FOREST_POLLUTION_ABSORPTION, FOREST_DESIRABILITY_RADIUS, CRIME_CONFIG, MEDICAL_CONFIG, POWER_PRODUCER_TYPES, POLLUTION_CONFIG, COAL_CONFIG, WIND_CONFIG, SOLAR_CONFIG, BATTERY_CONFIG, DENSITY, RENDERER_CONFIG, TERRAIN_GENERATION_CONFIG, splitDemographics } from './config.js';
+import { APP_VERSION, ZONE, TERRAIN, PRODUCER_TYPE, PRODUCER_CONFIG, FACTORY_RECIPES, COSTS, TILE_SIZE, STARTING_TREASURY, RESIDENTIAL_CAPACITY, JOBS_PROVIDED, FOREST_POLLUTION_ABSORPTION, FOREST_DESIRABILITY_RADIUS, CRIME_CONFIG, MEDICAL_CONFIG, POWER_PRODUCER_TYPES, POLLUTION_CONFIG, COAL_CONFIG, WIND_CONFIG, SOLAR_CONFIG, BATTERY_CONFIG, DENSITY, RENDERER_CONFIG, TERRAIN_GENERATION_CONFIG, MAP_SEED_STORAGE_KEY, splitDemographics } from './config.js';
 
 class GameApp {
   constructor() {
@@ -9,7 +9,14 @@ class GameApp {
     this.grid = new Grid();
     this.simulation = new Simulation(this.grid);
     this.renderer = new Renderer(this.canvas, this.grid);
-    document.getElementById('app-version').textContent = `v${APP_VERSION}`;
+    const versionEl = document.getElementById('app-version');
+    if (versionEl) versionEl.textContent = `v${APP_VERSION}`;
+    const stylesheet = document.querySelector('link[rel="stylesheet"]');
+    if (stylesheet) {
+      const href = new URL(stylesheet.href, window.location.href);
+      href.searchParams.set('v', APP_VERSION);
+      stylesheet.href = href.toString();
+    }
 
     this.treasury = STARTING_TREASURY;
     this.activeTool = 'pan';
@@ -161,7 +168,7 @@ class GameApp {
     if (seedInput) seedInput.value = this.grid.seed;
 
     if (typeof localStorage !== 'undefined') {
-      localStorage.setItem('metropolis_map_seed', this.grid.seed);
+      localStorage.setItem(MAP_SEED_STORAGE_KEY, this.grid.seed);
     }
     if (typeof window !== 'undefined' && window.history) {
       const url = new URL(window.location.href);
@@ -245,12 +252,22 @@ class GameApp {
     setStock('stat-coal', stockpile.coal);
     setStock('stat-iron', stockpile.ironOre);
     setStock('stat-bauxite', stockpile.bauxiteOre);
+    setStock('stat-iron-bar', stockpile.ironBar);
+    setStock('stat-bauxite-bar', stockpile.bauxiteBar);
+    setStock('stat-oil', stockpile.oil);
+    setStock('stat-fuel', stockpile.fuel);
     setStock('stat-goods', stockpile.consumerGoods);
+    setStock('stat-arms', stockpile.arms);
+    setStock('stat-tanks', stockpile.tanks);
+
+    const happinessEl = document.getElementById('stat-happiness');
+    if (happinessEl) happinessEl.textContent = Math.round(stats.happiness ?? 0);
 
     this.updateMeter('meter-power-text', 'meter-power-fill', stats.powerDemand, stats.powerCapacity, true);
     this.updateMeter('meter-water-text', 'meter-water-fill', stats.waterDemand, stats.waterCapacity, true);
     this.updateMeter('meter-sewage-text', 'meter-sewage-fill', stats.sewageDemand, stats.sewageCapacity, true);
     this.updateMeter('meter-hospital-text', 'meter-hospital-fill', stats.patientDemand, stats.patientCapacity);
+    this.updateMeter('meter-fuel-text', 'meter-fuel-fill', stats.fuelDemand || 0, stockpile.fuel || 0, true);
 
     const pollEl = document.getElementById('meter-pollution-text');
     if (pollEl) pollEl.textContent = `Avg ${stats.avgPollution} / Max ${stats.maxPollution}`;
@@ -288,6 +305,12 @@ class GameApp {
   }
 
   bindCanvasEvents() {
+    const REPEATABLE_DRAG_TOOLS = new Set([
+      'road', 'bridge', 'tunnel',
+      'zone_r', 'zone_c', 'zone_i', 'zone_a',
+      'bulldoze',
+    ]);
+
     this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
     this.canvas.addEventListener('mousedown', (e) => {
@@ -295,7 +318,12 @@ class GameApp {
         this.isRightMouseDown = true;
       } else if (e.button === 0) {
         this.isMouseDown = true;
-        this.handleCanvasClick(e);
+        this.mouseDownStartX = e.clientX;
+        this.mouseDownStartY = e.clientY;
+        this.mouseHasDragged = false;
+        if (this.activeTool !== 'pan') {
+          this.handleCanvasClick(e);
+        }
       }
       this.lastMouseX = e.clientX;
       this.lastMouseY = e.clientY;
@@ -303,7 +331,12 @@ class GameApp {
 
     window.addEventListener('mouseup', (e) => {
       if (e.button === 2) this.isRightMouseDown = false;
-      if (e.button === 0) this.isMouseDown = false;
+      if (e.button === 0) {
+        if (this.isMouseDown && this.activeTool === 'pan' && !this.mouseHasDragged) {
+          this.handleCanvasClick(e);
+        }
+        this.isMouseDown = false;
+      }
     });
 
     this.canvas.addEventListener('mousemove', (e) => {
@@ -311,14 +344,17 @@ class GameApp {
       const mouseX = e.clientX - rect.left;
       const mouseY = e.clientY - rect.top;
 
-      if (this.isRightMouseDown) {
+      if (this.isRightMouseDown || (this.isMouseDown && this.activeTool === 'pan')) {
         const dx = e.clientX - this.lastMouseX;
         const dy = e.clientY - this.lastMouseY;
         this.renderer.setCamera(this.renderer.cameraX + dx, this.renderer.cameraY + dy);
+        if (Math.hypot(e.clientX - this.mouseDownStartX, e.clientY - this.mouseDownStartY) > 5) {
+          this.mouseHasDragged = true;
+        }
       } else {
         const tile = this.screenToTile(mouseX, mouseY);
         this.renderer.hoverTile = tile;
-        if (this.isMouseDown && this.activeTool !== 'inspect') {
+        if (this.isMouseDown && REPEATABLE_DRAG_TOOLS.has(this.activeTool)) {
           this.handleCanvasClick(e);
         }
       }
@@ -479,8 +515,7 @@ class GameApp {
 
     if (success) {
       this.treasury -= cost;
-      const income = this.simulation.tick(!this.simulation.isPaused);
-      this.treasury += income;
+      this.simulation.tick(false);
       this.updateHUD();
       if (this.renderer.selectedTile) {
         this.updateInspector(this.renderer.selectedTile);
@@ -543,6 +578,10 @@ class GameApp {
         if (pType === PRODUCER_TYPE.HOSPITAL) {
           const cap = (staff) => staff * MEDICAL_CONFIG.HOSPITAL_PATIENT_CAPACITY_PER_JOB;
           rows.push(row('Patient Capacity (L/M/H)', `${cap(config.jobs.light)} / ${cap(config.jobs.medium)} / ${cap(config.jobs.high)}`));
+        } else if (pType === PRODUCER_TYPE.OIL_DERRICK) {
+          rows.push(row('Output', 'Extracts up to 100 oil per tick'));
+        } else if (pType === PRODUCER_TYPE.REFINERY) {
+          rows.push(row('Processing', 'Converts up to 100 oil into 50 fuel per tick'));
         }
       } else if (config.surveyDuration) {
         rows.push(row('Survey Duration (Flat/Mountain)', `${config.surveyDuration.standard} / ${config.surveyDuration.mountain} ticks`));
@@ -550,10 +589,16 @@ class GameApp {
 
       body.innerHTML = rows.join('');
       panel.classList.add('visible');
-    } else if (tool === 'zone_r' || tool === 'zone_c' || tool === 'zone_i') {
-      const zoneType = tool === 'zone_r' ? ZONE.RESIDENTIAL : tool === 'zone_c' ? ZONE.COMMERCIAL : ZONE.INDUSTRIAL;
-      const cost = tool === 'zone_i' ? COSTS.INDUSTRIAL_ZONE : COSTS.ZONE;
-      title.textContent = tool === 'zone_r' ? 'Residential Zone' : tool === 'zone_c' ? 'Commercial Zone' : 'Industrial Zone';
+    } else if (tool === 'zone_r' || tool === 'zone_c' || tool === 'zone_i' || tool === 'zone_a') {
+      const zoneType = tool === 'zone_r' ? ZONE.RESIDENTIAL
+        : tool === 'zone_c' ? ZONE.COMMERCIAL
+        : tool === 'zone_a' ? ZONE.AGRICULTURAL
+        : ZONE.INDUSTRIAL;
+      const cost = tool === 'zone_i' || tool === 'zone_a' ? (tool === 'zone_a' ? COSTS.AGRICULTURAL_ZONE : COSTS.INDUSTRIAL_ZONE) : COSTS.ZONE;
+      title.textContent = tool === 'zone_r' ? 'Residential Zone'
+        : tool === 'zone_c' ? 'Commercial Zone'
+        : tool === 'zone_a' ? 'Agricultural Zone'
+        : 'Industrial Zone';
 
       const rows = [row('Cost', `$${cost.toLocaleString()}`)];
       if (zoneType === ZONE.RESIDENTIAL) {
@@ -565,6 +610,20 @@ class GameApp {
       if (zoneType === ZONE.INDUSTRIAL) {
         rows.push(row('Pollution (Light/Medium/High)', `${POLLUTION_CONFIG.INDUSTRIAL_EMISSION.light} / ${POLLUTION_CONFIG.INDUSTRIAL_EMISSION.medium} / ${POLLUTION_CONFIG.INDUSTRIAL_EMISSION.high}`));
         rows.push(row('Pollution Radius (L/M/H)', `${POLLUTION_CONFIG.INDUSTRIAL_RADIUS.light} / ${POLLUTION_CONFIG.INDUSTRIAL_RADIUS.medium} / ${POLLUTION_CONFIG.INDUSTRIAL_RADIUS.high}`));
+      }
+      if (zoneType === ZONE.AGRICULTURAL) {
+        rows.push(row('Food yield (L/M/H)', '4 / 20 / 80 at full jobs'));
+        rows.push(row('Fuel use', '4 per tick at full occupancy'));
+      }
+      if (zoneType === ZONE.COMMERCIAL) {
+        rows.push(row('Consumer goods', 'City goods supply doubles commercial tax'));
+        rows.push(row('Fuel use', '2 per tick at full occupancy'));
+      }
+      if (zoneType === ZONE.RESIDENTIAL) {
+        rows.push(row('Fuel use', '1 per tick at full occupancy'));
+      }
+      if (zoneType === ZONE.INDUSTRIAL) {
+        rows.push(row('Fuel use', '4 per tick at full occupancy'));
       }
 
       body.innerHTML = rows.join('');
@@ -654,9 +713,12 @@ class GameApp {
     document.getElementById('inspect-crime').textContent = crimeLevel;
     const crimeTaxPenalty = Math.min(CRIME_CONFIG.MAX_TAX_LOSS_RATIO, crime * CRIME_CONFIG.TAX_LOSS_PER_CRIME_POINT);
     document.getElementById('inspect-crime-tax-loss').textContent = `-${Math.round(crimeTaxPenalty * 100)}%`;
+    const repairPct = Math.round((tile.fireRepair ?? 1) * 100);
     document.getElementById('inspect-fire').textContent = tile.onFire
       ? `Yes (Damage: ${Math.min(100, Math.round(tile.fireDamage || 0))}%)`
-      : 'No';
+      : repairPct < 100
+        ? `Repairing (${repairPct}% use)`
+        : 'No';
     const oreEl = document.getElementById('inspect-ore');
     if (oreEl) {
       if (tile.oreDiscovered) {

@@ -2,14 +2,35 @@ import { PRODUCER_TYPE, PRODUCER_CONFIG, SERVICE_GLOBAL_CONFIG, USAGE_RATES, POW
 import { RoadNetwork } from './RoadNetwork.js';
 
 export class UtilityManager {
-  static allocateAll(grid, hourOfDay = 12) {
-    this.updatePowerGeneration(grid, hourOfDay);
+  // preview=true: HUD-only. Recompute usedCapacity against persisted generation;
+  // do not reroll wind, discharge/charge batteries, or write storedEnergy.
+  static allocateAll(grid, hourOfDay = 12, { preview = false } = {}) {
+    if (!preview) {
+      this.updatePowerGeneration(grid, hourOfDay);
+    }
     this.allocateUtility(grid, POWER_PRODUCER_TYPES, 'power', 'ascending');
-    this.settleBatteries(grid);
-    this.chargeBatteries(grid);
+    if (!preview) {
+      this.settleBatteries(grid);
+      this.chargeBatteries(grid);
+    }
     this.allocateUtility(grid, PRODUCER_TYPE.WATER_TOWER, 'water', 'ascending');
     this.allocateUtility(grid, PRODUCER_TYPE.SEWAGE_PLANT, 'sewage', 'descending');
     this.allocateUtilityConsumers(grid);
+  }
+
+  static getAdjacentBattery(grid, x, y) {
+    return grid.getNeighbors8(x, y).find((tile) => tile.producer && tile.producer.type === PRODUCER_TYPE.BATTERY)?.producer || null;
+  }
+
+  // Wind/solar count for HUD and charging iff they have a battery and that
+  // battery is road-adjacent. Other power producers count iff they are road-adjacent.
+  static contributesPowerToGrid(grid, producer) {
+    if (!producer || producer.destroyed) return false;
+    if (producer.type === PRODUCER_TYPE.WINDMILL || producer.type === PRODUCER_TYPE.SOLAR_PANEL) {
+      const battery = this.getAdjacentBattery(grid, producer.x, producer.y);
+      return Boolean(battery && grid.isRoadAdjacent(battery.x, battery.y));
+    }
+    return grid.isRoadAdjacent(producer.x, producer.y);
   }
 
   // Windmill output swings randomly each tick, solar follows a sunrise-to-sunset
@@ -60,7 +81,7 @@ export class UtilityManager {
     if (batteries.length === 0) return;
 
     let surplus = grid.producers
-      .filter((p) => POWER_PRODUCER_TYPES.includes(p.type) && p.type !== PRODUCER_TYPE.BATTERY)
+      .filter((p) => POWER_PRODUCER_TYPES.includes(p.type) && p.type !== PRODUCER_TYPE.BATTERY && this.contributesPowerToGrid(grid, p))
       .reduce((sum, p) => sum + Math.max(0, p.capacity - p.usedCapacity), 0);
 
     for (const battery of batteries) {
@@ -213,7 +234,7 @@ export class UtilityManager {
     if (tile.zone === 'residential') {
       occupied = tile.population || 0;
       capacity = tile.maxPopulation || 0;
-    } else if (tile.zone === 'commercial' || tile.zone === 'industrial') {
+    } else if (tile.zone === 'commercial' || tile.zone === 'industrial' || tile.zone === 'agricultural') {
       occupied = tile.filledJobs || 0;
       capacity = tile.totalJobs || 0;
     }

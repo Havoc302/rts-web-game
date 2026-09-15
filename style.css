@@ -136,6 +136,16 @@ body {
   gap: 8px;
 }
 
+.stat-icon-text {
+  font-size: 16px;
+  line-height: 1;
+}
+.stock-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #94a3b8;
+}
 .stock-chip {
   display: flex;
   align-items: center;

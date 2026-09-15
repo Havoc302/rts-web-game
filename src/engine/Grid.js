@@ -1,4 +1,4 @@
-import { TERRAIN, TERRAIN_TYPE, ZONE, DENSITY, MAP_WIDTH, MAP_HEIGHT, PRODUCER_CONFIG, PRODUCER_TYPE, ORE_CONFIG, ORE_GENERATION, SERVICE_GLOBAL_CONFIG, TERRAIN_GENERATION_CONFIG } from '../config.js';
+import { TERRAIN, TERRAIN_TYPE, ZONE, DENSITY, MAP_WIDTH, MAP_HEIGHT, PRODUCER_CONFIG, PRODUCER_TYPE, ORE_CONFIG, ORE_GENERATION, SERVICE_GLOBAL_CONFIG, TERRAIN_GENERATION_CONFIG, MAP_SEED_STORAGE_KEY, MAP_SEED_STORAGE_KEY_LEGACY, BIOME_CONFIG } from '../config.js';
 
 export function createPRNG(seed) {
   let h = Math.imul((parseInt(seed, 10) || TERRAIN_GENERATION_CONFIG.DEFAULT_RANDOM_SEED) ^ 0x6d2b79f5, 0x15a4e35d);
@@ -14,9 +14,10 @@ export function createPRNG(seed) {
 }
 
 export class Grid {
-  constructor(width = MAP_WIDTH, height = MAP_HEIGHT, seed = null) {
+  constructor(width = MAP_WIDTH, height = MAP_HEIGHT, seed = null, biome = null) {
     this.width = width;
     this.height = height;
+    this.biome = biome;
     this.seed = seed !== null ? parseInt(seed, 10) : this.getInitialSeed();
     this.random = createPRNG(this.seed);
     this.tiles = [];
@@ -27,18 +28,26 @@ export class Grid {
     this.initGrid();
   }
 
+  persistSeed() {
+    if (typeof localStorage === 'undefined') return;
+    localStorage.setItem(MAP_SEED_STORAGE_KEY, this.seed);
+    localStorage.removeItem(MAP_SEED_STORAGE_KEY_LEGACY);
+  }
+
   getInitialSeed() {
     if (typeof window !== 'undefined') {
       const urlParams = new URLSearchParams(window.location.search);
       const paramSeed = parseInt(urlParams.get('seed'), 10);
       if (!isNaN(paramSeed) && paramSeed > 0) return paramSeed;
 
-      const savedSeed = parseInt(localStorage.getItem('metropolis_map_seed'), 10);
+      const savedSeed = parseInt(localStorage.getItem(MAP_SEED_STORAGE_KEY), 10);
       if (!isNaN(savedSeed) && savedSeed > 0) return savedSeed;
+      const legacySeed = parseInt(localStorage.getItem(MAP_SEED_STORAGE_KEY_LEGACY), 10);
+      if (!isNaN(legacySeed) && legacySeed > 0) return legacySeed;
     }
     const newSeed = Math.floor(Math.random() * TERRAIN_GENERATION_CONFIG.RANDOM_SEED_MAX) + TERRAIN_GENERATION_CONFIG.RANDOM_SEED_MIN;
     if (typeof localStorage !== 'undefined') {
-      localStorage.setItem('metropolis_map_seed', newSeed);
+      localStorage.setItem(MAP_SEED_STORAGE_KEY, newSeed);
     }
     return newSeed;
   }
@@ -47,13 +56,14 @@ export class Grid {
     this.randomizeGrid(this.seed);
   }
 
-  randomizeGrid(seed = null) {
+  randomizeGrid(seed = null, biome = this.biome) {
     if (seed !== null && !isNaN(parseInt(seed, 10))) {
       this.seed = parseInt(seed, 10);
     }
-    if (typeof localStorage !== 'undefined') {
-      localStorage.setItem('metropolis_map_seed', this.seed);
+    if (biome !== undefined) {
+      this.biome = biome;
     }
+    this.persistSeed();
     this.random = createPRNG(this.seed);
     this.terrainVersion++;
 
@@ -67,7 +77,7 @@ export class Grid {
       this.tiles.push(row);
     }
 
-    this.generateProceduralTerrain();
+    this.generateProceduralTerrain(this.biome);
     this.generateHiddenOres();
   }
 
@@ -111,20 +121,33 @@ export class Grid {
       crime: 0,
       onFire: false,
       fireDamage: 0,
+      fireRepair: 1,
       destroyed: false,
     };
   }
 
-  generateProceduralTerrain() {
-    // 1. Generate river(s) with random start/end edges and optional fork
-    this.generateRiver();
+  getBiomeModifiers(biome = this.biome) {
+    return BIOME_CONFIG[biome] || {
+      rockClusterScale: 1,
+      forestClusterScale: 1,
+      lakeCountMin: 0,
+      lakeCountMax: TERRAIN_GENERATION_CONFIG.LAKE_COUNT_RANDOM_RANGE - 1,
+      lakeRadiusScale: 1,
+      riverMode: 'mixed',
+    };
+  }
 
-    // 1b. Scatter 0-5 lakes of varying size
-    this.generateLakes();
+  generateProceduralTerrain(biome = this.biome) {
+    if (biome !== undefined) this.biome = biome;
+    const modifiers = this.getBiomeModifiers(this.biome);
+    this.generateRiver(modifiers.riverMode);
 
-    // 2. Scatter Forest Clusters — scaled to map area
+    this.generateLakes(modifiers);
+
     const mapScale = (this.width * this.height) / TERRAIN_GENERATION_CONFIG.MAP_SCALE_BASE_AREA;
-    const numForestClusters = Math.round(TERRAIN_GENERATION_CONFIG.FOREST_CLUSTER_COUNT_SCALE * mapScale);
+    const numForestClusters = Math.round(
+      TERRAIN_GENERATION_CONFIG.FOREST_CLUSTER_COUNT_SCALE * mapScale * (modifiers.forestClusterScale ?? 1),
+    );
     for (let i = 0; i < numForestClusters; i++) {
       const margin = TERRAIN_GENERATION_CONFIG.FOREST_CLUSTER_CENTER_MARGIN;
       const cx = Math.floor(this.random() * (this.width - margin)) + margin / 2;
@@ -144,8 +167,9 @@ export class Grid {
       }
     }
 
-    // 3. Scatter Rock Clusters — scaled to map area
-    const numRockClusters = Math.round(TERRAIN_GENERATION_CONFIG.ROCK_CLUSTER_COUNT_SCALE * mapScale);
+    const numRockClusters = Math.round(
+      TERRAIN_GENERATION_CONFIG.ROCK_CLUSTER_COUNT_SCALE * mapScale * (modifiers.rockClusterScale ?? 1),
+    );
     for (let i = 0; i < numRockClusters; i++) {
       const margin = TERRAIN_GENERATION_CONFIG.ROCK_CLUSTER_CENTER_MARGIN;
       const cx = Math.floor(this.random() * (this.width - margin)) + margin / 2;
@@ -166,10 +190,15 @@ export class Grid {
     }
   }
 
-  generateLakes() {
-    const numLakes = Math.floor(this.random() * TERRAIN_GENERATION_CONFIG.LAKE_COUNT_RANDOM_RANGE); // 0-5 lakes
+  generateLakes(biome = this.getBiomeModifiers()) {
+    const minLakes = biome.lakeCountMin ?? 0;
+    const maxLakes = biome.lakeCountMax ?? (TERRAIN_GENERATION_CONFIG.LAKE_COUNT_RANDOM_RANGE - 1);
+    const numLakes = minLakes + Math.floor(this.random() * (Math.max(0, maxLakes - minLakes) + 1));
+    const radiusScale = biome.lakeRadiusScale ?? 1;
     for (let i = 0; i < numLakes; i++) {
-      const radius = TERRAIN_GENERATION_CONFIG.LAKE_RADIUS_MIN + Math.floor(this.random() * TERRAIN_GENERATION_CONFIG.LAKE_RADIUS_RANDOM_RANGE);
+      const radius = Math.max(1, Math.round(
+        (TERRAIN_GENERATION_CONFIG.LAKE_RADIUS_MIN + Math.floor(this.random() * TERRAIN_GENERATION_CONFIG.LAKE_RADIUS_RANDOM_RANGE)) * radiusScale,
+      ));
       const margin = radius + TERRAIN_GENERATION_CONFIG.LAKE_MARGIN_BUFFER;
       if (this.width <= margin * 2 || this.height <= margin * 2) continue;
 
@@ -190,7 +219,7 @@ export class Grid {
     }
   }
 
-  generateRiver() {
+  generateRiver(riverMode = 'mixed') {
     const edges = ['top', 'bottom', 'left', 'right'];
 
     // Primary start and end edges
@@ -216,8 +245,9 @@ export class Grid {
     // 30% Fork (1 start -> 2 ends, with junction)
     // 30% Merge (2 starts -> 1 end, with junction)
     const mode = this.random();
+    const forceForkMerge = riverMode === 'fork_merge';
 
-    if (mode < TERRAIN_GENERATION_CONFIG.RIVER_SIMPLE_PROBABILITY) {
+    if (!forceForkMerge && mode < TERRAIN_GENERATION_CONFIG.RIVER_SIMPLE_PROBABILITY) {
       // SIMPLE: Direct path from Start1 to End1
       const path = this.traceRiverPath(startPos1, endPos1);
       this.paintRiverPath(path);
@@ -251,6 +281,17 @@ export class Grid {
 
       const path3 = this.traceRiverPath(junction, endPos1);
       this.paintRiverPath(path3);
+    }
+
+    if (forceForkMerge) {
+      const extraJunction = {
+        x: marginX + Math.floor(this.random() * (this.width - marginX * 2)),
+        y: marginY + Math.floor(this.random() * (this.height - marginY * 2)),
+      };
+      const extraEdge = edges[Math.floor(this.random() * 4)];
+      const extraEnd = this.getRandomEdgePoint(extraEdge);
+      this.paintRiverPath(this.traceRiverPath(junction, extraJunction));
+      this.paintRiverPath(this.traceRiverPath(extraJunction, extraEnd));
     }
   }
 
@@ -586,6 +627,7 @@ export class Grid {
       tile.relocatedPopulation = 0;
       tile.fireDisplacedPopulation = 0;
       tile.populationLoss = 0;
+      tile.fireRepair = 1;
       tile.shortfall = { power: false, water: false, sewage: false };
       modified = true;
     }

@@ -4,9 +4,9 @@
 | --- | --- |
 | Title | Build & Conquer 2000 (B&C2000) — Architecture & Product Design |
 | Author | TBD |
-| Date | 2026-09-14 |
-| Status | Draft (rev 4) |
-| Version covered | `APP_VERSION` `0.1.4` (`src/config.js`); git `806566a` (`UI Updates`) |
+| Date | 2026-09-15 |
+| Status | Draft (rev 5) |
+| Version covered | `APP_VERSION` `0.1.5` (`src/version.js`); git HEAD |
 | Intended in-repo path | `docs/DESIGN.md` |
 | Repo | `g:\Repos\rts-web-game` (`origin`: `https://github.com/Havoc302/rts-web-game.git`) |
 | Working tree at inventory | Clean. Document reflects HEAD, not a hypothetical dirty tree. |
@@ -929,7 +929,10 @@ Phase 1 stays paused-by-default sandbox (0% tax, $25,000) for solo city-building
 
 11. **Generic `POWER_PLANT` is test scaffolding, not a player building.** Quarantine or replace tests with coal/nuclear/wind fixtures. Do not restore the toolbar button.
 
-12. **Civilian resource loops (Phase 1).** (a) Each advancing tick, `consumed = min(stockpile.consumerGoods, population * CONSUMER_GOODS_PER_RESIDENT)`; decrement stockpile by `consumed`; `goodsRatio = demand > 0 ? consumed / demand : 1`. (b) Add `FACTORY_RECIPES.FUEL = { inputs: { oil: 1 }, output: 'fuel', rate: 0.1 }` on industrial tiles (same pattern as FOOD). (c) Civilian sink before tanks: `FUEL_PER_ROAD_TILE = 0.002` fuel per road/bridge/tunnel tile per tick (`ResourceManager`); shortfall sets `stats.fuelShortfall` and is shown on HUD; roads still function (no hard gate). Tanks later consume additional fuel. Show oil, fuel, bars, arms, tanks on HUD in the same PR.
+12. **Civilian resource loops (Phase 1).**
+    - **Consumer Goods:** Decrement stockpile each advancing tick by `consumed = min(stockpile.consumerGoods, population * CONSUMER_GOODS_PER_RESIDENT)`. Goods only provide a happiness bonus (+15 max); shortfall removes the bonus without negative penalty. Commercial tiles consume goods; having goods doubles commercial tax revenue (`tax * (1 + goodsRatio)`).
+    - **Dedicated Oil Refinery:** Dedicated `REFINERY` producer tile converts up to 100 oil into 50 fuel per tick (50% conversion). Listed under utility producers without a budget slider (automatic supply/demand). Fuel demand per occupied tile: residential 1, commercial 2, industrial 4, agricultural 4. Lack of fuel halves all zone tax revenues (`tax * 0.5`).
+    - **HUD Stockpiles:** Display all 11 resources on HUD chips: food, coal, iron ore, bauxite ore, iron bars, bauxite bars, oil, fuel, consumer goods, arms, tanks.
 
 13. **Pause/treasury.** Interval `simTick()` is the only income/expense treasury mutation. Placement always `tick(false)` after `treasury -= cost`, never `treasury +=`. **`tick(false)` is preview-only:** no `prepareTick`, no `updatePowerGeneration`, no `settleBatteries`/`chargeBatteries` — `usedCapacity` may be recomputed for HUD from persisted `capacity`/`storedEnergy`, but wind `capacity` and `storedEnergy` must be bit-identical after the call. World mutation in resources/famine only when `advanceWorld`. Clear `populationLoss` when food shortfall is 0.
 
@@ -943,7 +946,12 @@ Phase 1 stays paused-by-default sandbox (0% tax, $25,000) for solo city-building
 
 18. **Wind/solar HUD and charging must use the same connectivity rule** (mill counts iff battery-adjacent **and** that battery is road-adjacent). Today they disagree; Phase 1 fixes it as a bug.
 
-19. **Realistic flammability.** Tiles without flammable material do not catch fire. **Roads do not burn.** Forests, mountains, and **inhabited** (zoned/occupied) tiles can burn. Empty barren flat does not. Firefighter effectiveness is a later balance pass.
+19. **Realistic flammability and post-fire repair.**
+    - Unoccupied zones have nothing to burn and do not ignite.
+    - Roads, bridges, tunnels, and barren flat do not burn.
+    - Forests, mountains, and inhabited (occupied) zones (including farms) hold fuel and can burn and spread.
+    - When a fire is extinguished without destroying the tile, it produces 0 tax initially and repairs gradually (`FIRE_CONFIG.REPAIR_PER_TICK = 0.1`) back to full use.
+    - Fire station base suppression power is 55.
 
 20. **Any-platform.** Easier on a large screen; **must be playable on mobile.** PR 8b (chunked terrain cache) is **required** before city-complete is shipped.
 
@@ -956,6 +964,16 @@ Phase 1 stays paused-by-default sandbox (0% tax, $25,000) for solo city-building
 24. **Online stack:** Google identity + Firebase (Auth, Firestore or RTDB for cloud cities and later match state; Hosting optional). Phase 1 has no Firebase.
 
 25. **Phase 1 onboarding:** paused-by-default sandbox, 0% tax, $25,000. No tutorial required now.
+
+26. **Pre-scaled monetary values.** `MONEY_MULTIPLIER = 10` is removed and costs are hardcoded to their 10x values (Road $100, Bridge $500, Tunnel $1,000, Zone $200, Industrial/Ag $300, Bulldoze $50, etc.). Road maintenance remains explicitly $1/tile/tick.
+
+27. **Overworld Biome Generation.** `BIOME_TYPES` (`PLAINS`, `HILLY`, `MOUNTAINOUS`, `SWAMP`) modify procedural terrain generation: Hilly/Mountainous scale rock clusters (+25% / +50%); Plains reduce rock clusters (-50%); Swamp reduces forest (-50%), increases lakes (4-6), and forces fork/merge rivers. `generateProceduralTerrain(biome)` accepts the biome directly.
+
+28. **Single-source versioning.** `src/version.js` (`APP_VERSION = '0.1.5'`) is the single source of truth for version strings. `package.json` version, HTML badge, and stylesheet cache-busting derive from it. Verified by `tests/version-sync.test.js`.
+
+29. **Desktop Pan and Drag Painting.** Desktop left-drag with the Pan tool pans the camera; clicking without dragging inspects/selects the tile. Left-drag painting is restricted to repeatable tools (roads, bridges, tunnels, zones, bulldoze); single-placement buildings and surveys do not drag-paint.
+
+30. **Unified Test Runner.** `tests/run-all.js` executes all 21 test suites across the engine and simulation. `npm test` runs this master suite.
 
 ---
 

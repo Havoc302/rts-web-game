@@ -26,7 +26,12 @@ export class CrimeManager {
     for (let y = 0; y < grid.height; y++) {
       for (let x = 0; x < grid.width; x++) {
         const tile = grid.tiles[y][x];
-        if (tile.zone === ZONE.RESIDENTIAL || tile.zone === ZONE.COMMERCIAL || tile.zone === ZONE.INDUSTRIAL) {
+        if (
+          tile.zone === ZONE.RESIDENTIAL
+          || tile.zone === ZONE.COMMERCIAL
+          || tile.zone === ZONE.INDUSTRIAL
+          || tile.zone === ZONE.AGRICULTURAL
+        ) {
           zonedTiles.push(tile);
         }
       }
@@ -51,7 +56,10 @@ export class CrimeManager {
     for (const tile of zonedTiles) {
       if (tile.crime > CRIME_CONFIG.CRIME_DIFFUSION_THRESHOLD) {
         for (const neighbor of grid.getNeighbors(tile.x, tile.y)) {
-          const isZoned = neighbor.zone === ZONE.RESIDENTIAL || neighbor.zone === ZONE.COMMERCIAL || neighbor.zone === ZONE.INDUSTRIAL;
+          const isZoned = neighbor.zone === ZONE.RESIDENTIAL
+            || neighbor.zone === ZONE.COMMERCIAL
+            || neighbor.zone === ZONE.INDUSTRIAL
+            || neighbor.zone === ZONE.AGRICULTURAL;
           if (isZoned && !neighbor.services?.police) {
             diffusions.push(neighbor);
           }

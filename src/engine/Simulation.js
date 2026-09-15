@@ -1,4 +1,4 @@
-import { GROWTH_CONFIG, DENSITY, ZONE, TERRAIN, USAGE_RATES, POLLUTION_CONFIG, JOBS_PROVIDED, RESIDENTIAL_CAPACITY, LABOR_TAX_GROWTH_CONFIG, FOREST_DESIRABILITY_RADIUS, PRODUCER_TYPE, PRODUCER_CONFIG, POWER_PRODUCER_TYPES, ROAD_MAINTENANCE_COST, TAX_REVENUE_CONFIG, CRIME_CONFIG, MEDICAL_CONFIG, HAPPINESS_CONFIG, SERVICE_GLOBAL_CONFIG, TICKS_PER_HOUR, HOURS_PER_DAY, DAY_START_HOUR, NIGHT_START_HOUR, DEMOGRAPHICS_CONFIG, splitDemographics } from '../config.js';
+import { GROWTH_CONFIG, DENSITY, ZONE, TERRAIN, USAGE_RATES, POLLUTION_CONFIG, JOBS_PROVIDED, RESIDENTIAL_CAPACITY, LABOR_TAX_GROWTH_CONFIG, FOREST_DESIRABILITY_RADIUS, PRODUCER_TYPE, PRODUCER_CONFIG, POWER_PRODUCER_TYPES, ROAD_MAINTENANCE_COST, TAX_REVENUE_CONFIG, CRIME_CONFIG, MEDICAL_CONFIG, HAPPINESS_CONFIG, SERVICE_GLOBAL_CONFIG, TICKS_PER_HOUR, HOURS_PER_DAY, DAY_START_HOUR, NIGHT_START_HOUR, DEMOGRAPHICS_CONFIG, FUEL_CONFIG, splitDemographics } from '../config.js';
 import { UtilityManager } from './UtilityManager.js';
 import { PollutionManager } from './PollutionManager.js';
 import { ServiceManager } from './ServiceManager.js';
@@ -46,25 +46,33 @@ export class Simulation {
       happiness: HAPPINESS_CONFIG.BASE_SCORE,
       happinessGrowthModifier: 0,
       foodShortfall: 0,
+      goodsRatio: 0,
+      fuelDemand: 0,
+      fuelConsumed: 0,
+      fuelShortfall: 0,
       taxRate: 0,
       resources: this.resourceManager.snapshot(),
       zones: {
         residential: { light: 0, medium: 0, high: 0 },
         commercial: { light: 0, medium: 0, high: 0 },
         industrial: { light: 0, medium: 0, high: 0 },
+        agricultural: { light: 0, medium: 0, high: 0 },
       },
     };
   }
 
+  // advanceWorld=false is HUD preview only:
+  // - no tickCount++, no prepareTick, no resource/famine mutation
+  // - allocateAll runs in preview mode (no wind reroll, no battery writes)
+  // GameApp.simTick() is the only caller that may apply the returned income to treasury.
   tick(advanceWorld = true) {
     if (advanceWorld) {
       this.tickCount++;
+      this.resourceManager.prepareTick(this.grid);
     }
 
-    this.resourceManager.prepareTick(this.grid);
-    // Establish current population and job occupancy before allocating utilities.
     this.computeStats();
-    UtilityManager.allocateAll(this.grid, this.getHourOfDay());
+    UtilityManager.allocateAll(this.grid, this.getHourOfDay(), { preview: !advanceWorld });
     PollutionManager.computePollution(this.grid);
     ServiceManager.updateServices(this.grid, this.stats.population, this.stats.employmentRate, this.stats.totalEmployablePopulation);
     if (advanceWorld) {
@@ -72,11 +80,9 @@ export class Simulation {
       FireManager.updateFires(this.grid, this.stats);
       this.relocateDisplacedPopulation(this.stats.displacedPopulation || 0);
       this.updateSurveys();
+      this.resourceManager.update(this.grid, this.stats);
     }
 
-    this.resourceManager.update(this.grid, this.stats);
-
-    // Refresh demand, income, and service capacity after this tick's updates.
     this.computeStats();
     if (advanceWorld) {
       this.updateGrowthAndDensity();
@@ -268,17 +274,25 @@ export class Simulation {
       happiness,
       happinessGrowthModifier,
       foodShortfall,
+      goodsRatio: this.stats.goodsRatio || 0,
+      fuelDemand: this.stats.fuelDemand || 0,
+      fuelConsumed: this.stats.fuelConsumed || 0,
+      fuelShortfall: this.stats.fuelShortfall || 0,
       taxRate: this.taxRate,
       resources: this.resourceManager.snapshot(),
       zones: {
         residential: { light: 0, medium: 0, high: 0 },
         commercial: { light: 0, medium: 0, high: 0 },
         industrial: { light: 0, medium: 0, high: 0 },
+        agricultural: { light: 0, medium: 0, high: 0 },
       },
     };
 
     for (const p of this.grid.producers) {
-      if (!this.grid.isRoadAdjacent(p.x, p.y)) continue;
+      const countsForCapacity = POWER_PRODUCER_TYPES.includes(p.type)
+        ? UtilityManager.contributesPowerToGrid(this.grid, p)
+        : this.grid.isRoadAdjacent(p.x, p.y);
+      if (!countsForCapacity) continue;
       if (POWER_PRODUCER_TYPES.includes(p.type)) stats.powerCapacity += p.capacity;
       if (p.type === 'water_tower') stats.waterCapacity += p.capacity;
       if (p.type === 'sewage_plant') stats.sewageCapacity += p.capacity;
@@ -369,8 +383,12 @@ export class Simulation {
     const retireeHealthMultiplier = DEMOGRAPHICS_CONFIG.RETIREE_PATIENT_MULTIPLIER +
       (1 - pensionRatio) * DEMOGRAPHICS_CONFIG.RETIREE_UNDERFUND_PATIENT_SCALER;
 
-    // Deduct tax revenue lost to crime, and tally patient demand, on each zoned tile
+    const goodsRatio = stats.goodsRatio || 0;
+    const commercialGoodsMultiplier = 1 + goodsRatio;
+    const fuelTaxFactor = stats.fuelShortfall > 0 ? FUEL_CONFIG.TAX_SHORTFALL_FACTOR : 1;
+
     let totalPatientDemand = 0;
+    let income = 0;
     for (let y = 0; y < this.grid.height; y++) {
       for (let x = 0; x < this.grid.width; x++) {
         const tile = this.grid.getTile(x, y);
@@ -385,10 +403,17 @@ export class Simulation {
           totalPatientDemand += tileDemo.retirees * MEDICAL_CONFIG.PATIENTS_PER_RESIDENT * retireeHealthMultiplier;
         } else {
           tileBaseTax = (tile.filledJobs || 0) / TAX_REVENUE_CONFIG.EMPLOYED_PER_TAX_UNIT * TAX_REVENUE_CONFIG.MONEY_PER_TAX_UNIT * (this.taxRate / 100);
+          if (tile.zone === ZONE.COMMERCIAL) {
+            tileBaseTax *= commercialGoodsMultiplier;
+          }
           if (tile.zone === ZONE.INDUSTRIAL || tile.zone === ZONE.AGRICULTURAL) {
             totalPatientDemand += (tile.filledJobs || 0) * MEDICAL_CONFIG.PATIENTS_PER_INDUSTRIAL_JOB;
           }
         }
+        tileBaseTax *= (tile.fireRepair ?? 1);
+        tileBaseTax *= fuelTaxFactor;
+        if (tile.onFire) tileBaseTax = 0;
+
         totalPatientDemand += (tile.crime || 0) * MEDICAL_CONFIG.PATIENTS_PER_CRIME_POINT;
         totalPatientDemand += (tile.pollution || 0) * MEDICAL_CONFIG.PATIENTS_PER_POLLUTION_POINT;
 
@@ -398,15 +423,14 @@ export class Simulation {
         );
         const tileLoss = tileBaseTax * crimeTaxPenalty;
         stats.crimeTaxLoss += tileLoss;
+        income += tileBaseTax - tileLoss;
       }
     }
     totalPatientDemand += fireInjuries;
     stats.patientDemand = Math.round(totalPatientDemand);
     stats.untreatedPatients = Math.max(0, stats.patientDemand - stats.patientCapacity);
 
-    const taxBase = (stats.population / TAX_REVENUE_CONFIG.RESIDENTS_PER_TAX_UNIT) +
-      (stats.jobsFilled / TAX_REVENUE_CONFIG.EMPLOYED_PER_TAX_UNIT);
-    stats.incomePerTick = Math.round(taxBase * TAX_REVENUE_CONFIG.MONEY_PER_TAX_UNIT * (this.taxRate / 100) - stats.crimeTaxLoss);
+    stats.incomePerTick = Math.round(income);
     stats.avgPollution = tileCount > 0 ? Math.round((totalPollution / tileCount) * 10) / 10 : 0;
     this.stats = stats;
   }

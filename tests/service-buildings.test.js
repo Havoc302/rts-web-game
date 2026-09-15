@@ -44,7 +44,7 @@ ServiceManager.updateServices(grid, 0, 0);
 assert.strictEqual(offlineFire.totalJobs, 2, 'Offline fire stations should retain minimum staffing jobs');
 assert.strictEqual(offlineFire.filledJobs, 0, 'Offline fire stations should not fill jobs without residents');
 
-ServiceManager.updateServices(grid, 6, 1);
+ServiceManager.updateServices(grid, 6, 1, 6);
 assert.strictEqual(fire.filledJobs, 2, 'Fire station should receive two workers when the city has enough workers');
 power.capacity = 0;
 for (let tick = 1; tick <= SERVICE_GLOBAL_CONFIG.UTILITY_FAILURE_GRACE_TICKS; tick++) {

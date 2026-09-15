@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Build &amp; Conquer 2000</title>
-  <link rel="stylesheet" href="style.css?v=0.1.4">
+  <link rel="stylesheet" href="style.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
@@ -93,7 +93,7 @@
     <header class="header-bar glass">
       <div class="brand">
         <span class="icon">🏙️</span>
-        <h1>B&amp;C2000 <span class="badge" id="app-version">v0.1.1</span></h1>
+        <h1>B&amp;C2000 <span class="badge" id="app-version"></span></h1>
       </div>
       
       <div class="stats-counter">
@@ -125,6 +125,10 @@
           <svg class="stat-icon"><use href="#hud-employment"/></svg>
           <span class="value" id="stat-emp-rate">0%</span>
         </div>
+        <div class="stat-item" title="Happiness">
+          <span class="stat-icon-text">😊</span>
+          <span class="value" id="stat-happiness">50</span>
+        </div>
         <div class="stat-item resource-ticker" title="Stockpiles">
           <svg class="stat-icon"><use href="#hud-stockpile"/></svg>
           <span class="resource-values">
@@ -144,9 +148,33 @@
               <svg class="stat-icon stock-icon"><use href="#hud-bauxite"/></svg>
               <span id="stat-bauxite">0</span>
             </span>
+            <span class="stock-chip" title="Iron bars">
+              <span class="stock-label">Fe</span>
+              <span id="stat-iron-bar">0</span>
+            </span>
+            <span class="stock-chip" title="Bauxite bars">
+              <span class="stock-label">Al</span>
+              <span id="stat-bauxite-bar">0</span>
+            </span>
+            <span class="stock-chip" title="Oil">
+              <span class="stock-label">Oil</span>
+              <span id="stat-oil">0</span>
+            </span>
+            <span class="stock-chip" title="Fuel">
+              <span class="stock-label">Fuel</span>
+              <span id="stat-fuel">0</span>
+            </span>
             <span class="stock-chip" title="Goods">
               <svg class="stat-icon stock-icon"><use href="#hud-goods"/></svg>
               <span id="stat-goods">0</span>
+            </span>
+            <span class="stock-chip" title="Arms">
+              <span class="stock-label">Arms</span>
+              <span id="stat-arms">0</span>
+            </span>
+            <span class="stock-chip" title="Tanks">
+              <span class="stock-label">Tanks</span>
+              <span id="stat-tanks">0</span>
             </span>
           </span>
         </div>
@@ -198,6 +226,9 @@
         <button class="overlay-btn" data-mode="sewage">☣️ Sewage Network</button>
         <button class="overlay-btn" data-mode="pollution">☢️ Pollution</button>
         <button class="overlay-btn" data-mode="crime">🚨 Crime</button>
+        <button class="overlay-btn" data-mode="police">🚓 Police</button>
+        <button class="overlay-btn" data-mode="fire">🚒 Fire</button>
+        <button class="overlay-btn" data-mode="hospital">🏥 Hospital</button>
       </div>
 
       <!-- Utilities HUD -->
@@ -237,6 +268,13 @@
             <span id="meter-pollution-text">Avg 0 / Max 0</span>
           </div>
           <div class="progress-bar"><div class="fill sewage" id="meter-pollution-fill"></div></div>
+        </div>
+        <div class="utility-meter">
+          <div class="meter-header">
+            <span>⛽ Fuel</span>
+            <span id="meter-fuel-text">0 / 0</span>
+          </div>
+          <div class="progress-bar"><div class="fill power" id="meter-fuel-fill"></div></div>
         </div>
         <div class="demographics-hud">
           <h3>Population Mix</h3>
@@ -344,6 +382,7 @@
             <span class="name">Sewage Plant ($4,000)</span>
           </button>
           <button class="tool-btn" data-tool="producer_oil_derrick"><span class="icon">🛢️</span><span class="name">Oil Derrick ($7,000)</span></button>
+          <button class="tool-btn" data-tool="producer_refinery"><span class="icon">🏭</span><span class="name">Oil Refinery ($8,000)</span></button>
           <button class="tool-btn" data-tool="producer_silo"><span class="icon">🏗️</span><span class="name">Silo ($4,500)</span></button>
         </div>
 

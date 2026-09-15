@@ -1,13 +1,31 @@
-// Current public release version. Increment patch for fixes, minor for compatible features, major for breaking changes.
-export const APP_VERSION = '0.1.4';
+export { APP_VERSION } from './version.js';
 
 export const MAP_WIDTH = 200;
 export const MAP_HEIGHT = 200;
 export const GRID_WIDTH = MAP_WIDTH;
 export const GRID_HEIGHT = MAP_HEIGHT;
 export const TILE_SIZE = 32;
-export const MONEY_MULTIPLIER = 10;
-export const STARTING_TREASURY = 2500 * MONEY_MULTIPLIER;
+export const STARTING_TREASURY = 25000;
+
+export const MAP_SEED_STORAGE_KEY = 'bc2000_map_seed';
+export const MAP_SEED_STORAGE_KEY_LEGACY = 'metropolis_map_seed';
+
+export const PRODUCER_CATEGORY = {
+  POWER: 'power',
+  WATER: 'water',
+  SEWAGE: 'sewage',
+  UTILITY: 'utility',
+  RESOURCE: 'resource',
+  STORAGE: 'storage',
+  FACTORY: 'factory',
+  SERVICE: 'service',
+  CIVIC: 'civic',
+};
+
+// ResourceManager.updateProducerJobs may only staff these. Civic/service
+// buildings are owned by ServiceManager. Industrial and agricultural *zones*
+// are not utility producers and are never staffed here.
+export const RESOURCE_JOB_CATEGORIES = [PRODUCER_CATEGORY.RESOURCE, PRODUCER_CATEGORY.FACTORY];
 
 export const TERRAIN = {
   FLAT: 'flat',
@@ -60,6 +78,7 @@ export const PRODUCER_TYPE = {
   MINE_BAUXITE: 'mine_bauxite',
   MINE_COAL: 'mine_coal',
   OIL_DERRICK: 'oil_derrick',
+  REFINERY: 'refinery',
   WAREHOUSE_ORE: 'warehouse_ore',
   WAREHOUSE_BAR: 'warehouse_bar',
   WAREHOUSE_GOODS: 'warehouse_goods',
@@ -130,6 +149,63 @@ export const RESOURCE_CONFIG = {
   COAL_PLANT_FUEL_PER_MW: 0.02,         // Coal consumed per megawatt supplied by a coal plant
   SILO_CAPACITY: 500,                   // Storage capacity provided by one silo
   FOOD_PER_AGRICULTURAL_JOB: 0.1,        // Legacy per-job food rate; farm tiles now use AGRICULTURAL_FOOD_YIELD * fill ratio
+  OIL_DERRICK_OUTPUT_PER_TICK: 100,     // Oil produced by one fully staffed derrick per tick
+  REFINERY_OIL_PER_TICK: 100,           // Oil a staffed operational refinery processes per tick
+  REFINERY_FUEL_PER_OIL: 0.5,           // Fuel yielded per unit of refined oil
+};
+
+export const FUEL_CONFIG = {
+  PER_TILE: {
+    residential: 1,
+    commercial: 2,
+    industrial: 4,
+    agricultural: 4,
+  },
+  TAX_SHORTFALL_FACTOR: 0.5,            // All tile tax is halved while fuel demand is unmet
+};
+
+export const BIOME_TYPES = {
+  PLAINS: 'plains',
+  HILLY: 'hilly',
+  MOUNTAINOUS: 'mountainous',
+  SWAMP: 'swamp',
+};
+
+// Modifiers applied on top of TERRAIN_GENERATION_CONFIG. Omit biome for current
+// city-map defaults (scale 1, mixed rivers, 0–5 lakes).
+export const BIOME_CONFIG = {
+  [BIOME_TYPES.PLAINS]: {
+    rockClusterScale: 0.5,
+    forestClusterScale: 1,
+    lakeCountMin: 0,
+    lakeCountMax: 5,
+    lakeRadiusScale: 1,
+    riverMode: 'mixed',
+  },
+  [BIOME_TYPES.HILLY]: {
+    rockClusterScale: 1.25,
+    forestClusterScale: 1,
+    lakeCountMin: 0,
+    lakeCountMax: 5,
+    lakeRadiusScale: 1,
+    riverMode: 'mixed',
+  },
+  [BIOME_TYPES.MOUNTAINOUS]: {
+    rockClusterScale: 1.5,
+    forestClusterScale: 1,
+    lakeCountMin: 0,
+    lakeCountMax: 5,
+    lakeRadiusScale: 1,
+    riverMode: 'mixed',
+  },
+  [BIOME_TYPES.SWAMP]: {
+    rockClusterScale: 1,
+    forestClusterScale: 0.5,
+    lakeCountMin: 4,
+    lakeCountMax: 6,
+    lakeRadiusScale: 1.6,
+    riverMode: 'fork_merge',
+  },
 };
 
 // Industrial recipe definitions. Input values are stockpile units per output unit.
@@ -174,75 +250,75 @@ export const SERVICE_CONFIG = {
   [SERVICE_TYPE.POLICE_STATION]: {
     name: 'Police Station',
     category: 'service',
-    cost: 400 * MONEY_MULTIPLIER,
+    cost: 4000,
     color: '#3b82f6',
     radius: { light: 10, medium: 50, high: 200 },
     jobs: { light: 10, medium: 50, high: 200 },
     popThresholds: { medium: 500, high: 2500 },
     officersPerPopulation: 1000,
     utilityUsage: { power: 1, water: 1, sewage: 1 },
-    runningCost: { light: 2 * MONEY_MULTIPLIER, medium: 8 * MONEY_MULTIPLIER, high: 24 * MONEY_MULTIPLIER },
-    runningCostPerJob: 0.2 * MONEY_MULTIPLIER,
+    runningCost: { light: 20, medium: 80, high: 240 },
+    runningCostPerJob: 2,
     unique: false,
   },
   [SERVICE_TYPE.FIRE_STATION]: {
     name: 'Fire Department',
     category: 'service',
-    cost: 400 * MONEY_MULTIPLIER,
+    cost: 4000,
     color: '#ef4444',
-    radius: { light: 10, medium: 50, high: 200 },
+    radius: { light: 25, medium: 80, high: 220 },
     jobs: { light: 10, medium: 50, high: 200 },
     popThresholds: { medium: 500, high: 2500 },
     officersPerPopulation: 1000,
     utilityUsage: { power: 1, water: 1, sewage: 1 },
-    runningCost: { light: 2 * MONEY_MULTIPLIER, medium: 8 * MONEY_MULTIPLIER, high: 24 * MONEY_MULTIPLIER },
-    runningCostPerJob: 0.2 * MONEY_MULTIPLIER,
+    runningCost: { light: 20, medium: 80, high: 240 },
+    runningCostPerJob: 2,
     unique: false,
   },
   [SERVICE_TYPE.HOSPITAL]: {
     name: 'Hospital & Ambulance',
     category: 'service',
-    cost: 600 * MONEY_MULTIPLIER,
+    cost: 6000,
     color: '#10b981',
     radius: { light: 10, medium: 50, high: 200 },
     jobs: { light: 10, medium: 50, high: 200 },
     popThresholds: { medium: 750, high: 3500 },
     officersPerPopulation: 1000,
     utilityUsage: { power: 2, water: 2, sewage: 2 },
-    runningCost: { light: 4 * MONEY_MULTIPLIER, medium: 14 * MONEY_MULTIPLIER, high: 40 * MONEY_MULTIPLIER },
-    runningCostPerJob: 0.4 * MONEY_MULTIPLIER,
+    runningCost: { light: 40, medium: 140, high: 400 },
+    runningCostPerJob: 4,
     unique: false,
   },
   [SERVICE_TYPE.SCHOOL]: {
     name: 'School',
     category: 'service',
-    cost: 350 * MONEY_MULTIPLIER,
+    cost: 3500,
     color: '#f59e0b',
     radius: { light: 8, medium: 15, high: 25 },
     jobs: { light: 10, medium: 40, high: 150 },
     popThresholds: { medium: 300, high: 1500 },
     utilityUsage: { power: 1, water: 1, sewage: 1 },
-    runningCost: { light: 2 * MONEY_MULTIPLIER, medium: 7 * MONEY_MULTIPLIER, high: 20 * MONEY_MULTIPLIER },
-    runningCostPerJob: 0.2 * MONEY_MULTIPLIER,
+    runningCost: { light: 20, medium: 70, high: 200 },
+    runningCostPerJob: 2,
     unique: false,
   },
   [SERVICE_TYPE.LIBRARY]: {
     name: 'Public Library',
     category: 'service',
-    cost: 250 * MONEY_MULTIPLIER,
+    cost: 2500,
     color: '#8b5cf6',
     radius: { light: 8, medium: 14, high: 22 },
     jobs: { light: 5, medium: 20, high: 75 },
     popThresholds: { medium: 200, high: 1000 },
     utilityUsage: { power: 1, water: 1, sewage: 1 },
-    runningCost: { light: 1 * MONEY_MULTIPLIER, medium: 5 * MONEY_MULTIPLIER, high: 14 * MONEY_MULTIPLIER },
-    runningCostPerJob: 0.1 * MONEY_MULTIPLIER,
+    runningCost: { light: 10, medium: 50, high: 140 },
+    runningCostPerJob: 1,
     unique: false,
   },
   [SERVICE_TYPE.CITY_HALL]: {
     name: 'City Hall',
     category: 'civic',
-    cost: 1000 * MONEY_MULTIPLIER,
+    cost: 10000,
     color: '#eab308',
     radius: { light: 30, medium: 45, high: 60 },
     jobs: { light: 30, medium: 100, high: 300 },
@@ -255,72 +331,81 @@ export const SERVICE_CONFIG = {
 export const PRODUCER_CONFIG = {
   [PRODUCER_TYPE.POWER_PLANT]: {
     name: 'Power Plant',
+    category: PRODUCER_CATEGORY.POWER,
     utility: 'power',
     capacity: 100,
-    cost: 500 * MONEY_MULTIPLIER,
+    cost: 5000,
     color: '#f39c12',
     requiresWaterAdjacent: false,
     utilityUsage: { water: 1, sewage: 1 },
+    testOnly: true,
   },
   [PRODUCER_TYPE.WINDMILL]: {
     name: 'Windmill',
+    category: PRODUCER_CATEGORY.POWER,
     utility: 'power',
     capacity: WIND_CONFIG.BASE_CAPACITY,
-    cost: 150 * MONEY_MULTIPLIER,
+    cost: 1500,
     color: '#94a3b8',
     requiresWaterAdjacent: false,
     requiresBatteryAdjacent: true,
   },
   [PRODUCER_TYPE.SOLAR_PANEL]: {
     name: 'Solar Panel',
+    category: PRODUCER_CATEGORY.POWER,
     utility: 'power',
     capacity: SOLAR_CONFIG.PEAK_CAPACITY,
-    cost: 200 * MONEY_MULTIPLIER,
+    cost: 2000,
     color: '#fbbf24',
     requiresWaterAdjacent: false,
     requiresBatteryAdjacent: true,
   },
   [PRODUCER_TYPE.BATTERY]: {
     name: 'Battery Storage',
+    category: PRODUCER_CATEGORY.POWER,
     utility: 'power',
     capacity: BATTERY_CONFIG.MAX_STORAGE,
-    cost: 300 * MONEY_MULTIPLIER,
+    cost: 3000,
     color: '#22c55e',
     requiresWaterAdjacent: false,
     utilityUsage: { water: 1, sewage: 1 },
   },
   [PRODUCER_TYPE.COAL_PLANT]: {
     name: 'Coal Power Plant',
+    category: PRODUCER_CATEGORY.POWER,
     utility: 'power',
     capacity: 300,
-    cost: 1250 * MONEY_MULTIPLIER,
+    cost: 12500,
     color: '#57534e',
     requiresWaterAdjacent: false,
     utilityUsage: { water: 1, sewage: 1 },
   },
   [PRODUCER_TYPE.NUCLEAR_PLANT]: {
     name: 'Nuclear Power Plant',
+    category: PRODUCER_CATEGORY.POWER,
     utility: 'power',
     capacity: 800,
-    cost: 2500 * MONEY_MULTIPLIER,
+    cost: 25000,
     color: '#a3e635',
     requiresWaterAdjacent: true,
     utilityUsage: { water: 1, sewage: 1 },
   },
   [PRODUCER_TYPE.WATER_TOWER]: {
     name: 'Water Pump',
+    category: PRODUCER_CATEGORY.WATER,
     utility: 'water',
     capacity: 120,
-    cost: 300 * MONEY_MULTIPLIER,
+    cost: 3000,
     color: '#3498db',
     requiresWaterAdjacent: true,
     utilityUsage: { power: 2, sewage: 1 },
   },
   [PRODUCER_TYPE.SEWAGE_PLANT]: {
     name: 'Sewage Plant',
+    category: PRODUCER_CATEGORY.SEWAGE,
     utility: 'sewage',
     capacity: 120,
-    cost: 400 * MONEY_MULTIPLIER,
+    cost: 4000,
     color: '#8e44ad',
     requiresWaterAdjacent: true,
     utilityUsage: { power: 2, water: 1 },
@@ -328,7 +413,7 @@ export const PRODUCER_CONFIG = {
   [PRODUCER_TYPE.SURVEY_STATION]: {
     name: 'Survey Station',
     category: 'utility',
-    cost: 750 * MONEY_MULTIPLIER,
+    cost: 7500,
     capacity: 0,
     color: '#14b8a6',
     utilityUsage: { power: 2, water: 1, sewage: 1 },
@@ -338,56 +423,66 @@ export const PRODUCER_CONFIG = {
   },
   [PRODUCER_TYPE.MINE_IRON]: {
     name: 'Iron Mine', category: 'resource', utility: 'resource', capacity: 0,
-    cost: 500 * MONEY_MULTIPLIER, color: '#94a3b8',
+    cost: 5000, color: '#94a3b8',
     requiresDiscoveredOre: ORE_TYPE.IRON_ORE,
     utilityUsage: { power: 1, water: 1, sewage: 1 },
     jobs: { light: 10, medium: 10, high: 10 },
   },
   [PRODUCER_TYPE.MINE_BAUXITE]: {
     name: 'Bauxite Mine', category: 'resource', utility: 'resource', capacity: 0,
-    cost: 500 * MONEY_MULTIPLIER, color: '#c2410c',
+    cost: 5000, color: '#c2410c',
     requiresDiscoveredOre: ORE_TYPE.BAUXITE,
     utilityUsage: { power: 1, water: 1, sewage: 1 },
     jobs: { light: 10, medium: 10, high: 10 },
   },
   [PRODUCER_TYPE.MINE_COAL]: {
     name: 'Coal Mine', category: 'resource', utility: 'resource', capacity: 0,
-    cost: 500 * MONEY_MULTIPLIER, color: '#1f2937',
+    cost: 5000, color: '#1f2937',
     requiresDiscoveredOre: ORE_TYPE.COAL,
     utilityUsage: { power: 1, water: 1, sewage: 1 },
     jobs: { light: 10, medium: 10, high: 10 },
   },
   [PRODUCER_TYPE.OIL_DERRICK]: {
     name: 'Oil Derrick', category: 'resource', utility: 'resource', capacity: 0,
-    cost: 700 * MONEY_MULTIPLIER, color: '#111827',
+    cost: 7000, color: '#111827',
     requiresDiscoveredOre: ORE_TYPE.OIL,
     utilityUsage: { power: 1, water: 1, sewage: 1 },
     jobs: { light: 10, medium: 10, high: 10 },
   },
+  [PRODUCER_TYPE.REFINERY]: {
+    name: 'Oil Refinery',
+    category: PRODUCER_CATEGORY.FACTORY,
+    utility: 'factory',
+    capacity: 0,
+    cost: 8000,
+    color: '#7c2d12',
+    utilityUsage: { power: 3, water: 1, sewage: 2 },
+    jobs: { light: 10, medium: 10, high: 10 },
+  },
   [PRODUCER_TYPE.WAREHOUSE_ORE]: {
     name: 'Ore Warehouse', category: 'storage', utility: 'storage', capacity: 0,
-    cost: 400 * MONEY_MULTIPLIER, color: '#78716c',
+    cost: 4000, color: '#78716c',
     utilityUsage: { power: 1, water: 0, sewage: 0 },
   },
   [PRODUCER_TYPE.WAREHOUSE_BAR]: {
     name: 'Bar Warehouse', category: 'storage', utility: 'storage', capacity: 0,
-    cost: 500 * MONEY_MULTIPLIER, color: '#b45309',
+    cost: 5000, color: '#b45309',
     utilityUsage: { power: 1, water: 0, sewage: 0 },
   },
   [PRODUCER_TYPE.WAREHOUSE_GOODS]: {
     name: 'Goods Warehouse', category: 'storage', utility: 'storage', capacity: 0,
-    cost: 600 * MONEY_MULTIPLIER, color: '#2563eb',
+    cost: 6000, color: '#2563eb',
     utilityUsage: { power: 1, water: 0, sewage: 0 },
   },
   [PRODUCER_TYPE.SILO]: {
     name: 'Silo', category: 'storage', utility: 'storage', capacity: 0,
-    cost: 450 * MONEY_MULTIPLIER, color: '#a16207',
+    cost: 4500, color: '#a16207',
     storageTypes: ['oil', 'fuel'], defaultStorageType: 'oil',
     utilityUsage: { power: 1, water: 0, sewage: 0 },
   },
   [PRODUCER_TYPE.SMELTER]: {
     name: 'Smelter', category: 'factory', utility: 'factory', capacity: 0,
-    cost: 900 * MONEY_MULTIPLIER, color: '#dc2626',
+    cost: 9000, color: '#dc2626',
     utilityUsage: { power: 3, water: 2, sewage: 2 },
     jobs: { light: 10, medium: 20, high: 40 },
   },
@@ -426,13 +521,13 @@ export const GROWTH_CONFIG = {
 };
 
 export const COSTS = {
-  ROAD: 10 * MONEY_MULTIPLIER,
-  BRIDGE: 50 * MONEY_MULTIPLIER,
-  TUNNEL: 100 * MONEY_MULTIPLIER,
-  ZONE: 20 * MONEY_MULTIPLIER,
-  INDUSTRIAL_ZONE: 30 * MONEY_MULTIPLIER,
-  AGRICULTURAL_ZONE: 30 * MONEY_MULTIPLIER,
-  BULLDOZE: 5 * MONEY_MULTIPLIER,
+  ROAD: 100,
+  BRIDGE: 500,
+  TUNNEL: 1000,
+  ZONE: 200,
+  INDUSTRIAL_ZONE: 300,
+  AGRICULTURAL_ZONE: 300,
+  BULLDOZE: 50,
 };
 
 export const ROAD_MAINTENANCE_COST = 1; // Maintenance cost per road or bridge tile per tick
@@ -440,30 +535,7 @@ export const ROAD_MAINTENANCE_COST = 1; // Maintenance cost per road or bridge t
 export const TAX_REVENUE_CONFIG = {
   RESIDENTS_PER_TAX_UNIT: 100,
   EMPLOYED_PER_TAX_UNIT: 100,
-  MONEY_PER_TAX_UNIT: 1 * MONEY_MULTIPLIER,
-};
-
-export const BASE_INCOME = {
-  [ZONE.RESIDENTIAL]: {
-    [DENSITY.LIGHT]: 1 * MONEY_MULTIPLIER,
-    [DENSITY.MEDIUM]: 2 * MONEY_MULTIPLIER,
-    [DENSITY.HIGH]: 3 * MONEY_MULTIPLIER,
-  },
-  [ZONE.COMMERCIAL]: {
-    [DENSITY.LIGHT]: 2 * MONEY_MULTIPLIER,
-    [DENSITY.MEDIUM]: 4 * MONEY_MULTIPLIER,
-    [DENSITY.HIGH]: 6 * MONEY_MULTIPLIER,
-  },
-  [ZONE.INDUSTRIAL]: {
-    [DENSITY.LIGHT]: 3 * MONEY_MULTIPLIER,
-    [DENSITY.MEDIUM]: 6 * MONEY_MULTIPLIER,
-    [DENSITY.HIGH]: 9 * MONEY_MULTIPLIER,
-  },
-  [ZONE.AGRICULTURAL]: {
-    [DENSITY.LIGHT]: 2 * MONEY_MULTIPLIER,
-    [DENSITY.MEDIUM]: 4 * MONEY_MULTIPLIER,
-    [DENSITY.HIGH]: 6 * MONEY_MULTIPLIER,
-  },
+  MONEY_PER_TAX_UNIT: 10,
 };
 
 export const POLLUTION_CONFIG = {
@@ -620,7 +692,9 @@ export const FIRE_CONFIG = {
   MAX_DAMAGE: 100,                         // Damage threshold that destroys the burning building
   SPREAD_CHANCE_PER_TICK: 0.15,           // Chance to ignite an adjacent non-dirt/road tile per tick
   INJURIES_PER_BURNING_TILE: 5,           // Burn trauma patients added to hospital demand per active fire tick
-  BASE_SUPPRESSION_POWER: 35,             // Base fire suppression points per tick from nearby fire stations
+  BASE_SUPPRESSION_POWER: 55,             // Suppression subtracted from fire damage per tick when a station covers the tile
+  MOUNTAIN_IGNITION_CHANCE: 0.0001,       // Mountains hold fuel and can ignite
+  REPAIR_PER_TICK: 0.1,                   // After a non-destroying fire, tax/use restored by this fraction per tick
 };
 
 // Global service staffing, coverage, and operating-cost balance controls.
@@ -644,6 +718,7 @@ export const SERVICE_GLOBAL_CONFIG = {
 
 // Procedural map-generation balance controls. Adjust these to change map character.
 export const TERRAIN_GENERATION_CONFIG = {
+  DEFAULT_RANDOM_SEED: 12345,             // Fallback when parseInt(seed) is not a number
   RANDOM_SEED_MAX: 9000000,               // Upper bound for generated map seeds
   RANDOM_SEED_MIN: 100000,                // Lower bound for generated map seeds
   MAP_SCALE_BASE_AREA: 900,               // Map area represented by one terrain-generation scale unit
@@ -684,6 +759,7 @@ export const RENDERER_CONFIG = {
   LOW_DETAIL_THRESHOLD: 0.7,               // Zoom below which low-detail rendering is used
   DELTA_TIME_MAX: 0.1,                     // Maximum animation time accumulated per frame
   TERRAIN_BUILD_BUDGET: 1200,              // Terrain-cache tiles built per frame
+  TERRAIN_CHUNK_TILES: 64,                 // Chunk size in tiles (64×32px = 2048px, under a 4096 GPU cap)
 };
 
 

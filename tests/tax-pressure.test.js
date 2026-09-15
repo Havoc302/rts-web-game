@@ -27,8 +27,14 @@ simulation.taxRate = 0;
 const lowTaxModifier = simulation.getTaxGrowthModifier();
 assert.ok(lowTaxModifier > 0, 'Zero tax should provide a positive residential attraction modifier');
 simulation.taxRate = 0;
-simulation.computeStats();
-assert.ok(simulation.stats.happiness > 50, 'Zero tax should improve happiness above the neutral baseline');
+residential.shortfall = { power: false, water: false, sewage: false };
+const zeroTaxHappiness = simulation.resourceManager.calculateHappiness(
+  grid,
+  { ...simulation.stats, taxRate: 0 },
+  0,
+  false,
+);
+assert.ok(zeroTaxHappiness > 50, 'Zero tax should improve happiness above the neutral baseline');
 
 simulation.taxRate = 50;
 simulation.computeStats();
