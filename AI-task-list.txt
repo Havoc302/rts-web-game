@@ -465,7 +465,7 @@ Current task: Fix correctness bugs and architectural issues identified in projec
 - [done] Implement consumer goods consumption each advancing tick; commercial tax doubles when supplied with consumer goods; goods serve as happiness bonus.
 - [done] Add Oil Refinery producer and fuel economy: oil derrick produces ~100 oil/tick, refinery refines 100 oil into 50 fuel/tick; fuel demand across residential/commercial/industrial/agricultural; fuel shortfall halves taxes.
 - [done] Expose Police, Fire, and Hospital overlay buttons in toolbar.
-- [done] Version sync: created src/version.js (0.1.5), synced package.json, automated version test.
+- [done] Version sync: created src/version.js (0.1.6), synced package.json, automated version test.
 - [done] Removed unused BASE_INCOME table and retargeted industrial economics tests.
 - [done] Renamed seed storage key to bc2000_map_seed with legacy migration.
 - [done] Created test manager `tests/run-all.js` running all 21 test suites via `npm test`.
@@ -495,3 +495,36 @@ Validation:
 - [done] Move Oil Derrick and Silo buttons from Utility Producers to Production group in index.html.
 
 - [done] Add Clinic civic service ($2,000, 5,000 pop cap, does not grow larger, patient capacity, rendering, build info, and unit tests).
+- [done] Added water/sewage utility demand to Windmill and Solar Panel so all power producers report connected or shortfall status in the Tile Inspector.
+- [done] Moved Civic Services ahead of Production in the tool drawer so the Clinic is visible earlier in the normal build-tool flow.
+- [done] Updated the synchronized application version to 0.1.6.
+
+Validation:
+- `npm test` passes all 22 test files.
+- `node tests/wind-solar-grid.test.js` and `node tests/version-sync.test.js` pass.
+- Source, HTML, stylesheet, and test diagnostics pass.
+
+Current task: Rework emergency services coverage + survey overlay & cost.
+
+Emergency Services Coverage:
+- [done] Add COVERAGE_CONFIG to config.js (base direct range 5, road range 10, road-adjacent range 3, +1 per filled job).
+- [ ] Create CoverageManager.js with cached coverage Sets for fire, police, medical (hospital+clinic shared).
+- [ ] Implement 3-step coverage algorithm: direct flood-fill → road BFS → road-adjacent flood-fill.
+- [ ] Add dirty flags to Grid.js on road/building changes.
+- [ ] Refactor ServiceManager.js to use CoverageManager for fire/police/medical, keep RoadNetwork for school/library/cityHall.
+- [ ] Update Renderer.js overlay modes for fire/police/hospital to use coverage Sets.
+
+Survey Overlay:
+- [ ] Add survey overlay button to index.html.
+- [ ] Gate renderSurveyStatus behind overlayMode === 'survey' in Renderer.js.
+- [ ] Add survey overlay rendering in renderOverlay (show ore type/color for discovered tiles, progress for active surveys).
+
+Survey Cost & Cancellation:
+- [done] Add SURVEY_COST_PER_TICK: 10 to config.
+- [ ] Add cancelSurvey helper to Grid.js.
+- [ ] Update Simulation.updateSurveys to deduct $10/tick, track surveyExpenses, cancel if treasury empty, tile on fire, or station non-operational.
+- [ ] Update main.js simTick to pass treasury and deduct surveyExpenses.
+
+Verification:
+- [ ] Run npm test — all existing suites pass.
+- [ ] Manual test coverage overlay, survey overlay, survey cost/cancellation.

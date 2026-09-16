@@ -138,6 +138,16 @@ export const ORE_CONFIG = {
   [ORE_TYPE.OIL]: { name: 'Oil', color: '#111827' },
 };
 
+export const COVERAGE_CONFIG = {
+  BASE_DIRECT_RANGE: 5,
+  BASE_ROAD_RANGE: 10,
+  BASE_ROAD_ADJACENT_RANGE: 3,
+  JOB_BONUS_PER_FILLED: 1,
+};
+
+export const SURVEY_COST_PER_TICK = 10;
+
+
 // Global production, storage, and consumption balance values.
 export const RESOURCE_CONFIG = {
   FOOD_PER_RESIDENT: 0.05,              // Food consumed by each resident per tick
@@ -365,6 +375,7 @@ export const PRODUCER_CONFIG = {
     color: '#94a3b8',
     requiresWaterAdjacent: false,
     requiresBatteryAdjacent: true,
+    utilityUsage: { water: 1, sewage: 1 },
   },
   [PRODUCER_TYPE.SOLAR_PANEL]: {
     name: 'Solar Panel',
@@ -375,6 +386,7 @@ export const PRODUCER_CONFIG = {
     color: '#fbbf24',
     requiresWaterAdjacent: false,
     requiresBatteryAdjacent: true,
+    utilityUsage: { water: 1, sewage: 1 },
   },
   [PRODUCER_TYPE.BATTERY]: {
     name: 'Battery Storage',
