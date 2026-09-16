@@ -511,10 +511,14 @@ class GameApp {
 
     if (!tile) return;
 
-    if (this.activeTool === 'inspect' || this.activeTool === 'pan') {
+    if (this.activeTool === 'inspect') {
       this.renderer.selectedTile = tile;
       document.getElementById('inspector-panel').classList.add('visible');
       this.updateInspector(tile);
+      return;
+    }
+    if (this.activeTool === 'pan') {
+      this.renderer.selectedTile = tile;
       return;
     }
 
