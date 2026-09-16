@@ -1,5 +1,11 @@
 RTS Web Game - AI Work Log
 
+Agent handoff protocol:
+- This file is the resumable implementation log used by different AI agents.
+- At the start of a generation, add or update a `Current task` block with the intended work and checklist.
+- At the end of a generation, mark completed items `[done]`, record validation, and leave unfinished items unchecked with enough context for another agent to continue.
+- Do not erase historical entries. The current task at the bottom is the active handoff; `docs/DESIGN.md` is the architecture and product source of truth.
+
 Current task: Add hidden ores and a utility-powered survey building.
 
 - [done] Add simplified ore types and per-tile hidden ore generation, with much higher mountain odds.
@@ -504,27 +510,41 @@ Validation:
 - `node tests/wind-solar-grid.test.js` and `node tests/version-sync.test.js` pass.
 - Source, HTML, stylesheet, and test diagnostics pass.
 
+Current task: Synchronize project documentation after architecture review.
+
+- [done] Updated `docs/DESIGN.md` to describe the current implementation instead of resolved historical defects.
+- [done] Separated implemented Phase 1 work, outstanding Phase 1 work, and the later hybrid/world-map roadmap.
+- [done] Documented this file as the AI-agent start/end handoff log so interrupted work can resume safely.
+- [done] Bumped the synchronized application version to 0.1.7 for the survey overlay and survey-cost changes.
+- [done] Made mountain terrain immune to fire so long mountain surveys cannot be canceled by mountain ignition.
+
+Validation:
+- `npm test` passes all 22 test files.
+- Documentation references were checked against current source, package scripts, and task status.
+
 Current task: Rework emergency services coverage + survey overlay & cost.
 
 Emergency Services Coverage:
 - [done] Add COVERAGE_CONFIG to config.js (base direct range 5, road range 10, road-adjacent range 3, +1 per filled job).
-- [ ] Create CoverageManager.js with cached coverage Sets for fire, police, medical (hospital+clinic shared).
-- [ ] Implement 3-step coverage algorithm: direct flood-fill → road BFS → road-adjacent flood-fill.
-- [ ] Add dirty flags to Grid.js on road/building changes.
-- [ ] Refactor ServiceManager.js to use CoverageManager for fire/police/medical, keep RoadNetwork for school/library/cityHall.
-- [ ] Update Renderer.js overlay modes for fire/police/hospital to use coverage Sets.
+- [done] Create CoverageManager.js with cached coverage Sets for fire, police, medical (hospital+clinic shared).
+- [done] Implement 3-step coverage algorithm: direct Manhattan range → connected-road BFS → road-side range.
+- [done] Add coverage invalidation on road, bridge, tunnel, and producer changes; staffing changes are detected by the cache state signature.
+- [done] Refactor ServiceManager.js to use CoverageManager for fire, police, and shared medical coverage, while keeping RoadNetwork for school/library/cityHall.
+- [done] Update fire suppression and service overlay state to use cached emergency coverage.
 
 Survey Overlay:
-- [ ] Add survey overlay button to index.html.
-- [ ] Gate renderSurveyStatus behind overlayMode === 'survey' in Renderer.js.
-- [ ] Add survey overlay rendering in renderOverlay (show ore type/color for discovered tiles, progress for active surveys).
+- [done] Add survey overlay button to index.html.
+- [done] Gate renderSurveyStatus behind overlayMode === 'survey' in Renderer.js.
+- [done] Add survey overlay rendering in renderOverlay (show ore type/color for discovered tiles, progress for active surveys).
 
 Survey Cost & Cancellation:
 - [done] Add SURVEY_COST_PER_TICK: 10 to config.
-- [ ] Add cancelSurvey helper to Grid.js.
-- [ ] Update Simulation.updateSurveys to deduct $10/tick, track surveyExpenses, cancel if treasury empty, tile on fire, or station non-operational.
-- [ ] Update main.js simTick to pass treasury and deduct surveyExpenses.
+- [done] Add cancelSurvey helper to Grid.js; cancellation clears station and target progress.
+- [done] Update Simulation.updateSurveys to charge $10 before progress, cancel if treasury is insufficient, target/station is on fire, or station is non-operational.
+- [done] Update main.js simTick to pass treasury and deduct surveyExpenses.
 
 Verification:
-- [ ] Run npm test — all existing suites pass.
+- [done] `node tests/coverage.test.js` passes coverage geometry, cache reuse, staffing scale, and shared medical coverage.
+- [done] `node tests/service-buildings.test.js` passes cached service integration and fire suppression checks.
+- [done] `npm test` passes all 23 test files.
 - [ ] Manual test coverage overlay, survey overlay, survey cost/cancellation.

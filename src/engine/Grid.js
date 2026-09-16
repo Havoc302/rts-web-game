@@ -24,6 +24,7 @@ export class Grid {
     this.producers = [];
     this.nextProducerId = 1;
     this.terrainVersion = 0;
+    this.coverageVersion = 0;
 
     this.initGrid();
   }
@@ -484,6 +485,8 @@ export class Grid {
     if (!this.canPlaceRoad(x, y)) return false;
     const tile = this.getTile(x, y);
     tile.hasRoad = true;
+    this.coverageVersion++;
+    this.coverageVersion++;
     return true;
   }
 
@@ -538,6 +541,7 @@ export class Grid {
     }
     tile.producer = producer;
     this.producers.push(producer);
+    this.coverageVersion++;
     return producer;
   }
 
@@ -565,6 +569,20 @@ export class Grid {
     return true;
   }
 
+  cancelSurvey(surveyor) {
+    if (!surveyor?.surveyTarget) return false;
+    const target = this.getTile(surveyor.surveyTarget.x, surveyor.surveyTarget.y);
+    if (target?.surveyingBy === surveyor.id) {
+      target.surveyingBy = null;
+      target.surveyProgress = 0;
+      target.surveyRequired = 0;
+    }
+    surveyor.surveyTarget = null;
+    surveyor.surveyProgress = 0;
+    surveyor.surveyRequired = 0;
+    return true;
+  }
+
   canPlaceBridge(x, y) {
     const tile = this.getTile(x, y);
     if (!tile) return false;
@@ -576,6 +594,7 @@ export class Grid {
     const tile = this.getTile(x, y);
     tile.hasBridge = true;
     tile.hasRoad = true;
+    this.coverageVersion++;
     return true;
   }
 
@@ -631,6 +650,7 @@ export class Grid {
       tile.shortfall = { power: false, water: false, sewage: false };
       modified = true;
     }
+    if (modified) this.coverageVersion++;
     return modified;
   }
 }

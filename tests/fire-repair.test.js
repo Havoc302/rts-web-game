@@ -8,7 +8,7 @@ import { FIRE_CONFIG, PRODUCER_TYPE, TERRAIN, ZONE } from '../src/config.js';
   assert.strictEqual(FireManager.isFlammable(emptyZone), false, 'Unoccupied zones have nothing to burn');
   assert.strictEqual(FireManager.isFlammable({ terrain: TERRAIN.FLAT, zone: ZONE.NONE, hasRoad: true }), false, 'Roads do not burn');
   assert.strictEqual(FireManager.isFlammable({ terrain: TERRAIN.FOREST, zone: ZONE.NONE }), true, 'Forests can burn');
-  assert.strictEqual(FireManager.isFlammable({ terrain: TERRAIN.MOUNTAIN, zone: ZONE.NONE }), true, 'Mountains can burn');
+  assert.strictEqual(FireManager.isFlammable({ terrain: TERRAIN.MOUNTAIN, zone: ZONE.NONE }), false, 'Mountains are fire-immune');
   assert.strictEqual(
     FireManager.isFlammable({ zone: ZONE.RESIDENTIAL, population: 10, maxPopulation: 25, terrain: TERRAIN.FLAT }),
     true,

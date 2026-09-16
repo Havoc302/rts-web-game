@@ -1,5 +1,6 @@
 import { SERVICE_TYPE, SERVICE_CONFIG, SERVICE_GLOBAL_CONFIG, LABOR_TAX_GROWTH_CONFIG, DENSITY, DEMOGRAPHICS_CONFIG } from '../config.js';
 import { RoadNetwork } from './RoadNetwork.js';
+import { CoverageManager } from './CoverageManager.js';
 
 export class ServiceManager {
   static updateServices(grid, totalPopulation, employmentRate = 1.0, workforce = null) {
@@ -87,10 +88,8 @@ export class ServiceManager {
           return;
         }
         const maxRadius = config.radius[density] || SERVICE_GLOBAL_CONFIG.DEFAULT_SERVICE_RADIUS;
-        // Coverage range scales with filled jobs
-        prod.effectiveRadius = budgetRatio > 0
-          ? Math.max(SERVICE_GLOBAL_CONFIG.MIN_EFFECTIVE_SERVICE_RADIUS, Math.round(maxRadius * budgetRatio * (SERVICE_GLOBAL_CONFIG.COVERAGE_MIN_FACTOR + SERVICE_GLOBAL_CONFIG.COVERAGE_MAX_FACTOR * fillRatio)))
-          : 0;
+        // Emergency coverage is calculated by CoverageManager from staffed jobs.
+        prod.effectiveRadius = maxRadius;
         const baseCost = config.runningCost?.[density] || 0;
         const utilityDemand = Object.values(config.utilityUsage || {}).reduce((sum, amount) => sum + amount, 0);
         const demandFactor = 1 + utilityDemand * SERVICE_GLOBAL_CONFIG.UTILITY_DEMAND_COST_MULTIPLIER;
@@ -102,7 +101,9 @@ export class ServiceManager {
           : Math.ceil(baseCost * staffingFactor * demandFactor * budgetRatio);
       });
 
-      // Compute road network distances
+      if (key === 'police' || key === 'fire' || key === 'hospital') continue;
+
+      // Compute road network distances for school, library, and City Hall.
       const { roadDistancesMap } = RoadNetwork.computeProducerDistances(grid, type);
 
       // Apply road distances to tiles
@@ -140,6 +141,19 @@ export class ServiceManager {
             tile.serviceDistances[key] = Math.min(tile.serviceDistances[key] ?? Infinity, minDist);
             tile.services[key] = true;
           }
+        }
+      }
+    }
+
+    CoverageManager.updateAll(grid);
+    for (const [coverageKey, serviceKey] of [['police', 'police'], ['fire', 'fire'], ['medical', 'hospital']]) {
+      const coverage = CoverageManager.getCoverageSet(grid, coverageKey);
+      for (let y = 0; y < grid.height; y++) {
+        for (let x = 0; x < grid.width; x++) {
+          if (!coverage.has(`${x},${y}`)) continue;
+          const tile = grid.tiles[y][x];
+          tile.serviceDistances[serviceKey] = 0;
+          tile.services[serviceKey] = true;
         }
       }
     }

@@ -3,6 +3,7 @@ import { Grid } from '../src/engine/Grid.js';
 import { UtilityManager } from '../src/engine/UtilityManager.js';
 import { ServiceManager } from '../src/engine/ServiceManager.js';
 import { FireManager } from '../src/engine/FireManager.js';
+import { CoverageManager } from '../src/engine/CoverageManager.js';
 import { PRODUCER_TYPE, TERRAIN, DENSITY, SERVICE_CONFIG, SERVICE_GLOBAL_CONFIG } from '../src/config.js';
 
 const grid = new Grid(14, 14, 1);
@@ -73,12 +74,12 @@ assert.strictEqual(hospital.totalJobs, 5, 'Hospital should staff one worker per 
 assert.ok(police.totalJobs > lightJobs, 'Police jobs should grow with population');
 assert.ok(police.effectiveRadius > lightRadius, 'Police coverage should grow with population');
 const fullBudgetJobs = police.totalJobs;
-const fullBudgetRadius = police.effectiveRadius;
+const fullBudgetCoverage = CoverageManager.getCoverageSet(grid, 'police').size;
 const fullBudgetCost = police.runningCost;
 police.budget = 50;
 ServiceManager.updateServices(grid, 5000, 1);
 assert.ok(police.totalJobs < fullBudgetJobs, 'Reduced budget should reduce service jobs');
-assert.ok(police.effectiveRadius < fullBudgetRadius, 'Reduced budget should reduce service coverage');
+assert.ok(CoverageManager.getCoverageSet(grid, 'police').size < fullBudgetCoverage, 'Reduced budget should reduce service coverage');
 assert.ok(police.runningCost < fullBudgetCost, 'Reduced budget should reduce service running cost');
 
 console.log('Service building utility and dynamic growth tests passed.');

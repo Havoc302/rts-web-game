@@ -1,4 +1,4 @@
-import { GROWTH_CONFIG, DENSITY, ZONE, TERRAIN, USAGE_RATES, POLLUTION_CONFIG, JOBS_PROVIDED, RESIDENTIAL_CAPACITY, LABOR_TAX_GROWTH_CONFIG, FOREST_DESIRABILITY_RADIUS, PRODUCER_TYPE, PRODUCER_CONFIG, POWER_PRODUCER_TYPES, ROAD_MAINTENANCE_COST, TAX_REVENUE_CONFIG, CRIME_CONFIG, MEDICAL_CONFIG, HAPPINESS_CONFIG, SERVICE_GLOBAL_CONFIG, TICKS_PER_HOUR, HOURS_PER_DAY, DAY_START_HOUR, NIGHT_START_HOUR, DEMOGRAPHICS_CONFIG, FUEL_CONFIG, splitDemographics } from '../config.js';
+import { GROWTH_CONFIG, DENSITY, ZONE, TERRAIN, USAGE_RATES, POLLUTION_CONFIG, JOBS_PROVIDED, RESIDENTIAL_CAPACITY, LABOR_TAX_GROWTH_CONFIG, FOREST_DESIRABILITY_RADIUS, PRODUCER_TYPE, PRODUCER_CONFIG, POWER_PRODUCER_TYPES, ROAD_MAINTENANCE_COST, TAX_REVENUE_CONFIG, CRIME_CONFIG, MEDICAL_CONFIG, HAPPINESS_CONFIG, SERVICE_GLOBAL_CONFIG, TICKS_PER_HOUR, HOURS_PER_DAY, DAY_START_HOUR, NIGHT_START_HOUR, DEMOGRAPHICS_CONFIG, FUEL_CONFIG, SURVEY_COST_PER_TICK, splitDemographics } from '../config.js';
 import { UtilityManager } from './UtilityManager.js';
 import { PollutionManager } from './PollutionManager.js';
 import { ServiceManager } from './ServiceManager.js';
@@ -65,7 +65,8 @@ export class Simulation {
   // - no tickCount++, no prepareTick, no resource/famine mutation
   // - allocateAll runs in preview mode (no wind reroll, no battery writes)
   // GameApp.simTick() is the only caller that may apply the returned income to treasury.
-  tick(advanceWorld = true) {
+  tick(advanceWorld = true, treasury = Infinity) {
+    this.surveyExpenses = 0;
     if (advanceWorld) {
       this.tickCount++;
       this.resourceManager.prepareTick(this.grid);
@@ -79,7 +80,7 @@ export class Simulation {
       CrimeManager.updateCrime(this.grid, this.stats);
       FireManager.updateFires(this.grid, this.stats);
       this.relocateDisplacedPopulation(this.stats.displacedPopulation || 0);
-      this.updateSurveys();
+      this.updateSurveys(treasury);
       this.resourceManager.update(this.grid, this.stats);
     }
 
@@ -91,12 +92,20 @@ export class Simulation {
     return this.stats.incomePerTick;
   }
 
-  updateSurveys() {
+  updateSurveys(treasury = Infinity) {
     for (const surveyor of this.grid.producers) {
       if (surveyor.type !== PRODUCER_TYPE.SURVEY_STATION || !surveyor.surveyTarget) continue;
       const target = this.grid.getTile(surveyor.surveyTarget.x, surveyor.surveyTarget.y);
-      if (!target || !surveyor.operational || target.surveyingBy !== surveyor.id) continue;
+      if (!target || target.surveyingBy !== surveyor.id) {
+        this.grid.cancelSurvey(surveyor);
+        continue;
+      }
+      if (!surveyor.operational || surveyor.onFire || target.onFire || treasury < SURVEY_COST_PER_TICK) {
+        this.grid.cancelSurvey(surveyor);
+        continue;
+      }
 
+      this.surveyExpenses += SURVEY_COST_PER_TICK;
       surveyor.surveyProgress++;
       target.surveyProgress = surveyor.surveyProgress;
       if (surveyor.surveyProgress < surveyor.surveyRequired) continue;

@@ -5,13 +5,13 @@
 | Title | Build & Conquer 2000 (B&C2000) — Architecture & Product Design |
 | Author | TBD |
 | Date | 2026-09-15 |
-| Status | Draft (rev 5) |
-| Version covered | `APP_VERSION` `0.1.5` (`src/version.js`); git HEAD |
+| Status | Living draft (rev 6) |
+| Version covered | `APP_VERSION` `0.1.7` (`src/version.js`); current working tree |
 | Intended in-repo path | `docs/DESIGN.md` |
 | Repo | `g:\Repos\rts-web-game` (`origin`: `https://github.com/Havoc302/rts-web-game.git`) |
-| Working tree at inventory | Clean. Document reflects HEAD, not a hypothetical dirty tree. |
+| Working tree at inventory | Documentation is checked against the current implementation; uncommitted changes may exist. |
 
-This is a **retroactive** architecture + product document. It inventories what the codebase actually does, then records the **end-state product decisions** (rev 4): a hybrid of SimCity 2000, Command & Conquer, and a RimWorld-style world map, with Google identity and Firebase as the eventual online stack. Phase 1 remains a local city-complete slice. Full combined arms, world-map conquest, multiplayer, and Firebase are a **multi-year** product — not the next two months of PRs.
+This is a **living** architecture + product document. It records the current implementation, the outstanding Phase 1 work, and the end-state product decisions: a hybrid of SimCity 2000, Command & Conquer, and a RimWorld-style world map, with Google identity and Firebase as the eventual online stack. Phase 1 remains a local city-builder slice. Full combined arms, world-map conquest, multiplayer, and Firebase are a **multi-year** roadmap, not the next two months of PRs.
 
 ---
 
@@ -29,29 +29,28 @@ The **product** is a hybrid of **SimCity 2000** (the city), **Command & Conquer*
 
 ### Why this document exists
 
-The repo grew from an initial city-sim into a ~4.7k-line simulation with **no README, no `docs/`, and no architecture note**. The only narrative artifact is `AI-task-list.txt`, a chronological AI work log. That log stops at windmill/solar battery adjacency and does **not** record later commits: versioning, mobile vs PC detection, tunnels, mountain surveying, tax formula, agriculture, fire rebalance, pension HUD placement, or the 2026-09 UI pass.
+The repo grew from an initial city-sim into a multi-manager simulation. `AI-task-list.txt` remains the chronological AI handoff log, while this document is the architecture and product source of truth. The work log is intentionally operational: agents record intended work before generation and completed work plus validation afterward so interrupted tasks can resume.
 
-Without a design document:
+This document exists to make the following boundaries explicit:
 
 - New systems land by extending `Simulation.tick()` and `src/config.js`, with no stated module boundary for combat.
-- Dead or leftover content (`PRODUCER_TYPE.POWER_PLANT`, `BASE_INCOME`, `arms`/`tanks`/`fuel`) is indistinguishable from unfinished product intent.
-- Version numbers have already drifted (`package.json` `0.1.1` vs `APP_VERSION` `0.1.4`; HTML badge fallback `v0.1.1`. `style.css?v=0.1.4` is already in sync).
+- Dead or transitional content (`PRODUCER_TYPE.POWER_PLANT`, military stockpiles, and future combat fields) is distinguishable from active Phase 1 behavior.
+- Versioning is single-source through `src/version.js`, with `package.json` synchronization tested.
 - Anyone joining the project could not tell city-only vs hybrid conquest (this document now records the hybrid).
 
 ### Current state (honest)
 
-B&C2000 is a **single-player, client-only, paused-by-default city builder**. A session is: pick a seed → paint roads/zones/producers → unpause → watch the tick. Resetting the map or refreshing the tab **destroys the city**. Military recipes can be selected on industrial tiles and will write `arms`/`tanks` into a stockpile that nothing consumes and the HUD does not show.
+B&C2000 is a **single-player, client-only, paused-by-default city builder**. A session is: pick a seed → paint roads/zones/producers → unpause → watch the tick. Resetting the map or refreshing the tab **destroys the city** because persistence is still outstanding. Food, consumer goods, oil/fuel, agriculture, crime, fire, services, and military stockpile display are implemented; military production has no unit sink yet.
 
 ### Pain points
 
-1. **No city save/load.** Only the map seed is remembered (`localStorage` key `metropolis_map_seed` plus `?seed=`).
-2. **`Simulation.tick` is a god-loop** that both advances the world and refreshes HUD-facing stats. Placement-while-paused still runs `ResourceManager.update()`. Famine `populationLoss` is sticky (never cleared when food returns).
-3. **Resource loops are incomplete.** Consumer goods are never deducted; oil never becomes fuel; arms/tanks have no sink.
-4. **Agriculture is a second-class zone** in occupancy, crime, fire, HUD zone counters, and the build-info panel.
-5. **`ResourceManager.updateProducerJobs()` overwrites civic staffing** that `ServiceManager` just computed (fire stations are the only exception).
-6. **Canvas 2D on a 200×200 / 32px map** implies a 6400×6400 terrain cache (~164 MB RGBA; some GPUs/browsers reject canvases > 4096) plus a full-grid tick over 40,000 tiles.
-7. **Process docs are stale.** `AI-task-list.txt` is the only “docs”; `package.json` version is wrong.
-8. **Placement mutates treasury incorrectly.** `handleCanvasClick` does `treasury += income` after `tick(!isPaused)` with no expense subtraction, and while unpaused it also **advances a bonus world tick** on every placed tile.
+1. **No city save/load.** The map seed is remembered, but the city itself is lost on refresh or reset.
+2. **`Simulation.tick` remains a large orchestrator.** Its pause/preview semantics are now explicit and tested, but named stage extraction is still outstanding.
+3. **Military production has no unit sink.** Arms and tanks are visible stockpiles, but barracks, vehicle depots, units, and world-map deployment are later phases.
+4. **Emergency coverage now uses cached direct/road/road-side sets.** Survey work remains incomplete.
+5. **Survey work is incomplete.** The survey overlay, per-tick cost deduction, cancellation rules, and treasury integration remain outstanding.
+6. **Canvas 2D on a 200×200 / 32px map** still requires performance measurement despite chunked terrain rendering and viewport culling.
+7. **UI and renderer behavior has limited automated coverage.** The engine suite is broad, but browser interaction and visual behavior remain mostly manual checks.
 
 ---
 
@@ -75,6 +74,21 @@ B&C2000 is a **single-player, client-only, paused-by-default city builder**. A s
 - **Close civilian resource loops** so food, goods, coal, oil/fuel, and bars have producers and sinks. Arms/tanks stay stockpiled and **visible**.
 - **Decompose the tick** into named stages (extract-method).
 - Procedural canvas art through city-complete; sprites optional later.
+
+### Current Phase 1 status
+
+Implemented and covered by the current test runner:
+
+- Pause-safe placement previews, treasury accounting, famine recovery, agriculture occupancy, resource consumption, fuel/refining, crime, fire, civic staffing, mobile input/layout, wind/solar/battery connectivity, version synchronization, and chunked terrain rendering.
+- Unified test execution through `npm test`; the current baseline is 22 passing test files.
+
+Outstanding implementation work:
+
+- Versioned local save/load/export/import.
+- Named tick-stage extraction and performance benchmarking on a populated 200×200 map.
+- Survey overlay, survey cost/cancellation, and treasury integration.
+- Dedicated happiness HUD display and stronger browser-level UI/touch validation.
+- Military unit production and world-map systems remain later phases, not Phase 1 blockers.
 
 ### Phase 1 non-goals (not product non-goals)
 
@@ -133,14 +147,14 @@ flowchart TB
 | --- | --- | --- |
 | Map | 200×200 tiles (40,000) | `MAP_WIDTH` / `MAP_HEIGHT` |
 | Tile size | 32 px → 6400×6400 world pixels | `TILE_SIZE` |
-| Money scale | `MONEY_MULTIPLIER = 10` | `src/config.js` |
+| Money scale | Pre-scaled monetary constants; no runtime multiplier | `src/config.js` |
 | Starting treasury | `$25,000` (`2500 * 10`) | `STARTING_TREASURY`; HUD seed text in `index.html` |
 | Tick wall-clock | `2000 / speed` ms (`1x=2s`, `2x=1s`, `5x=400ms`) | `GameApp.setSpeed` |
 | Clock | 1 tick = 1 in-game hour, 24-hour day, day 06:00–18:00 | `TICKS_PER_HOUR`, `DAY_START_HOUR`, `NIGHT_START_HOUR` |
 | Zoom | 0.4–2.5, default 1.0; low-detail below 0.7 | `RENDERER_CONFIG` |
 | Terrain cache budget | 1,200 tiles/frame while building | `RENDERER_CONFIG.TERRAIN_BUILD_BUDGET` |
 | Dev | `"dev": "npx serve ."` | `package.json` |
-| Version | `0.1.4` in `APP_VERSION` and `style.css?v=`; `0.1.1` in `package.json` and the HTML badge fallback | drift is npm + badge only |
+| Version | `0.1.6` from `src/version.js`, synchronized with `package.json` and cache-busting consumers | `tests/version-sync.test.js` |
 | `config.js` | 690 lines total (~637 non-blank) | file |
 | `Renderer.js` | 897 lines | file |
 
@@ -204,7 +218,7 @@ While paused, `advanceWorld` is false, so crime/fire/surveys/growth/`tickCount` 
 - **Seeded vs unseeded RNG today:**
   - Seeded (`this.random` / `createPRNG`): terrain, rivers, lakes, forests, rocks, hidden ores; crime **tile sampling** (`CrimeManager.sampleRandom(..., grid.random)`).
   - Unseeded (`Math.random`): wind capacity swing, fire ignition and spread, crime event roll and police suppression, the initial random seed pick in `getInitialSeed`.
-- **Seed sources, in order:** `?seed=` URL param → `localStorage.metropolis_map_seed` → random in `[100000, 9100000)`. Reset/regen writes both localStorage and the URL. The key still says `metropolis_*` (pre-B&C2000 name).
+- **Seed sources, in order:** `?seed=` URL param → `localStorage.bc2000_map_seed` with one-time legacy read of `metropolis_map_seed` → random in `[100000, 9100000)`. Reset/regen writes the current key and URL.
 - **Generation order** (`generateProceduralTerrain`): rivers (simple 40% / fork 30% / merge 30%) → 0–5 lakes → forest clusters scaled by map area → rock/mountain clusters. Rivers store `riverFlowDir` for pollution and water animation. River *generation* uses `this.random`, not `Math.random`.
 - **Hidden ores.** `generateHiddenOres` rolls `ORE_GENERATION` per terrain (mountain 35%, flat 3%, forest 1.5%, water 1%) and picks uniformly from iron / bauxite / coal / oil.
 - **Tile schema** (`createDefaultTile`): terrain, road/bridge/tunnel flags, zone, density, growthScore, industrial `recipe`, population bookkeeping (`relocatedPopulation`, `fireDisplacedPopulation`, `populationLoss`), producer pointer, utility shortfall/distances, pollution, ore/survey fields, crime, fire, `destroyed`. No `ownerId`. No visibility field.
@@ -254,7 +268,7 @@ income = ((population/100) + (jobsFilled/100)) * $10 * (taxRate/100) - crimeTaxL
 
 `BASE_INCOME` still exists and is tested by `industrial-economics.test.js`, but **`computeStats` does not use it**. **Decision: delete `BASE_INCOME`** and retarget that test at the live tax formula (industrial tiles still yield more than commercial at equal fill because they provide the same jobs table — assert the live `incomePerTick` relationship, or drop the I>C income assertion if it no longer holds). Growth modifier is continuous: bonus below 40%, negative at 50%, quadratic outflow toward 100%. Residential growth **stalls** (`delta = 0`) if any workers are unemployed or if the city has zero workplaces.
 
-**Treasury** lives on `GameApp`, not `Simulation`. Road maintenance is `$1` per road/bridge/tunnel tile per tick (`ROAD_MAINTENANCE_COST = 1`) — **not** multiplied by `MONEY_MULTIPLIER`, unlike almost every other money constant. Pensions: `retirees * taxPerWorker * 0.5 * pensionBudgetRatio`, folded into `serviceExpenses`.
+**Treasury** lives on `GameApp`, not `Simulation`. Road maintenance is `$1` per road/bridge/tunnel tile per tick (`ROAD_MAINTENANCE_COST = 1`). Monetary values are pre-scaled constants. Pensions are folded into `serviceExpenses`.
 
 ### Utilities and day/night
 
@@ -266,7 +280,7 @@ income = ((population/100) + (jobsFilled/100)) * $10 * (taxRate/100) - crimeTaxL
 4. Allocate **water** nearest-first; **sewage** farthest-first (`descending`) so distant tiles back up first.
 5. `allocateUtilityConsumers` — every producer with `utilityUsage` draws from the nearest road-connected source. 5-tick grace (`UTILITY_FAILURE_GRACE_TICKS`) before `operational = false`. Generation capacity itself is **not** gated on `operational` (intentional, to avoid cascade blackouts).
 
-Zone utility demand is `USAGE_RATES[zone][density] * occupancyRatio`. Occupancy is implemented only for residential / commercial / industrial (`getTileOccupancyRatio`). **Agricultural tiles therefore contribute 0 utility demand** despite having `USAGE_RATES.agricultural`.
+Zone utility demand is `USAGE_RATES[zone][density] * occupancyRatio`. Occupancy is implemented for residential, commercial, industrial, and agricultural tiles. Empty capacity contributes no demand; filled agricultural jobs contribute utility demand according to the agricultural usage table.
 
 Wind/solar/battery are **three separate layers**, not one “transmit through batteries” exception:
 
@@ -298,15 +312,15 @@ Industrial zones are immune to the pollution growth penalty; R/C (and A, because
 
 `ServiceManager.updateServices` staffs police, fire, hospital, school, library, city hall **before** the remaining workforce is left for C/I/A (comment: “Fully funded essential services receive workers before commercial and industrial jobs”). Police/fire/hospital scale with population (min 2 staff, 1 per 1,000 residents, capped by density job table). Coverage radius scales with budget × staffing. Running cost is per filled job × utility demand factor × budget.
 
-**Then `ResourceManager.updateProducerJobs` overwrites `totalJobs`/`filledJobs` on every producer that has `config.jobs` except fire stations**, forcing `jobs.light` × `max(0.3, employmentRate)`. That clobbers police/hospital/school/library/city hall (and also mines/smelter, which ServiceManager does not set). This is the highest-severity logic bug in the current tick.
+`ServiceManager` owns civic/service staffing, while `ResourceManager.updateProducerJobs` is restricted to configured resource/factory categories. Full simulation tests should continue to protect this ownership boundary.
 
-`PRODUCER_CONFIG.category` exists on mines/derrick (`resource`), warehouses/silo (`storage`), smelter (`factory`), services (`service`), survey (`utility`). **Wind/solar/coal/nuclear/water/sewage/`POWER_PLANT` have no `category`.** A staffing filter cannot assume every producer is tagged; PR 3/4 must add `category` (or an explicit type allow-list). Tests that only call `ServiceManager.updateServices` will not catch the overwrite; they must call full `simulation.tick()`.
+Resource/factory producers are explicitly categorized for staffing. Utility producers without jobs do not enter the staffing pass. Tests that exercise staffing should call full `simulation.tick()` where ownership interactions matter.
 
 Crime (`CrimeManager`): decay 1/tick; spawn chance `0.05 + jobScarcity * 2.5` on a sample of up to 15 **R/C/I** tiles (agriculture excluded); 85% police suppression; +2 per event, cap 10; diffusion to unpoliced R/C/I neighbors above 4. Tax loss 5% per crime point, cap 50%. Growth penalty −2 at crime ≥ 3.
 
-Fire (`FireManager`): `getOccupancyRatio` ignores agricultural tiles, so farm occupancy is 0. `getIgnitionChance` then returns `MAX_IGNITION_CHANCE_NON_INDUSTRIAL * 0` plus `HIGH_POLLUTION_IGNITION_BONUS` (0.003) if pollution ≥ 5. **Farms never occupancy-ignite; they only pick up the pollution bonus.** Forest 0.01%/tick. Burning homes relocate 50%/tick; 5 injuries/tile/tick; +10 damage/tick; destroy at 100 via `grid.bulldoze` + `destroyed`. Suppression from nearest operational fire station: `35 * staffRatio` subtracted from damage **before** the +10, so a well-staffed station extinguishes in one tick (covered by `service-buildings.test.js`). **Today spread skips flat/empty, water, roads, and bridges**, so fire does not enter zoned city blocks.
+Fire (`FireManager`): agricultural occupancy participates in ignition and spread. Forest 0.01%/tick. Burning homes relocate 50%/tick; 5 injuries/tile/tick; +10 damage/tick; destroy at 100 via `grid.bulldoze` + `destroyed`. Suppression from the nearest operational fire station is applied before damage growth. Roads, bridges, tunnels, water, and uninhabited flat tiles are not flammable; inhabited zones, producers, forests, and mountains can burn.
 
-**Decided fire model (Key Decision 19), not yet in code:** **realistic flammability.** A tile without flammable material does not catch fire. **Roads (and bridges/tunnels) do not burn.** Water does not burn. Uninhabited empty flat does **not** burn. **Forests, mountains, and inhabited tiles** (zoned and/or occupied, including farms) hold flammable material and **can** ignite and receive spread. Firefighters should eventually be more effective (current response is weak) — a later balance/AI pass, not a Phase 1 ship blocker. A small Phase 1 spread-rule PR (with agriculture) should let fire enter inhabited tiles without making barren dirt burn.
+The realistic fire model is implemented: roads, bridges, tunnels, water, mountains, and uninhabited flat tiles do not burn; forests, producers, and inhabited zones can ignite and receive spread. Firefighter effectiveness remains a later balance pass.
 
 Medical: patients from residents (retirees ×3, more if pensions underfunded), industrial/ag jobs, crime, pollution, fire injuries. Hospital capacity = filled jobs × 15. Untreated patients apply citywide residential growth −2 and a happiness penalty.
 - **Hospital:** Costs $6,000, scales across Light/Medium/High tiers (jobs 10/50/200, radius 10/50/200).
@@ -318,50 +332,50 @@ Medical: patients from residents (retirees ×3, more if pensions underfunded), i
 
 | Loop | Producer | Sink | Status |
 | --- | --- | --- | --- |
-| Food | Agricultural yield 4/20/80 × job fill; industrial `FOOD` recipe | `FOOD_PER_RESIDENT = 0.05`; unfed tiles lose 5% pop/tick | **Closed, with a sticky-loss bug** |
+| Food | Agricultural yield 4/20/80 × job fill; industrial `FOOD` recipe | `FOOD_PER_RESIDENT = 0.05`; unfed tiles lose 5% pop/tick | Closed; famine loss clears when food returns |
 | Ore → bars | Mines 0.2/job; smelter 1 ore + 0.5 coal → 1 bar, 0.2 bars/job | Industrial `ARMS`/`TANKS` | Partial — bars only needed for unused military recipes |
 | Coal | Coal mine | Smelter + coal plant `0.02` per MW used | Closed if you mine it |
-| Oil / fuel | Oil derrick → `oil`; silos store `oil` or `fuel` | **None.** No recipe produces `fuel` | Open — **closed in Phase 1 per Key Decision 12** |
-| Consumer goods | Industrial `CONSUMER_GOODS` rate 0.2/job, no inputs | Demand `0.08`/resident used only as a **ratio for happiness**; stockpile is **never decremented** | Open — **closed in Phase 1 per Key Decision 12** |
-| Arms / tanks | `ARMS` (0.5 ironBar, rate 0.05); `TANKS` (1 ironBar + 0.5 bauxiteBar, rate 0.02) | **None.** Not in HUD | Dead content until war economy |
+| Oil / fuel | Oil derrick → `oil`; refinery → `fuel`; silos store `oil` or `fuel` | Occupied zones and coal plants consume fuel | Implemented; tuning and tests may continue |
+| Consumer goods | Industrial `CONSUMER_GOODS` rate 0.2/job, no inputs | Demand `0.08`/resident; stockpile is consumed and contributes to happiness/tax effects | Implemented; tuning and tests may continue |
+| Arms / tanks | `ARMS` (0.5 ironBar, rate 0.05); `TANKS` (1 ironBar + 0.5 bauxiteBar, rate 0.02) | No unit sink yet | Stockpiled and visible; war-economy sink is later |
 | Storage | Ore/bar/goods warehouses 500 each; silo 500 oil or fuel | Clamp after production | Working |
 
-**Famine `populationLoss` is sticky.** `consumeFood` sets `tile.populationLoss` on shortfall and never clears it when food is restored. `computeStats` subtracts it every pass. Reset is only in `Grid.bulldoze` when clearing a zone. `tests/resource-management.test.js` only asserts the field does not *accumulate* across two famine ticks. Combined with paused placement running `update()`, a paused famine click permanently scars residential tiles until bulldoze.
+Famine loss is recalculated per advancing tick and cleared when food demand is met. Preview ticks do not run resource consumption or famine mutation.
 
-Happiness (`HAPPINESS_CONFIG`) is a 0–100 city score starting at 50, combining tax, employment, utilities, civic coverage, goods ratio, pollution, crime, untreated patients, fire injuries, food shortfall. It feeds `happinessGrowthModifier = happiness * 0.05` into residential growth. **It is not shown on the HUD.** Phase 1 shows it (Key Decision 13).
+Happiness (`HAPPINESS_CONFIG`) is a 0–100 city score starting at 50, combining tax, employment, utilities, civic coverage, goods ratio, pollution, crime, untreated patients, fire injuries, and food shortfall. It feeds residential growth. A dedicated player-facing HUD value remains outstanding.
 
 ### HUD and UI
 
 `index.html` + `style.css`: glass panels, Inter + JetBrains Mono, SVG HUD sprites.
 
-- Top bar: pop, treasury, income, service cost (includes pensions), road cost, jobs available, employment %, stockpile chips (food/coal/iron/bauxite/goods — **not** bars, oil, fuel, arms, tanks), tax slider, tick, clock.
-- Overlay picker: Normal, Power, Water, Sewage, Pollution, Crime.
+- Top bar: pop, treasury, income, service cost (includes pensions), road cost, jobs available, employment %, stockpile chips for food, coal, iron, bauxite, bars, oil, fuel, goods, arms, and tanks, tax slider, tick, clock.
+- Overlay picker: Normal, Power, Water, Sewage, Pollution, Crime, Police, Fire, Hospital.
 - Utility HUD: demand/capacity meters, hospital patients, pollution avg/max, demographics, service + pension budget sliders.
 - Tool drawer groups: General, Transport, Zoning, Utility Producers, Production, Civic, Exploration.
-- Build-info panel for `producer_*` and R/C/I zones. **`zone_a` is omitted** (`updateBuildInfoPanel` only handles `zone_r/c/i`).
+- Build-info panel for `producer_*` and R/C/I/A zones.
 - Tile inspector: terrain, road/bridge, zone, density, pop/jobs, demographics, industrial recipe select, silo storage select, growth, pollution, crime, fire, ore, utilities, producer load.
 - Mobile drawers and toggles as above.
 
 ### Test surface
 
-Node `assert` scripts; `package.json` `"test"` runs **only** `tests/simulation.test.js` (Tests 1–18 plus 1b/1c/1c2/1d/1e). Other suites are separate npm scripts. There is no `test:all`.
+Node `assert` scripts; `package.json` `"test"` runs `tests/run-all.js`, which discovers and executes every `tests/*.test.js` file. Focused npm scripts remain available for the major feature areas.
 
 | Suite | Covers | Gaps |
 | --- | --- | --- |
 | `simulation.test.js` | Roads/BFS, wind+battery, fire destroy/relocate/risk, occupancy-scaled utilities, allocation order, growth, tax, pollution, water-adjacent, labor, stall, tax pressure, disconnected producers, map gen | No agriculture in core tests; uses leftover `POWER_PLANT` |
 | `ore-survey.test.js` | Ore rates, survey duration, active power | — |
 | `river-pollution.test.js` | Idle plant, falloff 10, combined discharge | — |
-| `service-buildings.test.js` | Utilities, min staff 2, grace ticks, fire suppression, pop scaling, budget | Staffing assertions can pass for the wrong reason if `ResourceManager` later overwrites jobs on a full tick |
+| `service-buildings.test.js` | Utilities, min staff 2, grace ticks, fire suppression, pop scaling, budget | Full-tick staffing ownership coverage should continue to expand |
 | `tax-pressure.test.js` | Happiness at 0% tax; 50%/100% pop and jobs | — |
 | `tax-revenue.test.js` | $10/100 residents+jobs × rate | — |
 | `road-maintenance.test.js` | $1/tile; tunnels | Cost not 10× scaled |
 | `income-population.test.js` | Income tracks pop | — |
 | `industrial-economics.test.js` | Zone cost $300; `BASE_INCOME` I > C | Tests a table the sim no longer uses — delete the table |
 | `school-cost.test.js` / `service-expense-scale.test.js` | Job-based running costs | — |
-| `resource-management.test.js` | Ag usage rates vs industry, mines, smelter, food recipe, famine outflow | Does not assert goods consumption, oil→fuel, or famine *clearing* |
+| `resource-management.test.js` | Agriculture, mines, smelter, food, goods, fuel, and famine behavior | More end-to-end production-chain assertions are useful |
 | `demographics.test.js` | 40/40/20 jobs, split, pensions, retiree patients | — |
 
-**Untested:** `main.js` (input, HUD, treasury, pause-while-place), `Renderer.js`, CSS/HTML, happiness HUD (none exists), agricultural occupancy, `ResourceManager.updateProducerJobs` interaction with `ServiceManager`, save/load (none exists).
+**Still lightly tested:** `main.js` input and treasury wiring, `Renderer.js`, CSS/HTML, visual HUD behavior, browser touch interaction, save/load (not implemented), and performance on a full 200×200 city.
 
 ---
 
@@ -382,7 +396,7 @@ flowchart LR
 
 ### Phase 0 — what is already playable
 
-A player can generate a map, build a powered/watered/sewered city, grow R/C/I/A, fight crime and fire, survey mountains, mine, farm, and go broke on roads and pensions. That is a real game loop. It is **not** a complete product: refresh = lose city; food/goods/oil/military are half-wired; several tick interactions are wrong.
+A player can generate a map, build a powered/watered/sewered city, grow R/C/I/A, fight crime and fire, survey mountains, mine, farm, and go broke on roads and pensions. That is a real Phase 0 game loop. It is **not** city-complete: refresh still loses the city, emergency coverage caching and survey cost/cancellation are unfinished, the tick still needs named-stage extraction, and military stockpiles do not yet produce units.
 
 ### Phase 1 — City Complete (next, required, single-faction)
 
@@ -394,7 +408,7 @@ Ship a city-builder you can put down and pick up. Still one treasury on `GameApp
 4. **Agriculture first-class.** Occupancy in `getTileOccupancyRatio` and fire; crime sample; `stats.zones.agricultural`; build-info for `zone_a`.
 5. **Staffing ownership.** Tag remaining producers with `category`. `ServiceManager` owns civic jobs; `ResourceManager.updateProducerJobs` only mutates `category === 'resource' | 'factory'`. Fire is not a special case.
 6. **HUD honesty.** Happiness, bars, oil, fuel, arms, tanks. Badge fallback = `APP_VERSION`. `package.json` synced. Expose police/fire/hospital overlay buttons the renderer already implements.
-7. **Hygiene.** Define `DEFAULT_RANDOM_SEED`. Rename `metropolis_map_seed` → `bc2000_map_seed` (read old key once). Quarantine `POWER_PLANT`. Delete `BASE_INCOME`. Align wind/solar HUD vs charging (three-layer bug). Seed `simRng` from save for wind/crime-rolls/fire (no replay promise).
+7. **Hygiene.** The default seed, current seed key migration, monetary cleanup, agricultural support, and wind/solar connectivity alignment are implemented. Generic `POWER_PLANT` remains test scaffolding. Persisting a simulation RNG for save/load, and fully quarantining the test producer, remain future cleanup.
 8. **Tick decomposition** is extract-method only (PR 8), preserving post-PR-4 order. No combat hook in that PR.
 9. **Chunked terrain cache is required** before calling city-complete shipped (PR 8b): 64×64 (or ≤2048²) offscreen tiles instead of one 6400² canvas. Any-platform: playable on mobile, easier on a large screen.
 10. **Fire spread rules** aligned with realistic flammability (inhabited + forest/mountain burn; roads and barren flat do not). Firefighter effectiveness is a later balance pass.
@@ -568,7 +582,7 @@ Rules:
 | --- | --- | --- |
 | `Simulation.tick` god-loop + pause leak into `ResourceManager` | High | Gate world mutation on `advanceWorld`; extract-method later |
 | Placement `treasury += income` and bonus `tick(true)` | High | Placement only `tick(false)`; `simTick` unique economic mutation |
-| Sticky `populationLoss` | High | Clear on food restored; apply only when `advanceWorld` |
+| Sticky `populationLoss` | Resolved | Clear on food restored; apply only when `advanceWorld` |
 | `updateProducerJobs` clobbers civic staffing | High | `category` allow-list; full-`tick()` regression |
 | 6400×6400 terrain cache (~164 MB; > 4096 canvas cap on some GPUs) | High | **PR 8b required** before city-complete shipped |
 | Incomplete civilian resource loops | High | Key Decision 12 in Phase 1 |
@@ -646,7 +660,7 @@ return stats.incomePerTick  # GameApp.simTick is the only caller that applies it
 
 ### HUD
 
-- Badge fallback in HTML matches `APP_VERSION` (`0.1.4` now). `style.css?v=` already does.
+- Badge and stylesheet cache-busting use the current `APP_VERSION` (`0.1.6`); package/source synchronization is tested.
 - Happiness chip; oil, fuel, bars, arms, tanks chips.
 - Build-info: handle `zone_a`.
 - Overlay picker: add Police / Fire / Hospital buttons already handled in `renderOverlay`.
@@ -661,7 +675,7 @@ return stats.incomePerTick  # GameApp.simTick is the only caller that applies it
 /**
  * @typedef {Object} SaveDocument
  * @property {1} version
- * @property {string} appVersion          // e.g. "0.1.4"
+ * @property {string} appVersion          // e.g. "0.1.6"
  * @property {string} savedAt             // ISO-8601
  * @property {number} seed
  * @property {number} width               // any positive size; GameApp session requires MAP_*
@@ -879,18 +893,18 @@ Phase 1 has no backend. Observability is **debuggability and regression detectio
 
 `Simulation.stats` (later per-faction stats) is the metric bus. HUD is the dashboard. Add happiness + oil/fuel/bars/arms/tanks so the dashboard matches the sim.
 
-Expose the unused police/fire/hospital overlay branches in HTML (Phase 1).
+Police, fire, and hospital overlay controls are exposed in the current HTML. Coverage caching remains an outstanding Phase 1 task.
 
 ### Alerting → test suites
 
-- Add `"test:all"` that runs every `tests/*.js` file. `npm test` should mean that.
+- `npm test` already runs the unified `tests/run-all.js` discovery runner; keep focused scripts for fast feature validation.
 - Every Phase 1+ feature PR includes a Node assert file or an extension of an existing one. Staffing tests must call `simulation.tick()`, not only `ServiceManager.updateServices`.
 - UI remains untested until a later optional Playwright pass (non-goal for 0.2).
 
 ### Versioning
 
-- Single source: `APP_VERSION` in `src/config.js`.
-- `package.json` `version` and the HTML **badge fallback** must match. `style.css?v=0.1.4` is already correct.
+- Single source: `APP_VERSION` in `src/version.js`, re-exported by `src/config.js` where needed.
+- `package.json` `version` and the HTML badge/cache-busting consumers must match; `tests/version-sync.test.js` protects the package/source pair.
 - Patch for fixes, minor for features, major for save-breaking changes (`SAVE_VERSION` bump can ride a minor if migrations exist).
 
 ---
@@ -921,11 +935,11 @@ Phase 1 stays paused-by-default sandbox (0% tax, $25,000) for solo city-building
 
 6. **Single-player local is the current and Phase 1 constraint.** The v1.x *product* is **online matches** (Google identity + Firebase), not forever-offline. No login required to play Phase 1.
 
-7. **Procedural canvas art remains default through 1.0.** Sprites are optional later and do not justify a bundler now. Happiness **is** a player-facing HUD stat in Phase 1 (it already drives growth).
+7. **Procedural canvas art remains default through 1.0.** Sprites are optional later and do not justify a bundler now. Happiness drives growth and remains an outstanding dedicated HUD item.
 
 8. **`src/config.js` remains the balance source of truth.** Split only when combat constants make it unnavigable.
 
-9. **`AI-task-list.txt` is historical, not normative.** Design changes go in `docs/DESIGN.md`.
+9. **`AI-task-list.txt` is the resumable AI handoff log, not the architecture source of truth.** Agents record intended work at the start of a generation and completed work plus validation at the end. Design decisions go in `docs/DESIGN.md`.
 
 10. **Staffing has one owner per building `category`.** Civic/service → `ServiceManager`; resource/factory → `ResourceManager`. Remaining producers get a `category` in hygiene. Fire is not a special case.
 
@@ -946,12 +960,12 @@ Phase 1 stays paused-by-default sandbox (0% tax, $25,000) for solo city-building
 
 17. **Delete unused `BASE_INCOME`.** Retarget `industrial-economics.test.js` at the live tax formula / zone cost. Do not keep a dead table.
 
-18. **Wind/solar HUD and charging must use the same connectivity rule** (mill counts iff battery-adjacent **and** that battery is road-adjacent). Today they disagree; Phase 1 fixes it as a bug.
+18. **Wind/solar HUD and charging use the same connectivity rule** (mill counts iff battery-adjacent **and** that battery is road-adjacent). Regression coverage protects this behavior.
 
 19. **Realistic flammability and post-fire repair.**
     - Unoccupied zones have nothing to burn and do not ignite.
     - Roads, bridges, tunnels, and barren flat do not burn.
-    - Forests, mountains, and inhabited (occupied) zones (including farms) hold fuel and can burn and spread.
+    - Forests and inhabited (occupied) zones (including farms) hold fuel and can burn and spread; mountains are immune.
     - When a fire is extinguished without destroying the tile, it produces 0 tax initially and repairs gradually (`FIRE_CONFIG.REPAIR_PER_TICK = 0.1`) back to full use.
     - Fire station base suppression power is 55.
 
@@ -971,11 +985,11 @@ Phase 1 stays paused-by-default sandbox (0% tax, $25,000) for solo city-building
 
 27. **Overworld Biome Generation.** `BIOME_TYPES` (`PLAINS`, `HILLY`, `MOUNTAINOUS`, `SWAMP`) modify procedural terrain generation: Hilly/Mountainous scale rock clusters (+25% / +50%); Plains reduce rock clusters (-50%); Swamp reduces forest (-50%), increases lakes (4-6), and forces fork/merge rivers. `generateProceduralTerrain(biome)` accepts the biome directly.
 
-28. **Single-source versioning.** `src/version.js` (`APP_VERSION = '0.1.5'`) is the single source of truth for version strings. `package.json` version, HTML badge, and stylesheet cache-busting derive from it. Verified by `tests/version-sync.test.js`.
+28. **Single-source versioning.** `src/version.js` (`APP_VERSION = '0.1.7'`) is the single source of truth for version strings. `package.json` version and cache-busting consumers derive from it. Verified by `tests/version-sync.test.js`.
 
 29. **Desktop Pan and Drag Painting.** Desktop left-drag with the Pan tool pans the camera; clicking without dragging inspects/selects the tile. Left-drag painting is restricted to repeatable tools (roads, bridges, tunnels, zones, bulldoze); single-placement buildings and surveys do not drag-paint.
 
-30. **Unified Test Runner.** `tests/run-all.js` executes all 21 test suites across the engine and simulation. `npm test` runs this master suite.
+30. **Unified Test Runner.** `tests/run-all.js` discovers and executes all 23 test suites across the engine and simulation. `npm test` runs this master suite.
 
 ---
 
@@ -1000,7 +1014,7 @@ Resolved by the user (rev 4): Conquer hybrid + world map + Firebase (Q1), victor
 ## References
 
 - Product title: `index.html` `<title>Build & Conquer 2000</title>`, brand `B&C2000`.
-- Version: `APP_VERSION` `0.1.4` in `src/config.js`; `package.json` `"0.1.1"`; HTML badge fallback `v0.1.1`; `style.css?v=0.1.4` already synced.
+- Version: `APP_VERSION` `0.1.6` in `src/version.js`; `package.json` is synchronized and version/cache-busting behavior is covered by the version-sync test.
 - Entry / orchestration: `src/main.js` (`GameApp`), `src/engine/Simulation.js` (`tick`, `computeStats`, `updateGrowthAndDensity`).
 - Spatial model: `src/engine/Grid.js` (`createDefaultTile`, `generateProceduralTerrain`, placement).
 - View: `src/engine/Renderer.js`, `style.css`, overlay buttons in `index.html`.
@@ -1103,6 +1117,10 @@ An AI civilisation is a **separate city sim** (or an abstracted producer — Ope
 ## PR Plan
 
 Ordered, independently reviewable PRs. Conquer work is sliced and **gated**. “Build the RTS” is not a PR.
+
+### Historical PR plan
+
+The PR descriptions below were written for the earlier rev 4 planning snapshot. They remain useful as history, but current status is defined by the Phase 1 summary above, the unchecked items in `AI-task-list.txt`, and the implementation itself. Do not use obsolete version numbers or old file lists in these historical descriptions as current instructions.
 
 ### PR 1 — Add the design document
 

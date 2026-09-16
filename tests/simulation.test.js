@@ -129,7 +129,7 @@ console.log('Running Phase 1 Core Loop Automated Verification Tests...\n');
   assert.strictEqual(FireManager.getIgnitionChance({ terrain: TERRAIN.FOREST, pollution: 100, population: 100, maxPopulation: 100 }), FIRE_CONFIG.FOREST_IGNITION_CHANCE, 'Forest tiles should use the fixed 0.01% fire risk');
   assert.strictEqual(FireManager.getIgnitionChance({ terrain: TERRAIN.FLAT, zone: ZONE.NONE, pollution: 100 }), 0, 'Empty barren flat should not ignite');
   assert.strictEqual(FireManager.getIgnitionChance({ terrain: TERRAIN.FLAT, zone: ZONE.NONE, producer: { type: 'power_plant' }, pollution: 0 }), FIRE_CONFIG.BASE_IGNITION_CHANCE, 'Standalone producers can ignite');
-  assert.strictEqual(FireManager.getIgnitionChance({ terrain: TERRAIN.MOUNTAIN, zone: ZONE.NONE, pollution: 0 }), FIRE_CONFIG.MOUNTAIN_IGNITION_CHANCE, 'Mountains can ignite');
+  assert.strictEqual(FireManager.getIgnitionChance({ terrain: TERRAIN.MOUNTAIN, zone: ZONE.NONE, pollution: 0 }), 0, 'Mountains are fire-immune');
   console.log('✔ Test 1d Passed: Fire risk scales with occupancy and respects caps');
 }
 

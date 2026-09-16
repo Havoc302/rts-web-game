@@ -203,8 +203,8 @@ class GameApp {
 
   simTick() {
     if (this.simulation.isPaused) return;
-    const income = this.simulation.tick();
-    this.treasury += income - this.simulation.stats.serviceExpenses - this.simulation.stats.roadExpenses;
+    const income = this.simulation.tick(true, this.treasury);
+    this.treasury += income - this.simulation.stats.serviceExpenses - this.simulation.stats.roadExpenses - (this.simulation.surveyExpenses || 0);
     this.updateHUD();
     if (this.renderer.selectedTile) {
       this.updateInspector(this.renderer.selectedTile);
@@ -293,9 +293,12 @@ class GameApp {
     const btn = document.querySelector(`.tool-btn[data-tool="${tool}"]`);
     if (btn) btn.classList.add('active');
     this.activeTool = tool;
+    const overlayMode = tool === 'survey' ? 'survey' : 'normal';
+    document.querySelectorAll('.overlay-btn').forEach((b) => b.classList.toggle('active', b.dataset.mode === overlayMode));
+    this.renderer.setOverlayMode(overlayMode);
     this.renderer.highlightWaterAdjacent =
       this.activeTool === 'producer_water' || this.activeTool === 'producer_sewage';
-    if (this.activeTool !== 'inspect') {
+    if (this.activeTool !== 'inspect' && this.activeTool !== 'pan') {
       document.getElementById('inspector-panel').classList.remove('visible');
       this.renderer.selectedTile = null;
     }

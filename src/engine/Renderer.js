@@ -103,7 +103,7 @@ export class Renderer {
           this.renderProducerTile(ctx, tile, px, py);
         }
 
-        if (tile.oreDiscovered || tile.surveyingBy) {
+        if (this.overlayMode === 'survey' && (tile.oreDiscovered || tile.surveyingBy)) {
           this.renderSurveyStatus(ctx, tile, px, py);
         }
 
@@ -1009,6 +1009,11 @@ export class Renderer {
   }
 
   renderOverlay(ctx, tile, px, py) {
+    if (this.overlayMode === 'survey') {
+      this.renderSurveyOverlay(ctx, tile, px, py);
+      return;
+    }
+
     if (this.overlayMode === 'pollution') {
       if (tile.pollution > 0) {
         const intensity = Math.min(1, tile.pollution / 15);
@@ -1087,5 +1092,27 @@ export class Renderer {
       ctx.fillStyle = 'rgba(239, 68, 68, 0.3)';
       ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
     }
+  }
+
+  renderSurveyOverlay(ctx, tile, px, py) {
+    if (tile.surveyingBy) {
+      const progress = tile.surveyRequired > 0 ? tile.surveyProgress / tile.surveyRequired : 0;
+      ctx.fillStyle = 'rgba(20, 184, 166, 0.35)';
+      ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+      ctx.fillStyle = '#99f6e4';
+      ctx.fillRect(px + 3, py + TILE_SIZE - 7, (TILE_SIZE - 6) * Math.min(1, progress), 4);
+      return;
+    }
+    if (!tile.oreDiscovered) return;
+    const ore = ORE_CONFIG[tile.discoveredOre];
+    ctx.fillStyle = ore?.color || '#ef4444';
+    ctx.globalAlpha = 0.35;
+    ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 9px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(ore?.name?.slice(0, 3).toUpperCase() || 'ORE', px + TILE_SIZE / 2, py + TILE_SIZE / 2);
   }
 }
