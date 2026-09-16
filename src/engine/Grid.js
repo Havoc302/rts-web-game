@@ -24,6 +24,7 @@ export class Grid {
     this.producers = [];
     this.nextProducerId = 1;
     this.terrainVersion = 0;
+    this.terrainChangedTiles = new Set();
     this.coverageVersion = 0;
 
     this.initGrid();
@@ -67,6 +68,7 @@ export class Grid {
     this.persistSeed();
     this.random = createPRNG(this.seed);
     this.terrainVersion++;
+    this.terrainChangedTiles = null;
 
     this.tiles = [];
     this.producers = [];
@@ -620,6 +622,8 @@ export class Grid {
     if (tile.terrain === TERRAIN_TYPE.FOREST) {
       tile.terrain = TERRAIN_TYPE.EMPTY;
       this.terrainVersion++;
+      if (!this.terrainChangedTiles) this.terrainChangedTiles = new Set();
+      this.terrainChangedTiles.add(`${x},${y}`);
       modified = true;
     }
     if (tile.producer) {

@@ -160,28 +160,14 @@ export class Renderer {
   ensureVisibleTerrainChunks(startTileX, startTileY, endTileX, endTileY) {
     const chunkTiles = RENDERER_CONFIG.TERRAIN_CHUNK_TILES;
     if (this.terrainChunksVersion !== this.grid.terrainVersion) {
-      const chunksX = Math.ceil(this.grid.width / chunkTiles);
-      const chunksY = Math.ceil(this.grid.height / chunkTiles);
-      this.terrainChunks = [];
-      for (let cy = 0; cy < chunksY; cy++) {
-        this.terrainChunks[cy] = [];
-        for (let cx = 0; cx < chunksX; cx++) {
-          const tilesW = Math.min(chunkTiles, this.grid.width - cx * chunkTiles);
-          const tilesH = Math.min(chunkTiles, this.grid.height - cy * chunkTiles);
-          const canvas = document.createElement('canvas');
-          canvas.width = tilesW * TILE_SIZE;
-          canvas.height = tilesH * TILE_SIZE;
-          this.terrainChunks[cy][cx] = {
-            canvas,
-            ctx: canvas.getContext('2d'),
-            tileX: cx * chunkTiles,
-            tileY: cy * chunkTiles,
-            tilesW,
-            tilesH,
-            built: 0,
-            ready: false,
-          };
+      if (this.terrainChunks.length > 0 && this.grid.terrainChangedTiles) {
+        for (const position of this.grid.terrainChangedTiles) {
+          const [x, y] = position.split(',').map(Number);
+          const chunk = this.terrainChunks[Math.floor(y / chunkTiles)]?.[Math.floor(x / chunkTiles)];
+          if (chunk) this.buildTerrainChunk(chunk);
         }
+      } else {
+        this.terrainChunks = this.createTerrainChunks(chunkTiles);
       }
       this.terrainChunksVersion = this.grid.terrainVersion;
     }
@@ -221,6 +207,48 @@ export class Renderer {
       }
     }
     return allReady;
+  }
+
+  createTerrainChunks(chunkTiles) {
+    const chunksX = Math.ceil(this.grid.width / chunkTiles);
+    const chunksY = Math.ceil(this.grid.height / chunkTiles);
+    const chunks = [];
+    for (let cy = 0; cy < chunksY; cy++) {
+      chunks[cy] = [];
+      for (let cx = 0; cx < chunksX; cx++) {
+        const tilesW = Math.min(chunkTiles, this.grid.width - cx * chunkTiles);
+        const tilesH = Math.min(chunkTiles, this.grid.height - cy * chunkTiles);
+        const canvas = document.createElement('canvas');
+        canvas.width = tilesW * TILE_SIZE;
+        canvas.height = tilesH * TILE_SIZE;
+        chunks[cy][cx] = {
+          canvas,
+          ctx: canvas.getContext('2d'),
+          tileX: cx * chunkTiles,
+          tileY: cy * chunkTiles,
+          tilesW,
+          tilesH,
+          built: 0,
+          ready: false,
+        };
+      }
+    }
+    return chunks;
+  }
+
+  buildTerrainChunk(chunk) {
+    chunk.ctx.clearRect(0, 0, chunk.canvas.width, chunk.canvas.height);
+    for (let y = 0; y < chunk.tilesH; y++) {
+      for (let x = 0; x < chunk.tilesW; x++) {
+        const tile = this.grid.tiles[chunk.tileY + y][chunk.tileX + x];
+        this.renderTerrainTile(chunk.ctx, tile, x * TILE_SIZE, y * TILE_SIZE, false);
+        chunk.ctx.strokeStyle = 'rgba(255, 255, 255, 0.04)';
+        chunk.ctx.lineWidth = 1;
+        chunk.ctx.strokeRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+      }
+    }
+    chunk.built = chunk.tilesW * chunk.tilesH;
+    chunk.ready = true;
   }
 
   blitVisibleTerrainChunks(ctx, startX, startY, startTileX, startTileY, endTileX, endTileY) {
