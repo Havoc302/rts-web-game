@@ -301,7 +301,7 @@ export class Simulation {
         stats.powerDemand += PRODUCER_CONFIG[PRODUCER_TYPE.SURVEY_STATION].activeUtilityUsage.power;
       }
       if (p.totalJobs && p.totalJobs > 0) stats.totalJobsProvided += p.totalJobs;
-      if (p.type === PRODUCER_TYPE.HOSPITAL && p.operational) {
+      if ((p.type === PRODUCER_TYPE.HOSPITAL || p.type === PRODUCER_TYPE.CLINIC) && p.operational) {
         stats.patientCapacity += (p.filledJobs || 0) * MEDICAL_CONFIG.HOSPITAL_PATIENT_CAPACITY_PER_JOB;
       }
     }

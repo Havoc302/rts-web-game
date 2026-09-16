@@ -817,6 +817,15 @@ export class Renderer {
       ctx.fillStyle = '#ef4444';
       ctx.fillRect(px + 14, py + 9, 4, 14);
       ctx.fillRect(px + 9, py + 14, 14, 4);
+    } else if (prod.type === PRODUCER_TYPE.CLINIC) {
+      ctx.fillStyle = '#047857';
+      ctx.fillRect(px + 3, py + 3, 26, 26);
+      ctx.fillStyle = '#f0fdf4';
+      ctx.fillRect(px + 6, py + 6, 20, 20);
+
+      ctx.fillStyle = '#10b981';
+      ctx.fillRect(px + 14, py + 10, 4, 12);
+      ctx.fillRect(px + 10, py + 14, 12, 4);
     } else if (prod.type === PRODUCER_TYPE.SCHOOL) {
       ctx.fillStyle = '#9a3412';
       ctx.fillRect(px + 2, py + 2, 28, 28);

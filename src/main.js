@@ -94,7 +94,7 @@ class GameApp {
         const budget = parseInt(e.target.value, 10);
         const type = e.target.dataset.serviceBudget;
         this.grid.producers
-          .filter((producer) => producer.type === type)
+          .filter((producer) => producer.type === type || (type === 'hospital' && producer.type === 'clinic'))
           .forEach((producer) => { producer.budget = budget; });
         const value = document.getElementById(`${type}-budget-value`);
         if (value) value.textContent = `${budget}%`;
@@ -575,9 +575,14 @@ class GameApp {
       } else if (config.jobs) {
         rows.push(row('Jobs (Light/Medium/High)', `${config.jobs.light} / ${config.jobs.medium} / ${config.jobs.high}`));
         if (config.radius) rows.push(row('Coverage Radius (L/M/H)', `${config.radius.light} / ${config.radius.medium} / ${config.radius.high}`));
-        if (pType === PRODUCER_TYPE.HOSPITAL) {
+        if (pType === PRODUCER_TYPE.HOSPITAL || pType === PRODUCER_TYPE.CLINIC) {
           const cap = (staff) => staff * MEDICAL_CONFIG.HOSPITAL_PATIENT_CAPACITY_PER_JOB;
-          rows.push(row('Patient Capacity (L/M/H)', `${cap(config.jobs.light)} / ${cap(config.jobs.medium)} / ${cap(config.jobs.high)}`));
+          if (pType === PRODUCER_TYPE.CLINIC) {
+            rows.push(row('Max Population Served', 'Up to 5,000 residents'));
+            rows.push(row('Patient Capacity', `${cap(config.jobs.light)} (fixed size)`));
+          } else {
+            rows.push(row('Patient Capacity (L/M/H)', `${cap(config.jobs.light)} / ${cap(config.jobs.medium)} / ${cap(config.jobs.high)}`));
+          }
         } else if (pType === PRODUCER_TYPE.OIL_DERRICK) {
           rows.push(row('Output', 'Extracts up to 100 oil per tick'));
         } else if (pType === PRODUCER_TYPE.REFINERY) {
@@ -786,7 +791,7 @@ class GameApp {
       } else if (tile.producer.type === PRODUCER_TYPE.BATTERY) {
         capLabel.textContent = 'Load / Capacity:';
         capVal.textContent = `${tile.producer.usedCapacity} / ${tile.producer.capacity} (Stored: ${Math.round(tile.producer.storedEnergy || 0)} / ${tile.producer.maxStorage})`;
-      } else if (tile.producer.type === PRODUCER_TYPE.HOSPITAL) {
+      } else if (tile.producer.type === PRODUCER_TYPE.HOSPITAL || tile.producer.type === PRODUCER_TYPE.CLINIC) {
         const staff = tile.producer.filledJobs || 0;
         const patientCap = staff * MEDICAL_CONFIG.HOSPITAL_PATIENT_CAPACITY_PER_JOB;
         capLabel.textContent = 'Patient Capacity:';

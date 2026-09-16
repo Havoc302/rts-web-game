@@ -309,6 +309,8 @@ Fire (`FireManager`): `getOccupancyRatio` ignores agricultural tiles, so farm oc
 **Decided fire model (Key Decision 19), not yet in code:** **realistic flammability.** A tile without flammable material does not catch fire. **Roads (and bridges/tunnels) do not burn.** Water does not burn. Uninhabited empty flat does **not** burn. **Forests, mountains, and inhabited tiles** (zoned and/or occupied, including farms) hold flammable material and **can** ignite and receive spread. Firefighters should eventually be more effective (current response is weak) — a later balance/AI pass, not a Phase 1 ship blocker. A small Phase 1 spread-rule PR (with agriculture) should let fire enter inhabited tiles without making barren dirt burn.
 
 Medical: patients from residents (retirees ×3, more if pensions underfunded), industrial/ag jobs, crime, pollution, fire injuries. Hospital capacity = filled jobs × 15. Untreated patients apply citywide residential growth −2 and a happiness penalty.
+- **Hospital:** Costs $6,000, scales across Light/Medium/High tiers (jobs 10/50/200, radius 10/50/200).
+- **Clinic:** Costs $2,000, fixed size (does not grow larger; light density only, max 5 jobs), serves up to 5,000 population, radius 10, provides patient capacity (jobs × 15) and full medical service coverage to nearby tiles.
 
 ### Resources, industry, happiness
 

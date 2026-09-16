@@ -30,6 +30,7 @@ export class ServiceManager {
       { type: SERVICE_TYPE.POLICE_STATION, key: 'police' },
       { type: SERVICE_TYPE.FIRE_STATION, key: 'fire' },
       { type: SERVICE_TYPE.HOSPITAL, key: 'hospital' },
+      { type: SERVICE_TYPE.CLINIC, key: 'hospital' },
       { type: SERVICE_TYPE.SCHOOL, key: 'school' },
       { type: SERVICE_TYPE.LIBRARY, key: 'library' },
       { type: SERVICE_TYPE.CITY_HALL, key: 'cityHall' },
@@ -62,11 +63,13 @@ export class ServiceManager {
 
         const budgetRatio = Math.max(0, Math.min(SERVICE_GLOBAL_CONFIG.BUDGET_MAX_VALUE, prod.budget ?? SERVICE_GLOBAL_CONFIG.BUDGET_MAX_VALUE)) / SERVICE_GLOBAL_CONFIG.BUDGET_MAX_VALUE;
         const maxJobs = config.jobs[density] || SERVICE_GLOBAL_CONFIG.MIN_STAFFING_BASELINE;
-        const populationOfficers = Math.max(SERVICE_GLOBAL_CONFIG.MIN_STAFFING_BASELINE, Math.ceil(totalPopulation / (config.officersPerPopulation || Infinity)));
+        const effectivePop = config.maxPopulationServed ? Math.min(totalPopulation, config.maxPopulationServed) : totalPopulation;
+        const populationOfficers = Math.max(SERVICE_GLOBAL_CONFIG.MIN_STAFFING_BASELINE, Math.ceil(effectivePop / (config.officersPerPopulation || Infinity)));
         const populationStaffedTypes = [
           SERVICE_TYPE.POLICE_STATION,
           SERVICE_TYPE.FIRE_STATION,
           SERVICE_TYPE.HOSPITAL,
+          SERVICE_TYPE.CLINIC,
         ];
         const staffedBase = populationStaffedTypes.includes(type)
           ? Math.min(maxJobs, populationOfficers)
@@ -134,7 +137,7 @@ export class ServiceManager {
           }
 
           if (minDist < Infinity) {
-            tile.serviceDistances[key] = minDist;
+            tile.serviceDistances[key] = Math.min(tile.serviceDistances[key] ?? Infinity, minDist);
             tile.services[key] = true;
           }
         }
