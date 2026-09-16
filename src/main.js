@@ -1,6 +1,7 @@
 import { Grid } from './engine/Grid.js';
 import { Simulation } from './engine/Simulation.js';
 import { Renderer } from './engine/Renderer.js';
+import { deserializeGameFromJson, serializeGameToJson } from './engine/SaveGame.js';
 import { APP_VERSION, ZONE, TERRAIN, PRODUCER_TYPE, PRODUCER_CONFIG, FACTORY_RECIPES, COSTS, TILE_SIZE, STARTING_TREASURY, RESIDENTIAL_CAPACITY, JOBS_PROVIDED, FOREST_POLLUTION_ABSORPTION, FOREST_DESIRABILITY_RADIUS, CRIME_CONFIG, MEDICAL_CONFIG, POWER_PRODUCER_TYPES, POLLUTION_CONFIG, COAL_CONFIG, WIND_CONFIG, SOLAR_CONFIG, BATTERY_CONFIG, DENSITY, RENDERER_CONFIG, TERRAIN_GENERATION_CONFIG, MAP_SEED_STORAGE_KEY, splitDemographics } from './config.js';
 
 class GameApp {
@@ -158,6 +159,15 @@ class GameApp {
         this.resetMapWithSeed(newSeed);
       });
     }
+
+    document.getElementById('btn-save-game')?.addEventListener('click', () => this.saveGameToFile());
+    document.getElementById('btn-export-game')?.addEventListener('click', () => this.exportGameToFile());
+    document.getElementById('btn-load-game')?.addEventListener('click', () => document.getElementById('game-file-input')?.click());
+    document.getElementById('game-file-input')?.addEventListener('change', (e) => {
+      const file = e.target.files?.[0];
+      if (file) this.importGameFile(file);
+      e.target.value = '';
+    });
   }
 
   resetMapWithSeed(seed) {
@@ -182,6 +192,58 @@ class GameApp {
     this.renderer.hoverTile = null;
     this.updateHUD();
     this.renderer.render(this.simulation);
+  }
+
+  saveGameToFile() {
+    if (!this.simulation.isPaused) {
+      window.alert('Pause the game before saving.');
+      return;
+    }
+    this.exportGameToFile();
+  }
+
+  exportGameToFile() {
+    if (!this.simulation.isPaused) {
+      window.alert('Pause the game before exporting a save.');
+      return;
+    }
+    const blob = new Blob([serializeGameToJson(this)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `bc2000-save-${new Date().toISOString().slice(0, 10)}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async importGameFile(file) {
+    try {
+      const imported = deserializeGameFromJson(await file.text());
+      this.setSpeed(0);
+      this.grid = imported.grid;
+      this.simulation.grid = this.grid;
+      this.simulation.tickCount = imported.simulation.tickCount;
+      this.simulation.speed = 0;
+      this.simulation.isPaused = true;
+      this.simulation.taxRate = imported.simulation.taxRate;
+      this.simulation.pensionBudget = imported.simulation.pensionBudget;
+      this.simulation.resourceManager.stockpile = imported.simulation.stockpile;
+      this.simulation.resourceManager.capacity = imported.simulation.capacity;
+      this.treasury = imported.treasury;
+      this.renderer.grid = this.grid;
+      this.renderer.terrainChunks = [];
+      this.renderer.terrainChunksVersion = -1;
+      this.renderer.setCamera(imported.camera.x, imported.camera.y, imported.camera.zoom);
+      this.autoSwitchToPan = imported.ui.autoSwitchToPan;
+      this.setActiveTool(imported.ui.activeTool);
+      this.renderer.setOverlayMode(imported.ui.overlayMode);
+      document.querySelectorAll('.overlay-btn').forEach((button) => button.classList.toggle('active', button.dataset.mode === imported.ui.overlayMode));
+      this.simulation.stats = imported.simulation.stats;
+      this.updateHUD();
+      this.renderer.render(this.simulation);
+    } catch (error) {
+      window.alert(`Unable to load save: ${error.message}`);
+    }
   }
 
   setSpeed(speed) {

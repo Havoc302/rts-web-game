@@ -6,7 +6,7 @@
 | Author | TBD |
 | Date | 2026-09-15 |
 | Status | Living draft (rev 6) |
-| Version covered | `APP_VERSION` `0.1.7` (`src/version.js`); current working tree |
+| Version covered | `APP_VERSION` `0.1.8` (`src/version.js`); current working tree |
 | Intended in-repo path | `docs/DESIGN.md` |
 | Repo | `g:\Repos\rts-web-game` (`origin`: `https://github.com/Havoc302/rts-web-game.git`) |
 | Working tree at inventory | Documentation is checked against the current implementation; uncommitted changes may exist. |
@@ -44,7 +44,7 @@ B&C2000 is a **single-player, client-only, paused-by-default city builder**. A s
 
 ### Pain points
 
-1. **No city save/load.** The map seed is remembered, but the city itself is lost on refresh or reset.
+1. **Standalone JSON save/load is implemented.** Saving is available only while paused and captures the full tile/producer/simulation state; importing always restores the game paused. Browser download/file-picker behavior remains a manual smoke test.
 2. **`Simulation.tick` remains a large orchestrator.** Its pause/preview semantics are now explicit and tested, but named stage extraction is still outstanding.
 3. **Military production has no unit sink.** Arms and tanks are visible stockpiles, but barracks, vehicle depots, units, and world-map deployment are later phases.
 4. **Emergency coverage now uses cached direct/road/road-side sets.** Survey work remains incomplete.
@@ -80,11 +80,11 @@ B&C2000 is a **single-player, client-only, paused-by-default city builder**. A s
 Implemented and covered by the current test runner:
 
 - Pause-safe placement previews, treasury accounting, famine recovery, agriculture occupancy, resource consumption, fuel/refining, crime, fire, civic staffing, mobile input/layout, wind/solar/battery connectivity, version synchronization, and chunked terrain rendering.
-- Unified test execution through `npm test`; the current baseline is 22 passing test files.
+- Unified test execution through `npm test`; the current baseline is 24 passing test files.
 
 Outstanding implementation work:
 
-- Versioned local save/load/export/import.
+- Browser-level validation of JSON save download/import.
 - Named tick-stage extraction and performance benchmarking on a populated 200×200 map.
 - Survey overlay, survey cost/cancellation, and treasury integration.
 - Dedicated happiness HUD display and stronger browser-level UI/touch validation.
@@ -375,7 +375,7 @@ Node `assert` scripts; `package.json` `"test"` runs `tests/run-all.js`, which di
 | `resource-management.test.js` | Agriculture, mines, smelter, food, goods, fuel, and famine behavior | More end-to-end production-chain assertions are useful |
 | `demographics.test.js` | 40/40/20 jobs, split, pensions, retiree patients | — |
 
-**Still lightly tested:** `main.js` input and treasury wiring, `Renderer.js`, CSS/HTML, visual HUD behavior, browser touch interaction, save/load (not implemented), and performance on a full 200×200 city.
+**Still lightly tested:** `main.js` input and treasury wiring, `Renderer.js`, CSS/HTML, visual HUD behavior, browser touch interaction, JSON file download/import in a real browser, and performance on a full 200×200 city.
 
 ---
 
@@ -588,7 +588,7 @@ Rules:
 | Incomplete civilian resource loops | High | Key Decision 12 in Phase 1 |
 | Multi-year product mistaken for next-month PRs | High | Phase 1 = PRs 1–8b only; world map / Firebase / nukes are later slices |
 | Two halls on one city grid | High | Rejected; one city grid per civilisation |
-| No save/load | High | PR 6 with concrete `SaveDocument` |
+| Save/load browser workflow | Medium | Manual download/import smoke test; round-trip engine test exists |
 | Canvas 2D + world map + mobile | Medium | Chunked cache; world map is a simpler region renderer |
 | `config.js` kitchen sink | Medium | Keep through Phase 1; split combat/world later |
 | Leftover `POWER_PLANT`, `BASE_INCOME`, seed key, version drift | Low | Hygiene PRs |
@@ -660,7 +660,7 @@ return stats.incomePerTick  # GameApp.simTick is the only caller that applies it
 
 ### HUD
 
-- Badge and stylesheet cache-busting use the current `APP_VERSION` (`0.1.7`); package/source synchronization is tested.
+- Badge and stylesheet cache-busting use the current `APP_VERSION` (`0.1.8`); package/source synchronization is tested.
 - Happiness chip; oil, fuel, bars, arms, tanks chips.
 - Build-info: handle `zone_a`.
 - Overlay picker: add Police / Fire / Hospital buttons already handled in `renderOverlay`.
@@ -676,7 +676,7 @@ return stats.incomePerTick  # GameApp.simTick is the only caller that applies it
 {% raw %}
  * @typedef {Object} SaveDocument
  * @property {1} version
- * @property {string} appVersion          // e.g. "0.1.7"
+ * @property {string} appVersion          // e.g. "0.1.8"
  * @property {string} savedAt             // ISO-8601
  * @property {number} seed
  * @property {number} width               // any positive size; GameApp session requires MAP_*
@@ -987,7 +987,7 @@ Phase 1 stays paused-by-default sandbox (0% tax, $25,000) for solo city-building
 
 27. **Overworld Biome Generation.** `BIOME_TYPES` (`PLAINS`, `HILLY`, `MOUNTAINOUS`, `SWAMP`) modify procedural terrain generation: Hilly/Mountainous scale rock clusters (+25% / +50%); Plains reduce rock clusters (-50%); Swamp reduces forest (-50%), increases lakes (4-6), and forces fork/merge rivers. `generateProceduralTerrain(biome)` accepts the biome directly.
 
-28. **Single-source versioning.** `src/version.js` (`APP_VERSION = '0.1.7'`) is the single source of truth for version strings. `package.json` version and cache-busting consumers derive from it. Verified by `tests/version-sync.test.js`.
+28. **Single-source versioning.** `src/version.js` (`APP_VERSION = '0.1.8'`) is the single source of truth for version strings. `package.json` version and cache-busting consumers derive from it. Verified by `tests/version-sync.test.js`.
 
 29. **Desktop Pan and Drag Painting.** Desktop left-drag with the Pan tool pans the camera; clicking without dragging inspects/selects the tile. Left-drag painting is restricted to repeatable tools (roads, bridges, tunnels, zones, bulldoze); single-placement buildings and surveys do not drag-paint.
 

@@ -6,6 +6,13 @@ Agent handoff protocol:
 - At the end of a generation, mark completed items `[done]`, record validation, and leave unfinished items unchecked with enough context for another agent to continue.
 - Do not erase historical entries. The current task at the bottom is the active handoff; `docs/DESIGN.md` is the architecture and product source of truth.
 
+Current task: Add standalone JSON game save export/import.
+
+- [done] Serialize the complete paused game state into a versioned JSON document.
+- [done] Add Save/Export and Load/Import controls to the game UI.
+- [done] Restore every tile, producer, simulation setting, stockpile, treasury, camera, and UI state; imported games always return paused.
+- [done] Add paused-only validation and round-trip regression tests.
+
 Current task: Add hidden ores and a utility-powered survey building.
 
 - [done] Add simplified ore types and per-tile hidden ore generation, with much higher mountain odds.
@@ -515,7 +522,7 @@ Current task: Synchronize project documentation after architecture review.
 - [done] Updated `docs/DESIGN.md` to describe the current implementation instead of resolved historical defects.
 - [done] Separated implemented Phase 1 work, outstanding Phase 1 work, and the later hybrid/world-map roadmap.
 - [done] Documented this file as the AI-agent start/end handoff log so interrupted work can resume safely.
-- [done] Bumped the synchronized application version to 0.1.7 for the survey overlay and survey-cost changes.
+- [done] Bumped the synchronized application version to 0.1.8 for the standalone save feature.
 - [done] Made mountain terrain immune to fire so long mountain surveys cannot be canceled by mountain ignition.
 
 Validation:
@@ -548,3 +555,13 @@ Verification:
 - [done] `node tests/service-buildings.test.js` passes cached service integration and fire suppression checks.
 - [done] `npm test` passes all 23 test files.
 - [ ] Manual test coverage overlay, survey overlay, survey cost/cancellation.
+
+Current task: Add standalone JSON game save export/import.
+
+- [done] Capture all tile and producer fields, including terrain, fire state/damage/repair, pollution, crime, utilities, surveys, population, jobs, and resource state.
+- [done] Require the game to be paused before saving and always restore imported games paused.
+
+Validation:
+- `node tests/save-game.test.js` passes round-trip, malformed JSON, unsupported version, and running-save rejection checks.
+- `npm test` passes all 24 test files.
+- Browser download/file-picker smoke testing remains manual.
