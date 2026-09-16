@@ -660,7 +660,7 @@ return stats.incomePerTick  # GameApp.simTick is the only caller that applies it
 
 ### HUD
 
-- Badge and stylesheet cache-busting use the current `APP_VERSION` (`0.1.6`); package/source synchronization is tested.
+- Badge and stylesheet cache-busting use the current `APP_VERSION` (`0.1.7`); package/source synchronization is tested.
 - Happiness chip; oil, fuel, bars, arms, tanks chips.
 - Build-info: handle `zone_a`.
 - Overlay picker: add Police / Fire / Hospital buttons already handled in `renderOverlay`.
@@ -673,9 +673,10 @@ return stats.incomePerTick  # GameApp.simTick is the only caller that applies it
 
 ```js
 /**
+{% raw %}
  * @typedef {Object} SaveDocument
  * @property {1} version
- * @property {string} appVersion          // e.g. "0.1.6"
+ * @property {string} appVersion          // e.g. "0.1.7"
  * @property {string} savedAt             // ISO-8601
  * @property {number} seed
  * @property {number} width               // any positive size; GameApp session requires MAP_*
@@ -760,6 +761,7 @@ export const TILE_ORE_CODES = { none: 0, iron_ore: 1, bauxite: 2, coal: 3, oil: 
  * @property {{type:string,progress:number,rally:{x:number,y:number}|null}=} queue  // Phase 2
  * @property {string=} ownerId            // 'player' | 'ai'; omit = wilderness
  */
+{% endraw %}
 ```
 
 Wire `ownerId` is the **string** `'player' | 'ai'` (same as runtime). Omit or `null` = wilderness. Do not encode as `0`/`1`.
