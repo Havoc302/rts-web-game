@@ -4,8 +4,8 @@
 | --- | --- |
 | Title | Build & Conquer 2000 (B&C2000) — Architecture & Product Design |
 | Author | TBD |
-| Date | 2026-09-15 |
-| Status | Living draft (rev 6) |
+| Date | 2026-09-17 |
+| Status | Living draft (rev 7) |
 | Version covered | `APP_VERSION` `0.1.8` (`src/version.js`); current working tree |
 | Intended in-repo path | `docs/DESIGN.md` |
 | Repo | `g:\Repos\rts-web-game` (`origin`: `https://github.com/Havoc302/rts-web-game.git`) |
@@ -493,13 +493,22 @@ No Firebase schema dump here. Phase 1 PRs 1–8b stay valid with **zero** Fireba
 
 ### Phase 2 — War Economy (player city; after Phase 1)
 
-Make `FACTORY_RECIPES.ARMS` and `TANKS` mean something **before** pathfinding exists.
+Make `FACTORY_RECIPES.ARMS` and `TANKS` mean something **before** pathfinding exists. Military production has an explicit economic opportunity cost: private industry can be requisitioned, but it is not free.
+
+#### Military production economics
+
+- Industrial zones default to consumer-goods production and continue to earn their normal tax income.
+- Selecting a non-consumer-goods recipe on an industrial tile, including arms or tanks, requisitions that private industrial capacity for the duration of production. While requisitioned, the tile produces no tax income.
+- Requisitioned industrial production also charges the faction treasury each advancing tick. This represents the government paying private industry to build military goods. The exact cost is a balance constant and must be defined with the recipe/war-economy implementation; it is not inferred from the lost tax.
+- Dedicated military construction buildings are the preferred military-production path. Each dedicated building has an explicit asset type/recipe and produces at **2× the equivalent industrial-zone production rate**, subject to staffing, utilities, inputs, storage, and any queue/rally constraints.
+- Dedicated military buildings do not use the industrial-zone tax-replacement rule because they are purpose-built military infrastructure rather than requisitioned private industry. Their construction price, jobs, utilities, running cost, and military production cost are separate balance values.
+- The HUD and save state must expose enough information to explain the tradeoff: active recipe, production progress, military-production expense, and the tax income forgone by requisitioned industrial tiles.
 
 **Unit production model (Key Decision 14) — option C, the only model:**
 
 Building **queue + auto-rally onto adjacent empty tiles**. Not click-to-deploy.
 
-- New producers: **Barracks** (infantry; input `arms`) and **Vehicle Depot** (tanks; inputs `tanks` + `fuel`). Both have `category: 'factory'`, utility usage, and jobs. Staffed by `ResourceManager.updateProducerJobs`.
+- New producers: **Barracks** (infantry; input `arms`) and **Vehicle Depot** (tanks; inputs `tanks` + `fuel`). Both have `category: 'factory'`, utility usage, and jobs. Staffed by `ResourceManager.updateProducerJobs`. These are the first dedicated military construction buildings and use the 2× dedicated-factory rate.
 - Each building has `queue: { type, progress, rallyTile | null }`. One unit in progress at a time (no deep queue in v0.3).
 - Each advancing tick, if `operational` and inputs available and jobs filled: consume inputs for that tick’s progress; at `progress >= 1` attempt spawn.
 - **Spawn adjacency:** 4-neighbors of the building, prefer `rallyTile` if it is adjacent or reachable; else first neighbor in N,E,S,W order that can accept the unit.
@@ -954,44 +963,46 @@ Phase 1 stays paused-by-default sandbox (0% tax, $25,000) for solo city-building
 
 13. **Pause/treasury.** Interval `simTick()` is the only income/expense treasury mutation. Placement always `tick(false)` after `treasury -= cost`, never `treasury +=`. **`tick(false)` is preview-only:** no `prepareTick`, no `updatePowerGeneration`, no `settleBatteries`/`chargeBatteries` — `usedCapacity` may be recomputed for HUD from persisted `capacity`/`storedEnergy`, but wind `capacity` and `storedEnergy` must be bit-identical after the call. World mutation in resources/famine only when `advanceWorld`. Clear `populationLoss` when food shortfall is 0.
 
-14. **Unit production is queue + auto-rally (model C).** `UNIT_STACK_LIMIT = 4`. Mixed types allowed. Source of truth `grid.units[]` + spatial index in the city; world-map stacks are a separate list. Overflow stalls production. Not click-to-deploy.
+14. **Military production opportunity cost.** Industrial zones producing anything other than consumer goods lose their tile tax income while requisitioned and incur a treasury expense per advancing tick. Dedicated military construction buildings produce at twice the equivalent industrial-zone rate and use separate construction, staffing, utility, running-cost, and production-cost balance values.
 
-15. **City fog (later invasion/survey) uses a new `visibilityMask`, never `oreDiscovered`.** Survey may set both.
+15. **Unit production is queue + auto-rally (model C).** `UNIT_STACK_LIMIT = 4`. Mixed types allowed. Source of truth `grid.units[]` + spatial index in the city; world-map stacks are a separate list. Overflow stalls production. Not click-to-deploy.
 
-16. **World RNG.** Persist `simRngState` (the PRNG closure’s `s` uint32 via `getState`/`setState` on `createPRNG`) and use it for wind swing, fire ignite/spread, and crime event/suppression rolls. Terrain/rivers/ores stay on `createPRNG(seed)`. **Do not promise replay determinism in 0.2** (floating-point, later AI, and unseeded leftover calls will still jitter).
+16. **City fog (later invasion/survey) uses a new `visibilityMask`, never `oreDiscovered`.** Survey may set both.
 
-17. **Delete unused `BASE_INCOME`.** Retarget `industrial-economics.test.js` at the live tax formula / zone cost. Do not keep a dead table.
+17. **World RNG.** Persist `simRngState` (the PRNG closure’s `s` uint32 via `getState`/`setState` on `createPRNG`) and use it for wind swing, fire ignite/spread, and crime event/suppression rolls. Terrain/rivers/ores stay on `createPRNG(seed)`. **Do not promise replay determinism in 0.2** (floating-point, later AI, and unseeded leftover calls will still jitter).
 
-18. **Wind/solar HUD and charging use the same connectivity rule** (mill counts iff battery-adjacent **and** that battery is road-adjacent). Regression coverage protects this behavior.
+18. **Delete unused `BASE_INCOME`.** Retarget `industrial-economics.test.js` at the live tax formula / zone cost. Do not keep a dead table.
 
-19. **Realistic flammability and post-fire repair.**
+19. **Wind/solar HUD and charging use the same connectivity rule** (mill counts iff battery-adjacent **and** that battery is road-adjacent). Regression coverage protects this behavior.
+
+20. **Realistic flammability and post-fire repair.**
     - Unoccupied zones have nothing to burn and do not ignite.
     - Roads, bridges, tunnels, and barren flat do not burn.
     - Forests and inhabited (occupied) zones (including farms) hold fuel and can burn and spread; mountains are immune.
     - When a fire is extinguished without destroying the tile, it produces 0 tax initially and repairs gradually (`FIRE_CONFIG.REPAIR_PER_TICK = 0.1`) back to full use.
     - Fire station base suppression power is 55.
 
-20. **Any-platform.** Easier on a large screen; **must be playable on mobile.** PR 8b (chunked terrain cache) is **required** before city-complete is shipped.
+21. **Any-platform.** Easier on a large screen; **must be playable on mobile.** PR 8b (chunked terrain cache) is **required** before city-complete is shipped.
 
-21. **Google Fonts + system fallback.** The whole game is online. No self-hosting.
+22. **Google Fonts + system fallback.** The whole game is online. No self-hosting.
 
-22. **Victory:** (1) complete destruction of an enemy civilisation — invasion, **end-game nukes**, or **orbital bombardment**; or (2) **destroy all military assets and capture City Hall**, with capture taking **quite some time** so the defender can intercept. Sandbox is a mode, not the victory design. Nukes/orbital are late-game, not Phase 1.
+23. **Victory:** (1) complete destruction of an enemy civilisation — invasion, **end-game nukes**, or **orbital bombardment**; or (2) **destroy all military assets and capture City Hall**, with capture taking **quite some time** so the defender can intercept. Sandbox is a mode, not the victory design. Nukes/orbital are late-game, not Phase 1.
 
-23. **Combined-arms roster** (destination): multiple infantry types; light tanks and MBTs; artillery and missiles; ships, helicopters, planes; satellites and orbital weapons; tactical and strategic nukes. First combat slice is infantry (`arms`) + tanks (`tanks`) only. Later slices gated on city industry.
+24. **Combined-arms roster** (destination): multiple infantry types; light tanks and MBTs; artillery and missiles; ships, helicopters, planes; satellites and orbital weapons; tactical and strategic nukes. First combat slice is infantry (`arms`) + tanks (`tanks`) only. Later slices gated on city industry.
 
-24. **Online stack:** Google identity + Firebase (Auth, Firestore or RTDB for cloud cities and later match state; Hosting optional). Phase 1 has no Firebase.
+25. **Online stack:** Google identity + Firebase (Auth, Firestore or RTDB for cloud cities and later match state; Hosting optional). Phase 1 has no Firebase.
 
-25. **Phase 1 onboarding:** paused-by-default sandbox, 0% tax, $25,000. No tutorial required now.
+26. **Phase 1 onboarding:** paused-by-default sandbox, 0% tax, $25,000. No tutorial required now.
 
-26. **Pre-scaled monetary values.** `MONEY_MULTIPLIER = 10` is removed and costs are hardcoded to their 10x values (Road $100, Bridge $500, Tunnel $1,000, Zone $200, Industrial/Ag $300, Bulldoze $50, etc.). Road maintenance remains explicitly $1/tile/tick.
+27. **Pre-scaled monetary values.** `MONEY_MULTIPLIER = 10` is removed and costs are hardcoded to their 10x values (Road $100, Bridge $500, Tunnel $1,000, Zone $200, Industrial/Ag $300, Bulldoze $50, etc.). Road maintenance remains explicitly $1/tile/tick.
 
-27. **Overworld Biome Generation.** `BIOME_TYPES` (`PLAINS`, `HILLY`, `MOUNTAINOUS`, `SWAMP`) modify procedural terrain generation: Hilly/Mountainous scale rock clusters (+25% / +50%); Plains reduce rock clusters (-50%); Swamp reduces forest (-50%), increases lakes (4-6), and forces fork/merge rivers. `generateProceduralTerrain(biome)` accepts the biome directly.
+28. **Overworld Biome Generation.** `BIOME_TYPES` (`PLAINS`, `HILLY`, `MOUNTAINOUS`, `SWAMP`) modify procedural terrain generation: Hilly/Mountainous scale rock clusters (+25% / +50%); Plains reduce rock clusters (-50%); Swamp reduces forest (-50%), increases lakes (4-6), and forces fork/merge rivers. `generateProceduralTerrain(biome)` accepts the biome directly.
 
-28. **Single-source versioning.** `src/version.js` (`APP_VERSION = '0.1.8'`) is the single source of truth for version strings. `package.json` version and cache-busting consumers derive from it. Verified by `tests/version-sync.test.js`.
+29. **Single-source versioning.** `src/version.js` (`APP_VERSION = '0.1.8'`) is the single source of truth for version strings. `package.json` version and cache-busting consumers derive from it. Verified by `tests/version-sync.test.js`.
 
-29. **Desktop Pan and Drag Painting.** Desktop left-drag with the Pan tool pans the camera; clicking without dragging inspects/selects the tile. Left-drag painting is restricted to repeatable tools (roads, bridges, tunnels, zones, bulldoze); single-placement buildings and surveys do not drag-paint.
+30. **Desktop Pan and Drag Painting.** Desktop left-drag with the Pan tool pans the camera; clicking without dragging selects the tile without opening the inspector. Inspect Tile opens the inspector. Left-drag painting is restricted to repeatable tools (roads, bridges, tunnels, zones, bulldoze); single-placement buildings and surveys do not drag-paint.
 
-30. **Unified Test Runner.** `tests/run-all.js` discovers and executes all 23 test suites across the engine and simulation. `npm test` runs this master suite.
+31. **Unified Test Runner.** `tests/run-all.js` discovers and executes all 24 test suites across the engine and simulation. `npm test` runs this master suite.
 
 ---
 

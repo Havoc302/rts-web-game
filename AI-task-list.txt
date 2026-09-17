@@ -13,6 +13,16 @@ Current task: Add standalone JSON game save export/import.
 - [done] Restore every tile, producer, simulation setting, stockpile, treasury, camera, and UI state; imported games always return paused.
 - [done] Add paused-only validation and round-trip regression tests.
 
+Current task: Record military production economics for the Command & Conquer phase.
+
+- [done] Document that non-consumer-goods production on industrial zones suspends that tile's tax income for the production duration.
+- [done] Document the treasury expense for requisitioning private industry to produce military goods.
+- [done] Document dedicated military construction buildings and their 2x equivalent industrial production rate.
+
+Validation:
+- `docs/DESIGN.md` updated to rev 7 with the new Phase 2 rule and Key Decision 14.
+- No runtime behavior changed; implementation remains outstanding for the future war-economy phase.
+
 Current task: Add hidden ores and a utility-powered survey building.
 
 - [done] Add simplified ore types and per-tile hidden ore generation, with much higher mountain odds.
