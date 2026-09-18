@@ -6,7 +6,7 @@
 | Author | TBD |
 | Date | 2026-09-17 |
 | Status | Living draft (rev 7) |
-| Version covered | `APP_VERSION` `0.1.16` (`src/version.js`); current working tree |
+| Version covered | `APP_VERSION` `0.1.17` (`src/version.js`); current working tree |
 | Intended in-repo path | `docs/DESIGN.md` |
 | Repo | `g:\Repos\rts-web-game` (`origin`: `https://github.com/Havoc302/rts-web-game.git`) |
 | Working tree at inventory | Documentation is checked against the current implementation; uncommitted changes may exist. |
@@ -98,6 +98,8 @@ Do not make another broad performance refactor without timing evidence. The next
 2. Track polluted and water-polluted tiles so pollution recalculation clears and recomputes only affected areas.
 3. Incrementally maintain stable-map aggregates rather than rescanning the full grid twice per tick.
 4. Measure and bound browser render, HUD, and inspector work separately from simulation.
+
+The next pass also corrects two inspector regressions before profiling conclusions are drawn: utility producers must show their actual connected/serviced state, and all producer load/capacity values must use two decimal places.
 
 Correctness remains the constraint: river direction, utility shortfalls, fire repair/destruction, population growth, save import, and HUD totals must remain equivalent after every optimization. The staged implementation checklist and validation commands live in `AI-task-list.txt`.
 
@@ -294,14 +296,14 @@ income = ((population/100) + (jobsFilled/100)) * $10 * (taxRate/100) - crimeTaxL
 `UtilityManager.allocateAll` (`src/engine/UtilityManager.js`):
 
 1. `updatePowerGeneration(hour)` — wind ±25 around 40 (min 10) and solar's 06:00–18:00 bell curve are passive generation; battery discharge is capped at `min(40, storedEnergy)`.
-2. Allocate live renewable power nearest-first, then battery storage only to remaining demand, then dispatchable power plants for any remaining deficit.
+2. Allocate live renewable power through each adjacent road-connected battery nearest-first, with no battery discharge-bandwidth cap on this pass; then allocate battery storage only to remaining demand, then dispatchable power plants for any remaining deficit.
 3. `settleBatteries`, then charge each adjacent road-connected battery from unused wind/solar output; charge batteries from unused dispatchable generation afterward. A battery never charges and discharges in the same tick.
 4. Allocate **water** nearest-first; **sewage** farthest-first (`descending`) so distant tiles back up first.
 5. `allocateUtilityConsumers` — every producer with `utilityUsage` draws from the nearest road-connected source. 5-tick grace (`UTILITY_FAILURE_GRACE_TICKS`) before `operational = false`. Generation capacity itself is **not** gated on `operational` (intentional, to avoid cascade blackouts).
 
 Zone utility demand is `USAGE_RATES[zone][density] * occupancyRatio`. Occupancy is implemented for residential, commercial, industrial, and agricultural tiles. Empty capacity contributes no demand; filled agricultural jobs contribute utility demand according to the agricultural usage table.
 
-Windmills and Solar Panels are passive generators. They require an adjacent Battery Storage tile at placement and that battery must be road-connected to contribute to the grid; neither the renewable nor the battery's own utility status gates renewable generation. Renewables produce no direct utility demand, staffing, water, or sewage usage. The Tile Inspector reports this as a battery-mediated connection rather than a missing local road.
+Windmills and Solar Panels are passive generators. They require an adjacent Battery Storage tile at placement and that battery must be road-connected to contribute to the grid; neither the renewable nor the battery's own utility status gates renewable generation. Connected renewable output passes through the battery to live grid demand without the battery's stored-energy discharge cap; the cap applies only when stored energy covers a deficit. Renewables produce no direct utility demand, staffing, water, or sewage usage. The Tile Inspector reports this as a battery-mediated connection rather than a missing local road.
 
 Leftover **generic `power_plant`**: still in `PRODUCER_TYPE` / `PRODUCER_CONFIG` / renderer art / tests (`simulation.test.js` Test 1). Removed from the toolbar. Capacity 100, cost `$5,000`. Tests use it as a stand-in. **Decision: quarantine as test scaffolding** (helper that places coal/nuclear/wind, or a `TEST_ONLY` export). Do not restore it to the toolbar.
 
@@ -1009,7 +1011,7 @@ Phase 1 stays paused-by-default sandbox (0% tax, $25,000) for solo city-building
 
 28. **Overworld Biome Generation.** `BIOME_TYPES` (`PLAINS`, `HILLY`, `MOUNTAINOUS`, `SWAMP`) modify procedural terrain generation: Hilly/Mountainous scale rock clusters (+25% / +50%); Plains reduce rock clusters (-50%); Swamp reduces forest (-50%), increases lakes (4-6), and forces fork/merge rivers. `generateProceduralTerrain(biome)` accepts the biome directly.
 
-29. **Single-source versioning.** `src/version.js` (`APP_VERSION = '0.1.16'`) is the single source of truth for version strings. `package.json` version and cache-busting consumers derive from it. Verified by `tests/version-sync.test.js`.
+29. **Single-source versioning.** `src/version.js` (`APP_VERSION = '0.1.17'`) is the single source of truth for version strings. `package.json` version and cache-busting consumers derive from it. Verified by `tests/version-sync.test.js`.
 
 30. **Desktop Pan and Drag Painting.** Desktop left-drag with the Pan tool pans the camera; clicking without dragging selects the tile without opening the inspector. Inspect Tile opens the inspector. Left-drag painting is restricted to repeatable tools (roads, bridges, tunnels, zones, bulldoze); single-placement buildings and surveys do not drag-paint.
 

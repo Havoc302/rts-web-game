@@ -658,6 +658,18 @@ Validation:
 - Inspector status and wind/solar regression tests pass.
 - `npm test` passes all 27 test files.
 
+Current task: Allow batteries to pass through connected renewable generation.
+
+- [done] Route Windmill and Solar Panel grid allocation through their adjacent road-connected Battery Storage tile.
+- [done] Allow all connected renewable live output to reach the grid without the battery's 40-unit stored-energy discharge limit.
+- [done] Retain the battery discharge limit only for stored energy used during renewable deficits.
+- [done] Add a multi-Windmill regression proving live pass-through and surplus battery charging.
+- [done] Bump the patch version to 0.1.17.
+
+Validation:
+- `node tests/wind-solar-grid.test.js` passes.
+- `npm test` passes all 27 test files.
+
 Current task: Profile and eliminate remaining mobile tick stalls.
 
 Goal: A 200x200 city must remain responsive on mobile. Work in the stages below, mark each stage `[done]` only after its stated check passes, and stop after any failing check to repair that stage before continuing.
@@ -665,6 +677,8 @@ Goal: A 200x200 city must remain responsive on mobile. Work in the stages below,
 Stage 1 - Establish measurements:
 - [ ] Add optional per-stage timing to `Simulation.tick()` behind a debug flag or explicit test helper. Measure prepare, stats-before, utilities, pollution, services, crime, fire, resources, stats-after, and growth separately.
 - [ ] Extend `tests/small-town-soak.test.js` with a 200x200 minimal-town fixture matching the user layout: 20% tax; upstream Water Pump; downstream Sewage Plant; battery + adjacent Windmill; roads; R/C/I/A zones. Run 50 ticks with controlled randomness and assert finite/bounded state only. Do not add machine-specific timing thresholds yet.
+- [ ] Reproduce and fix Utility Producer Inspector accuracy: Water Pump and Sewage Plant must show connected/serviced when road-connected with available utility capacity; a producer's own utility output remains `Produces This Utility` and must not be mistaken for a missing input.
+- [ ] Round every producer `Load / Capacity` display in the Tile Inspector to two decimal places, including fractional utility demand and dynamic renewable/battery capacity.
 - [ ] Run the soak fixture locally and record the slowest stage(s) in this file before optimizing them.
 
 Stage 2 - Stop repeated service work:

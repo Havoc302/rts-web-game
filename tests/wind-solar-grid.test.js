@@ -103,4 +103,29 @@ function flatten(grid) {
   assert.strictEqual(battery.storedEnergy, 39, 'Battery should discharge only during a renewable deficit');
 }
 
+{
+  const grid = new Grid(12, 12, 1);
+  flatten(grid);
+  const battery = grid.placeProducer(4, 2, PRODUCER_TYPE.BATTERY, BATTERY_CONFIG.MAX_STORAGE);
+  grid.placeProducer(3, 2, PRODUCER_TYPE.WINDMILL, 40);
+  grid.placeProducer(5, 2, PRODUCER_TYPE.WINDMILL, 40);
+  grid.placeProducer(4, 1, PRODUCER_TYPE.WINDMILL, 40);
+  grid.placeRoad(4, 3);
+  grid.placeZone(5, 3, ZONE.RESIDENTIAL);
+  const home = grid.getTile(5, 3);
+  home.population = 25;
+  home.maxPopulation = 25;
+  const previousRandom = Math.random;
+  Math.random = () => 0.5;
+  try {
+    UtilityManager.allocateAll(grid, 12);
+  } finally {
+    Math.random = previousRandom;
+  }
+
+  assert.strictEqual(home.shortfall.power, false, 'All windmills connected through a battery should pass live power to the grid');
+  assert.strictEqual(battery.usedCapacity, 0, 'Battery discharge cap should not limit renewable pass-through');
+  assert.strictEqual(battery.storedEnergy, 119, 'Only unused combined wind generation should charge the battery');
+}
+
 console.log('Wind/solar grid connectivity tests passed.');

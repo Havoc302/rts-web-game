@@ -46,11 +46,16 @@ export class UtilityManager {
   static updatePowerGeneration(grid, hourOfDay) {
     for (const p of grid.producers) {
       if (p.type === PRODUCER_TYPE.WINDMILL || p.type === PRODUCER_TYPE.SOLAR_PANEL) {
-        p.hasBatteryConnection = this.hasAdjacentBattery(grid, p.x, p.y);
-        if (!p.hasBatteryConnection) {
+        const battery = this.getAdjacentBattery(grid, p.x, p.y);
+        p.hasBatteryConnection = Boolean(battery);
+        if (!battery || !grid.isRoadAdjacent(battery.x, battery.y)) {
           p.capacity = 0;
+          p.gridConnectionX = null;
+          p.gridConnectionY = null;
           continue;
         }
+        p.gridConnectionX = battery.x;
+        p.gridConnectionY = battery.y;
         if (p.type === PRODUCER_TYPE.WINDMILL) {
           const swing = (Math.random() * 2 - 1) * WIND_CONFIG.FLUCTUATION;
           p.capacity = Math.max(WIND_CONFIG.MIN_CAPACITY, Math.round(WIND_CONFIG.BASE_CAPACITY + swing));

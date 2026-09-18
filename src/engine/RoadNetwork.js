@@ -11,13 +11,15 @@ export class RoadNetwork {
     const roadDistancesMap = new Map();
 
     for (const prod of producersOfChoice) {
-      const prodTile = grid.getTile(prod.x, prod.y);
+      const connectionX = prod.gridConnectionX ?? prod.x;
+      const connectionY = prod.gridConnectionY ?? prod.y;
+      const prodTile = grid.getTile(connectionX, connectionY);
       if (!prodTile) continue;
 
       const queue = [];
       const visitedForProd = new Set();
 
-      const adjNeighbors = grid.getNeighbors(prod.x, prod.y);
+      const adjNeighbors = grid.getNeighbors(connectionX, connectionY);
       for (const n of adjNeighbors) {
         if (n.hasRoad) {
           const key = `${n.x},${n.y}`;
