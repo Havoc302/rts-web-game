@@ -617,6 +617,9 @@ export class Grid {
       producer.storedEnergy = 0;
       producer.capacity = 0;
     }
+    if (producerType === PRODUCER_TYPE.WINDMILL || producerType === PRODUCER_TYPE.SOLAR_PANEL) {
+      producer.hasBatteryConnection = this.hasAdjacentBattery(x, y);
+    }
     tile.producer = producer;
     this.producers.push(producer);
     this.fireCandidateTiles.add(tile);

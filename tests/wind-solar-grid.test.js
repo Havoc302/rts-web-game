@@ -2,7 +2,7 @@ import assert from 'assert';
 import { Grid } from '../src/engine/Grid.js';
 import { Simulation } from '../src/engine/Simulation.js';
 import { UtilityManager } from '../src/engine/UtilityManager.js';
-import { BATTERY_CONFIG, PRODUCER_TYPE, TERRAIN } from '../src/config.js';
+import { BATTERY_CONFIG, PRODUCER_TYPE, TERRAIN, ZONE } from '../src/config.js';
 
 function flatten(grid) {
   for (const row of grid.tiles) for (const tile of row) tile.terrain = TERRAIN.FLAT;
@@ -20,7 +20,7 @@ function flatten(grid) {
 
   const sim = new Simulation(grid);
   sim.computeStats();
-  assert.ok(sim.stats.powerCapacity > 0, 'HUD powerCapacity must include a mill whose battery is on the road');
+  assert.ok(sim.stats.powerCapacity > 0, 'HUD powerCapacity should include connected renewable generation');
 }
 
 {
@@ -43,14 +43,14 @@ function flatten(grid) {
   grid.getTile(0, 3).terrain = TERRAIN.WATER;
   grid.placeProducer(1, 1, PRODUCER_TYPE.WATER_TOWER, 120);
   grid.placeProducer(1, 3, PRODUCER_TYPE.SEWAGE_PLANT, 120);
-  grid.placeProducer(4, 3, PRODUCER_TYPE.BATTERY, BATTERY_CONFIG.MAX_STORAGE);
+  const battery = grid.placeProducer(4, 3, PRODUCER_TYPE.BATTERY, BATTERY_CONFIG.MAX_STORAGE);
   const windmill = grid.placeProducer(3, 3, PRODUCER_TYPE.WINDMILL, 40);
   for (const [x, y] of [[2, 1], [2, 2], [2, 3], [2, 4], [3, 4], [4, 4]]) grid.placeRoad(x, y);
   UtilityManager.allocateAll(grid);
 
-  assert.strictEqual(windmill.utilityShortfall.water, false, 'Road-connected windmill should receive water');
-  assert.strictEqual(windmill.utilityShortfall.sewage, false, 'Road-connected windmill should receive sewage service');
-  assert.strictEqual(windmill.operational, true, 'Road-connected windmill should be operational when utilities are available');
+  assert.ok(battery.storedEnergy > 0, 'Connected windmill should charge its adjacent battery before grid allocation');
+  assert.strictEqual(windmill.utilityShortfall.water, false, 'Windmills should not consume water directly');
+  assert.strictEqual(windmill.utilityShortfall.sewage, false, 'Windmills should not consume sewage capacity directly');
 }
 
 {
@@ -64,9 +64,43 @@ function flatten(grid) {
   const solarPanel = grid.placeProducer(6, 6, PRODUCER_TYPE.SOLAR_PANEL, 60);
   UtilityManager.allocateAll(grid);
 
-  assert.strictEqual(solarPanel.utilityShortfall.water, true, 'Unconnected solar panel should report water shortfall');
-  assert.strictEqual(solarPanel.utilityShortfall.sewage, true, 'Unconnected solar panel should report sewage shortfall');
-  assert.strictEqual(solarPanel.operational, true, 'Utility grace period should keep a new solar panel operational');
+  assert.strictEqual(solarPanel.utilityShortfall.water, false, 'Solar panels should not consume water directly');
+  assert.strictEqual(solarPanel.utilityShortfall.sewage, false, 'Solar panels should not consume sewage capacity directly');
+  assert.strictEqual(UtilityManager.contributesPowerToGrid(grid, solarPanel), false, 'Solar panels require a road-connected battery');
+}
+
+{
+  const grid = new Grid(8, 8, 1);
+  flatten(grid);
+  const battery = grid.placeProducer(3, 2, PRODUCER_TYPE.BATTERY, BATTERY_CONFIG.MAX_STORAGE);
+  grid.placeProducer(2, 2, PRODUCER_TYPE.SOLAR_PANEL, 60);
+  grid.placeRoad(3, 3);
+  grid.placeZone(4, 3, ZONE.RESIDENTIAL);
+  const home = grid.getTile(4, 3);
+  home.population = 25;
+  home.maxPopulation = 25;
+  battery.storedEnergy = 40;
+
+  UtilityManager.allocateAll(grid, 12);
+  assert.strictEqual(home.shortfall.power, false, 'Live solar generation should serve demand before battery discharge');
+  assert.ok(battery.storedEnergy > 40, 'Only unused solar generation should charge the battery');
+}
+
+{
+  const grid = new Grid(8, 8, 1);
+  flatten(grid);
+  const battery = grid.placeProducer(3, 2, PRODUCER_TYPE.BATTERY, BATTERY_CONFIG.MAX_STORAGE);
+  grid.placeProducer(2, 2, PRODUCER_TYPE.SOLAR_PANEL, 60);
+  grid.placeRoad(3, 3);
+  grid.placeZone(4, 3, ZONE.RESIDENTIAL);
+  const home = grid.getTile(4, 3);
+  home.population = 25;
+  home.maxPopulation = 25;
+  battery.storedEnergy = 40;
+
+  UtilityManager.allocateAll(grid, 0);
+  assert.strictEqual(home.shortfall.power, false, 'Stored energy should cover demand when renewable generation is unavailable');
+  assert.strictEqual(battery.storedEnergy, 39, 'Battery should discharge only during a renewable deficit');
 }
 
 console.log('Wind/solar grid connectivity tests passed.');

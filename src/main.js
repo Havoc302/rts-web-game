@@ -1,6 +1,8 @@
 import { Grid } from './engine/Grid.js';
 import { Simulation } from './engine/Simulation.js';
 import { Renderer } from './engine/Renderer.js';
+import { UtilityManager } from './engine/UtilityManager.js';
+import { getProducerConnectionStatus } from './engine/InspectorStatus.js';
 import { deserializeGameFromJson, serializeGameToJson } from './engine/SaveGame.js';
 import { APP_VERSION, ZONE, TERRAIN, PRODUCER_TYPE, PRODUCER_CONFIG, FACTORY_RECIPES, COSTS, TILE_SIZE, STARTING_TREASURY, RESIDENTIAL_CAPACITY, JOBS_PROVIDED, FOREST_POLLUTION_ABSORPTION, FOREST_DESIRABILITY_RADIUS, CRIME_CONFIG, MEDICAL_CONFIG, POWER_PRODUCER_TYPES, POLLUTION_CONFIG, COAL_CONFIG, WIND_CONFIG, SOLAR_CONFIG, BATTERY_CONFIG, DENSITY, RENDERER_CONFIG, TERRAIN_GENERATION_CONFIG, MAP_SEED_STORAGE_KEY, splitDemographics } from './config.js';
 
@@ -804,7 +806,11 @@ class GameApp {
       }
     }
 
-    const isConnected = this.grid.isRoadAdjacent(tile.x, tile.y);
+    const connectionStatus = tile.producer
+      ? getProducerConnectionStatus(this.grid, tile.producer)
+      : null;
+    const isBatteryDependent = connectionStatus?.isBatteryDependent;
+    const isConnected = connectionStatus ? connectionStatus.isConnected : this.grid.isRoadAdjacent(tile.x, tile.y);
     document.getElementById('inspect-connected').textContent = isConnected ? 'Yes' : 'No';
 
     const formatUtil = (key) => {
@@ -813,6 +819,7 @@ class GameApp {
         if (producerConfig?.utility === key) {
           return 'Produces This Utility';
         }
+        if (isBatteryDependent) return 'Not Required';
         const usage = producerConfig?.utilityUsage;
         if (usage && (usage[key] > 0 || producerConfig?.activeUtilityUsage?.[key] > 0)) {
           if (!isConnected) return 'No Local Road';
@@ -845,7 +852,9 @@ class GameApp {
       const config = PRODUCER_CONFIG[tile.producer.type];
       const prodHasRoad = this.grid.isRoadAdjacent(tile.producer.x, tile.producer.y);
       const isBatteryDependent = tile.producer.type === PRODUCER_TYPE.WINDMILL || tile.producer.type === PRODUCER_TYPE.SOLAR_PANEL;
-      const roadStatusStr = prodHasRoad || isBatteryDependent ? '' : ' ⚠️ (Needs Road!)';
+      const roadStatusStr = isBatteryDependent
+        ? connectionStatus.message ? ` (${connectionStatus.message})` : ''
+        : prodHasRoad ? '' : ' ⚠️ (Needs Road!)';
       const utilityStatusStr = PRODUCER_CONFIG[tile.producer.type]?.utilityUsage && !tile.producer.operational
         ? ' ⚠️ (Needs Utilities!)'
         : '';

@@ -8,10 +8,16 @@ export class UtilityManager {
     if (!preview) {
       this.updatePowerGeneration(grid, hourOfDay);
     }
-    this.allocateUtility(grid, POWER_PRODUCER_TYPES, 'power', 'ascending');
+    for (const producer of grid.producers) {
+      if (POWER_PRODUCER_TYPES.includes(producer.type)) producer.usedCapacity = 0;
+    }
+    this.allocateUtility(grid, this.getRenewablePowerProducerTypes(), 'power', 'ascending');
+    this.allocateUtility(grid, [PRODUCER_TYPE.BATTERY], 'power', 'ascending', false);
+    this.allocateUtility(grid, this.getDispatchablePowerProducerTypes(), 'power', 'ascending', false);
     if (!preview) {
       this.settleBatteries(grid);
-      this.chargeBatteries(grid);
+      this.chargeRenewableSurplus(grid);
+      this.chargeDispatchableSurplus(grid);
     }
     this.allocateUtility(grid, PRODUCER_TYPE.WATER_TOWER, 'water', 'ascending');
     this.allocateUtility(grid, PRODUCER_TYPE.SEWAGE_PLANT, 'sewage', 'descending');
@@ -22,8 +28,8 @@ export class UtilityManager {
     return grid.getNeighbors8(x, y).find((tile) => tile.producer && tile.producer.type === PRODUCER_TYPE.BATTERY)?.producer || null;
   }
 
-  // Wind/solar count for HUD and charging iff they have a battery and that
-  // battery is road-adjacent. Other power producers count iff they are road-adjacent.
+  // Wind/solar are passive generators. They only need an adjacent battery whose
+  // tile is road-adjacent; they do not consume the battery's utilities.
   static contributesPowerToGrid(grid, producer) {
     if (!producer || producer.destroyed) return false;
     if (producer.type === PRODUCER_TYPE.WINDMILL || producer.type === PRODUCER_TYPE.SOLAR_PANEL) {
@@ -57,6 +63,33 @@ export class UtilityManager {
     }
   }
 
+  static getRenewablePowerProducerTypes() {
+    return [PRODUCER_TYPE.WINDMILL, PRODUCER_TYPE.SOLAR_PANEL];
+  }
+
+  static getDispatchablePowerProducerTypes() {
+    return POWER_PRODUCER_TYPES.filter((type) => (
+      type !== PRODUCER_TYPE.WINDMILL &&
+      type !== PRODUCER_TYPE.SOLAR_PANEL &&
+      type !== PRODUCER_TYPE.BATTERY
+    ));
+  }
+
+  // Renewables serve live demand first. Only their unused output charges the
+  // adjacent battery, so storage cannot charge and discharge in the same tick.
+  static chargeRenewableSurplus(grid) {
+    for (const producer of grid.producers) {
+      if (producer.type !== PRODUCER_TYPE.WINDMILL && producer.type !== PRODUCER_TYPE.SOLAR_PANEL) continue;
+      const battery = this.getAdjacentBattery(grid, producer.x, producer.y);
+      if (!battery || !grid.isRoadAdjacent(battery.x, battery.y)) continue;
+      const charge = Math.min(
+        Math.max(0, (producer.capacity || 0) - (producer.usedCapacity || 0)),
+        Math.max(0, (battery.maxStorage || 0) - (battery.storedEnergy || 0)),
+      );
+      battery.storedEnergy = (battery.storedEnergy || 0) + charge;
+    }
+  }
+
   static hasAdjacentBattery(grid, x, y) {
     return grid.getNeighbors8(x, y).some((tile) => tile.producer && tile.producer.type === PRODUCER_TYPE.BATTERY);
   }
@@ -76,12 +109,12 @@ export class UtilityManager {
   }
 
   // Batteries recharge from power that was generated but never allocated to demand.
-  static chargeBatteries(grid) {
+  static chargeDispatchableSurplus(grid) {
     const batteries = grid.producers.filter((p) => p.type === PRODUCER_TYPE.BATTERY);
     if (batteries.length === 0) return;
 
     let surplus = grid.producers
-      .filter((p) => POWER_PRODUCER_TYPES.includes(p.type) && p.type !== PRODUCER_TYPE.BATTERY && this.contributesPowerToGrid(grid, p))
+      .filter((p) => this.getDispatchablePowerProducerTypes().includes(p.type) && this.contributesPowerToGrid(grid, p))
       .reduce((sum, p) => sum + Math.max(0, p.capacity - p.usedCapacity), 0);
 
     for (const battery of batteries) {
@@ -153,17 +186,21 @@ export class UtilityManager {
     }
   }
 
-  static allocateUtility(grid, producerType, utilityKey, sortOrder = 'ascending') {
+  static allocateUtility(grid, producerType, utilityKey, sortOrder = 'ascending', reset = true) {
     const types = Array.isArray(producerType) ? producerType : [producerType];
     const producers = grid.producers.filter((p) => types.includes(p.type));
 
-    producers.forEach((p) => {
-      p.usedCapacity = 0;
-    });
+    if (reset) {
+      producers.forEach((p) => {
+        p.usedCapacity = 0;
+      });
+    }
 
-    for (const tile of grid.getActiveZonedTiles()) {
-      tile.shortfall[utilityKey] = true;
-      tile.distanceToProducer[utilityKey] = Infinity;
+    if (reset) {
+      for (const tile of grid.getActiveZonedTiles()) {
+        tile.shortfall[utilityKey] = true;
+        tile.distanceToProducer[utilityKey] = Infinity;
+      }
     }
 
     if (producers.length === 0) {
@@ -184,6 +221,7 @@ export class UtilityManager {
 
     for (const item of connectedZonedTiles) {
       const tile = item.tile;
+      if (!reset && !tile.shortfall[utilityKey]) continue;
       const usage = this.getTileUtilityUsage(tile, utilityKey);
 
       let chosenProducer = null;

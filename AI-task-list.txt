@@ -614,3 +614,35 @@ Current task: Correct wilderness fire injury and spread balance.
 - [done] Give each wildfire one 0.1% chance to cause one injury for its whole burn duration, rather than rolling a new injury chance each tick; inhabited zones and producer tiles retain their existing injury behavior.
 - [done] Confirm burnt-out forest tiles become non-flammable and cannot spread fire further.
 - [done] Bump the patch version to 0.1.12.
+
+Current task: Make Windmills and Solar Panels passive battery-fed generators.
+
+- [done] Remove direct water and sewage requirements from Windmills and Solar Panels.
+- [done] Require only an adjacent Battery Storage whose tile is road-connected; neither the renewable nor battery utility status gates renewable generation.
+- [done] Use hybrid renewable dispatch: live wind/solar output serves demand first, only surplus charges its adjacent battery, stored energy discharges only during a renewable deficit, then dispatchable plants cover any remaining demand.
+- [done] Update the Tile Inspector to show renewables as not requiring utilities.
+- [done] Add focused tests for renewable-first supply, surplus charging, and battery-only deficit discharge.
+- [done] Bump the patch version to 0.1.14.
+
+Validation:
+- `node tests/wind-solar-grid.test.js` passes.
+
+Current task: Add a deterministic small-town stability soak test.
+
+- [done] Build a 30x30 town with a 20% tax rate, 13 residential, 8 commercial, 15 agricultural, and 3 industrial zones.
+- [done] Place the Water Pump upstream of the Sewage Plant on a directed river, plus a road-connected battery and adjacent windmill.
+- [done] Run 50 controlled ticks and assert finite stats, bounded population/patient demand, no uncontrolled fires, and an uncontaminated upstream Water Pump.
+
+Validation:
+- `node tests/small-town-soak.test.js` passes.
+
+Current task: Fix passive renewable status in the Tile Inspector.
+
+- [done] Initialize Windmill and Solar Panel battery-adjacency state at placement so the inspector is correct before the first tick.
+- [done] Add a DOM-free producer connection-status helper used by the Tile Inspector.
+- [done] Show `Connected via Battery Storage` for a renewable next to a road-connected battery and clear error text when the connection exists.
+- [done] Add `tests/inspector-status.test.js` covering connected and missing-battery inspector status.
+- [done] Bump the patch version to 0.1.15.
+
+Validation:
+- `npm test` passes all 27 test files.

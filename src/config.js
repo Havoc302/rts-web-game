@@ -375,7 +375,6 @@ export const PRODUCER_CONFIG = {
     color: '#94a3b8',
     requiresWaterAdjacent: false,
     requiresBatteryAdjacent: true,
-    utilityUsage: { water: 1, sewage: 1 },
   },
   [PRODUCER_TYPE.SOLAR_PANEL]: {
     name: 'Solar Panel',
@@ -386,7 +385,6 @@ export const PRODUCER_CONFIG = {
     color: '#fbbf24',
     requiresWaterAdjacent: false,
     requiresBatteryAdjacent: true,
-    utilityUsage: { water: 1, sewage: 1 },
   },
   [PRODUCER_TYPE.BATTERY]: {
     name: 'Battery Storage',
