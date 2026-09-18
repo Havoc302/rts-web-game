@@ -488,7 +488,6 @@ export class Grid {
     const tile = this.getTile(x, y);
     tile.hasRoad = true;
     this.coverageVersion++;
-    this.coverageVersion++;
     return true;
   }
 
@@ -503,6 +502,7 @@ export class Grid {
     const tile = this.getTile(x, y);
     tile.hasTunnel = true;
     tile.hasRoad = true;
+    this.coverageVersion++;
     return true;
   }
 
@@ -549,7 +549,15 @@ export class Grid {
 
   canSurvey(x, y) {
     const tile = this.getTile(x, y);
-    return Boolean(tile && !tile.producer && !tile.hasRoad && !tile.oreDiscovered && !tile.surveyingBy);
+    if (!tile || tile.producer || tile.hasRoad || tile.oreDiscovered || tile.surveyingBy) return false;
+    return tile.terrain !== TERRAIN.MOUNTAIN || !this.isMountainSurveyEnclosed(x, y);
+  }
+
+  isMountainSurveyEnclosed(x, y) {
+    const neighbors = this.getNeighbors(x, y);
+    return neighbors.length === 4 && neighbors.every((neighbor) => (
+      neighbor.terrain === TERRAIN.MOUNTAIN && !neighbor.hasTunnel
+    ));
   }
 
   startSurvey(x, y) {

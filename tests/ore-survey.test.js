@@ -73,4 +73,22 @@ function clearTerrain(grid) {
   assert.strictEqual(grid.getTile(4, 4).oreDiscovered, true, 'Mountain survey should complete after twenty ticks');
 }
 
+{
+  const grid = new Grid(8, 8, 1);
+  clearTerrain(grid);
+  const enclosedMountain = grid.getTile(4, 4);
+  enclosedMountain.terrain = TERRAIN.MOUNTAIN;
+  for (const neighbor of grid.getNeighbors(4, 4)) neighbor.terrain = TERRAIN.MOUNTAIN;
+
+  assert.strictEqual(grid.canSurvey(4, 4), false, 'A mountain enclosed by mountains should require tunnel access to survey');
+  grid.getTile(4, 3).hasTunnel = true;
+  grid.getTile(4, 3).hasRoad = true;
+  assert.strictEqual(grid.canSurvey(4, 4), true, 'An adjacent tunnel should provide access to survey an enclosed mountain');
+
+  grid.getTile(5, 4).terrain = TERRAIN.FLAT;
+  grid.getTile(5, 4).hasTunnel = false;
+  grid.getTile(5, 4).hasRoad = false;
+  assert.strictEqual(grid.canSurvey(4, 4), true, 'An exposed mountain should not require a tunnel to survey');
+}
+
 console.log('Ore and survey tests passed.');

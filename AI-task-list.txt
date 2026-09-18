@@ -13,6 +13,12 @@ Current task: Add standalone JSON game save export/import.
 - [done] Restore every tile, producer, simulation setting, stockpile, treasury, camera, and UI state; imported games always return paused.
 - [done] Add paused-only validation and round-trip regression tests.
 
+Current task: Require tunnel access for enclosed mountain surveys.
+
+- [done] Block surveying a mountain tile only when all four orthogonal neighbors are mountains without tunnels.
+- [done] Allow surveying an enclosed mountain once an adjacent tunnel provides access; exposed mountain tiles remain surveyable.
+- [done] Correct road/tunnel coverage-version invalidation while updating the shared Grid placement path.
+
 Current task: Record military production economics for the Command & Conquer phase.
 
 - [done] Document that non-consumer-goods production on industrial zones suspends that tile's tax income for the production duration.

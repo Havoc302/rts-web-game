@@ -228,7 +228,7 @@ While paused, `advanceWorld` is false, so crime/fire/surveys/growth/`tickCount` 
   - Tunnels: mountain tiles; set `hasRoad` + `hasTunnel`. Cost `$1,000`.
   - Zones: flat, road-adjacent, empty. Residential/commercial `$200`; industrial/agricultural `$300`.
   - Producers: water-adjacent where required (nuclear, water pump, sewage); ore-match for mines/derrick (mines allowed on non-water terrain, including mountains); unique City Hall; windmill/solar require an 8-neighbor battery **at placement**.
-  - Survey: one idle operational road-adjacent Survey Station, 10 ticks standard / 20 mountain.
+  - Survey: one idle operational road-adjacent Survey Station, 10 ticks standard / 20 mountain. An exposed mountain is surveyable normally; a mountain with all four orthogonal neighbors also mountainous requires an adjacent tunnel for access.
   - Bulldoze `$50`: clears zone/road/bridge/tunnel/producer, converts forest to flat (bumps `terrainVersion`), and can un-destroy a burnt tile.
 
 ### Camera and input (`GameApp` + `Renderer`)
