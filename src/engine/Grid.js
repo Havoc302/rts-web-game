@@ -26,6 +26,13 @@ export class Grid {
     this.terrainVersion = 0;
     this.terrainChangedTiles = new Set();
     this.coverageVersion = 0;
+    this.activeZonedTiles = new Set();
+    this.activeRoadTiles = new Set();
+    this.activeFireTiles = new Set();
+    this.fireCandidateTiles = new Set();
+    this.repairingTiles = new Set();
+    this.pollutionDirty = true;
+    this.pollutionStateKey = null;
 
     this.initGrid();
   }
@@ -72,6 +79,13 @@ export class Grid {
 
     this.tiles = [];
     this.producers = [];
+    this.activeZonedTiles.clear();
+    this.activeRoadTiles.clear();
+    this.activeFireTiles.clear();
+    this.fireCandidateTiles.clear();
+    this.repairingTiles.clear();
+    this.pollutionDirty = true;
+    this.pollutionStateKey = null;
     for (let y = 0; y < this.height; y++) {
       const row = [];
       for (let x = 0; x < this.width; x++) {
@@ -82,6 +96,7 @@ export class Grid {
 
     this.generateProceduralTerrain(this.biome);
     this.generateHiddenOres();
+    this.rebuildFireCandidateTiles();
   }
 
   generateHiddenOres() {
@@ -127,6 +142,48 @@ export class Grid {
       fireRepair: 1,
       destroyed: false,
     };
+  }
+
+  rebuildFireCandidateTiles() {
+    this.fireCandidateTiles.clear();
+    for (const row of this.tiles) {
+      for (const tile of row) {
+        if (tile.terrain === TERRAIN.FOREST) this.fireCandidateTiles.add(tile);
+      }
+    }
+  }
+
+  rebuildActiveTileSets() {
+    this.activeZonedTiles.clear();
+    this.activeRoadTiles.clear();
+    this.activeFireTiles.clear();
+    this.fireCandidateTiles.clear();
+    this.repairingTiles.clear();
+    for (const row of this.tiles) {
+      for (const tile of row) {
+        if (tile.zone !== ZONE.NONE) this.activeZonedTiles.add(tile);
+        if (tile.hasRoad) this.activeRoadTiles.add(tile);
+        if (tile.onFire) this.activeFireTiles.add(tile);
+        if (tile.terrain === TERRAIN.FOREST || tile.zone !== ZONE.NONE || tile.producer) {
+          this.fireCandidateTiles.add(tile);
+        }
+        if ((tile.fireRepair ?? 1) < 1) this.repairingTiles.add(tile);
+      }
+    }
+  }
+
+  getFireCandidateTiles() {
+    return new Set([...this.fireCandidateTiles, ...this.activeZonedTiles, ...this.producers.map((producer) => this.getTile(producer.x, producer.y))]);
+  }
+
+  getActiveFireTiles() {
+    if (this.activeFireTiles.size > 0) return this.activeFireTiles;
+    for (const row of this.tiles) {
+      for (const tile of row) {
+        if (tile.onFire) this.activeFireTiles.add(tile);
+      }
+    }
+    return this.activeFireTiles;
   }
 
   getBiomeModifiers(biome = this.biome) {
@@ -391,6 +448,17 @@ export class Grid {
     return this.tiles[y][x];
   }
 
+  getActiveZonedTiles() {
+    if (this.activeZonedTiles.size > 0) return this.activeZonedTiles;
+    const manuallyAssignedZones = new Set();
+    for (const row of this.tiles) {
+      for (const tile of row) {
+        if (tile.zone !== ZONE.NONE) manuallyAssignedZones.add(tile);
+      }
+    }
+    return manuallyAssignedZones;
+  }
+
   getNeighbors(x, y) {
     const neighbors = [];
     const dirs = [
@@ -487,7 +555,9 @@ export class Grid {
     if (!this.canPlaceRoad(x, y)) return false;
     const tile = this.getTile(x, y);
     tile.hasRoad = true;
+    this.activeRoadTiles.add(tile);
     this.coverageVersion++;
+    this.pollutionDirty = true;
     return true;
   }
 
@@ -502,7 +572,9 @@ export class Grid {
     const tile = this.getTile(x, y);
     tile.hasTunnel = true;
     tile.hasRoad = true;
+    this.activeRoadTiles.add(tile);
     this.coverageVersion++;
+    this.pollutionDirty = true;
     return true;
   }
 
@@ -512,6 +584,9 @@ export class Grid {
     tile.zone = zoneType;
     tile.density = DENSITY.LIGHT;
     tile.growthScore = 0;
+    this.activeZonedTiles.add(tile);
+    this.fireCandidateTiles.add(tile);
+    this.pollutionDirty = true;
     return true;
   }
 
@@ -543,7 +618,9 @@ export class Grid {
     }
     tile.producer = producer;
     this.producers.push(producer);
+    this.fireCandidateTiles.add(tile);
     this.coverageVersion++;
+    this.pollutionDirty = true;
     return producer;
   }
 
@@ -604,7 +681,9 @@ export class Grid {
     const tile = this.getTile(x, y);
     tile.hasBridge = true;
     tile.hasRoad = true;
+    this.activeRoadTiles.add(tile);
     this.coverageVersion++;
+    this.pollutionDirty = true;
     return true;
   }
 
@@ -632,6 +711,8 @@ export class Grid {
       this.terrainVersion++;
       if (!this.terrainChangedTiles) this.terrainChangedTiles = new Set();
       this.terrainChangedTiles.add(`${x},${y}`);
+      this.fireCandidateTiles.delete(tile);
+      this.pollutionDirty = true;
       modified = true;
     }
     if (tile.producer) {
@@ -645,10 +726,13 @@ export class Grid {
       }
       this.producers = this.producers.filter((p) => p.id !== tile.producer.id);
       tile.producer = null;
+      this.fireCandidateTiles.delete(tile);
+      this.pollutionDirty = true;
       modified = true;
     }
     if (tile.hasRoad) {
       tile.hasRoad = false;
+      this.activeRoadTiles.delete(tile);
       modified = true;
     }
     if (tile.zone !== ZONE.NONE) {
@@ -660,6 +744,10 @@ export class Grid {
       tile.populationLoss = 0;
       tile.fireRepair = 1;
       tile.shortfall = { power: false, water: false, sewage: false };
+      this.activeZonedTiles.delete(tile);
+      this.fireCandidateTiles.delete(tile);
+      this.repairingTiles.delete(tile);
+      this.pollutionDirty = true;
       modified = true;
     }
     if (modified) this.coverageVersion++;

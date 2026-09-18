@@ -1,6 +1,33 @@
 import { ZONE, PRODUCER_TYPE, TERRAIN, POLLUTION_CONFIG, FOREST_POLLUTION_ABSORPTION, COAL_CONFIG } from '../config.js';
 
 export class PollutionManager {
+  static updateIfNeeded(grid) {
+    const stateKey = this.getStateKey(grid);
+    if (!grid.pollutionDirty && grid.pollutionStateKey === stateKey) return false;
+    this.computePollution(grid);
+    grid.pollutionDirty = false;
+    grid.pollutionStateKey = stateKey;
+    return true;
+  }
+
+  static getStateKey(grid) {
+    const zonedTiles = grid.getActiveZonedTiles();
+    const zoneState = [];
+    for (const tile of zonedTiles) {
+      if (tile.zone === ZONE.INDUSTRIAL || tile.shortfall.sewage) {
+        zoneState.push(`${tile.x},${tile.y}:${tile.zone}:${tile.density}:${tile.shortfall.sewage ? 1 : 0}:${tile.onFire ? 1 : 0}`);
+      }
+    }
+    const producerState = grid.producers
+      .filter((producer) => (
+        producer.type === PRODUCER_TYPE.COAL_PLANT ||
+        producer.type === PRODUCER_TYPE.SEWAGE_PLANT ||
+        producer.type === PRODUCER_TYPE.WATER_TOWER
+      ))
+      .map((producer) => `${producer.id}:${producer.type}:${producer.x},${producer.y}:${producer.usedCapacity}:${producer.capacity}:${producer.operational ? 1 : 0}`);
+    return `${grid.terrainVersion}|${zoneState.sort().join('|')}|${producerState.sort().join('|')}`;
+  }
+
   static computePollution(grid) {
     // Step 1: Reset
     for (let y = 0; y < grid.height; y++) {

@@ -2,12 +2,9 @@ import { CRIME_CONFIG, ZONE } from '../config.js';
 
 export class CrimeManager {
   static updateCrime(grid, stats) {
-    // 1. Decay existing crime on all tiles
-    for (let y = 0; y < grid.height; y++) {
-      for (let x = 0; x < grid.width; x++) {
-        const tile = grid.tiles[y][x];
-        tile.crime = Math.max(0, (tile.crime || 0) - CRIME_CONFIG.CRIME_DISSIPATION_RATE);
-      }
+    // 1. Decay crime only where crime can exist.
+    for (const tile of grid.getActiveZonedTiles()) {
+      tile.crime = Math.max(0, (tile.crime || 0) - CRIME_CONFIG.CRIME_DISSIPATION_RATE);
     }
 
     // 2. Compute crime probability from job scarcity (residents who want work
@@ -21,21 +18,8 @@ export class CrimeManager {
     const crimeProbability = Math.min(1, CRIME_CONFIG.BASE_CRIME_CHANCE +
       (jobScarcity * CRIME_CONFIG.JOB_SCARCITY_CRIME_SCALER));
 
-    // 3. Gather zoned tiles and select a random sample of targets
-    const zonedTiles = [];
-    for (let y = 0; y < grid.height; y++) {
-      for (let x = 0; x < grid.width; x++) {
-        const tile = grid.tiles[y][x];
-        if (
-          tile.zone === ZONE.RESIDENTIAL
-          || tile.zone === ZONE.COMMERCIAL
-          || tile.zone === ZONE.INDUSTRIAL
-          || tile.zone === ZONE.AGRICULTURAL
-        ) {
-          zonedTiles.push(tile);
-        }
-      }
-    }
+    // 3. Zoned tiles are maintained by Grid's active registry.
+    const zonedTiles = Array.from(grid.getActiveZonedTiles());
 
     const sampleSize = Math.min(zonedTiles.length, CRIME_CONFIG.CRIME_EVENTS_PER_TICK_MAX);
     const targets = this.sampleRandom(zonedTiles, sampleSize, grid.random);

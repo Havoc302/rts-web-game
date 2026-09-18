@@ -74,7 +74,7 @@ export class Simulation {
 
     this.computeStats();
     UtilityManager.allocateAll(this.grid, this.getHourOfDay(), { preview: !advanceWorld });
-    PollutionManager.computePollution(this.grid);
+    PollutionManager.updateIfNeeded(this.grid);
     ServiceManager.updateServices(this.grid, this.stats.population, this.stats.employmentRate, this.stats.totalEmployablePopulation);
     if (advanceWorld) {
       CrimeManager.updateCrime(this.grid, this.stats);
@@ -123,7 +123,7 @@ export class Simulation {
   relocateDisplacedPopulation(population) {
     if (population <= 0) return;
 
-    const candidates = this.grid.tiles.flat().filter((tile) => (
+    const candidates = Array.from(this.grid.getActiveZonedTiles()).filter((tile) => (
       tile.zone === ZONE.RESIDENTIAL && !tile.destroyed
     )).sort((a, b) => {
       const suitability = (tile) => {
@@ -160,10 +160,7 @@ export class Simulation {
 
     const taxGrowthModifier = this.getTaxGrowthModifier();
 
-    for (let y = 0; y < this.grid.height; y++) {
-      for (let x = 0; x < this.grid.width; x++) {
-        const tile = this.grid.getTile(x, y);
-        if (!tile || tile.zone === ZONE.NONE) continue;
+    for (const tile of this.grid.getActiveZonedTiles()) {
 
         const isFullyServiced =
           !tile.shortfall.power &&
@@ -194,7 +191,7 @@ export class Simulation {
         if (tile.zone === ZONE.RESIDENTIAL) {
           delta += this.stats.happinessGrowthModifier || 0;
           // Forest desirability bonus
-          if (this.hasNearbyForest(x, y)) {
+          if (this.hasNearbyForest(tile.x, tile.y)) {
             delta += SERVICE_GLOBAL_CONFIG.FOREST_DESIRABILITY_BONUS;
           }
           // Essential services desirability bonuses
@@ -232,6 +229,7 @@ export class Simulation {
           delta += empBonus;
         }
 
+        const previousDensity = tile.density;
         tile.growthScore = Math.round(
           Math.min(
             GROWTH_CONFIG.MAX_SCORE,
@@ -245,7 +243,7 @@ export class Simulation {
         if (tile.density === DENSITY.MEDIUM && tile.growthScore >= GROWTH_CONFIG.THRESHOLD_HIGH) {
           tile.density = DENSITY.HIGH;
         }
-      }
+        if (tile.density !== previousDensity) this.grid.pollutionDirty = true;
     }
   }
 
@@ -315,7 +313,7 @@ export class Simulation {
       }
     }
 
-    stats.roadExpenses = this.grid.tiles.flat().filter((tile) => tile.hasRoad).length * ROAD_MAINTENANCE_COST;
+    stats.roadExpenses = this.grid.activeRoadTiles.size * ROAD_MAINTENANCE_COST;
 
     let totalPollution = 0;
     let tileCount = 0;
@@ -374,12 +372,9 @@ export class Simulation {
     stats.unemployedWorkers = Math.max(0, demographics.workforce - stats.jobsFilled);
     stats.employmentRate = stats.totalJobsProvided > 0 ? (stats.jobsFilled / stats.totalJobsProvided) : 0;
 
-    for (let y = 0; y < this.grid.height; y++) {
-      for (let x = 0; x < this.grid.width; x++) {
-        const tile = this.grid.getTile(x, y);
-        if (tile.zone === ZONE.COMMERCIAL || tile.zone === ZONE.INDUSTRIAL || tile.zone === ZONE.AGRICULTURAL) {
-          tile.filledJobs = Math.round((tile.totalJobs || 0) * stats.employmentRate);
-        }
+    for (const tile of this.grid.getActiveZonedTiles()) {
+      if (tile.zone === ZONE.COMMERCIAL || tile.zone === ZONE.INDUSTRIAL || tile.zone === ZONE.AGRICULTURAL) {
+        tile.filledJobs = Math.round((tile.totalJobs || 0) * stats.employmentRate);
       }
     }
 
@@ -398,10 +393,7 @@ export class Simulation {
 
     let totalPatientDemand = 0;
     let income = 0;
-    for (let y = 0; y < this.grid.height; y++) {
-      for (let x = 0; x < this.grid.width; x++) {
-        const tile = this.grid.getTile(x, y);
-        if (tile.zone === ZONE.NONE) continue;
+    for (const tile of this.grid.getActiveZonedTiles()) {
 
         let tileBaseTax = 0;
         if (tile.zone === ZONE.RESIDENTIAL) {
@@ -433,7 +425,6 @@ export class Simulation {
         const tileLoss = tileBaseTax * crimeTaxPenalty;
         stats.crimeTaxLoss += tileLoss;
         income += tileBaseTax - tileLoss;
-      }
     }
     totalPatientDemand += fireInjuries;
     stats.patientDemand = Math.round(totalPatientDemand);

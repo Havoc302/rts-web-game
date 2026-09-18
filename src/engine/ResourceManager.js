@@ -128,7 +128,7 @@ export class ResourceManager {
   }
 
   produceFactories(grid) {
-    for (const tile of grid.tiles.flat()) {
+    for (const tile of grid.getActiveZonedTiles()) {
       if (tile.zone === ZONE.AGRICULTURAL && !tile.destroyed && !tile.onFire) {
         const yieldAtFull = DEMOGRAPHICS_CONFIG.AGRICULTURAL_FOOD_YIELD[tile.density] || 0;
         const jobCapacity = tile.totalJobs || 0;
@@ -177,7 +177,7 @@ export class ResourceManager {
     const consumed = Math.min(this.stockpile.food, demand);
     const shortfall = Math.max(0, demand - consumed);
     this.stockpile.food -= consumed;
-    for (const tile of grid.tiles.flat()) {
+    for (const tile of grid.getActiveZonedTiles()) {
       if (tile.zone !== ZONE.RESIDENTIAL || tile.destroyed) continue;
       tile.populationLoss = shortfall > 0
         ? Math.ceil((tile.population || 0) * HAPPINESS_CONFIG.UNFED_OUTFLOW_PERCENT)
@@ -196,7 +196,7 @@ export class ResourceManager {
 
   consumeFuel(grid) {
     let demand = 0;
-    for (const tile of grid.tiles.flat()) {
+    for (const tile of grid.getActiveZonedTiles()) {
       if (tile.destroyed || tile.zone === ZONE.NONE) continue;
       const perTile = FUEL_CONFIG.PER_TILE[tile.zone] || 0;
       demand += perTile * UtilityManager.getTileOccupancyRatio(tile);
@@ -208,7 +208,7 @@ export class ResourceManager {
   }
 
   getCrimePenalty(grid) {
-    return grid.tiles.flat().reduce((sum, tile) => sum + (tile.crime || 0), 0) * HAPPINESS_CONFIG.CRIME_POINT_PENALTY;
+    return Array.from(grid.getActiveZonedTiles()).reduce((sum, tile) => sum + (tile.crime || 0), 0) * HAPPINESS_CONFIG.CRIME_POINT_PENALTY;
   }
 
   calculateHappiness(grid, stats, goodsRatio, hasFoodShortfall) {
@@ -217,7 +217,7 @@ export class ResourceManager {
       ? (HAPPINESS_CONFIG.TAX_NEUTRAL_RATE - taxRate) * HAPPINESS_CONFIG.LOW_TAX_BONUS_PER_POINT
       : -(taxRate - HAPPINESS_CONFIG.TAX_NEUTRAL_RATE) * HAPPINESS_CONFIG.TAX_PENALTY_PER_POINT;
     const employmentBonus = Math.min(1, Math.max(0, stats.employmentRate || 0)) * HAPPINESS_CONFIG.EMPLOYMENT_MAX_BONUS;
-    const residentialTiles = grid.tiles.flat().filter((tile) => tile.zone === ZONE.RESIDENTIAL && !tile.destroyed);
+    const residentialTiles = Array.from(grid.getActiveZonedTiles()).filter((tile) => tile.zone === ZONE.RESIDENTIAL && !tile.destroyed);
     const servicedResidential = residentialTiles.filter((tile) => (
       !tile.shortfall.power && !tile.shortfall.water && !tile.shortfall.sewage
     )).length;

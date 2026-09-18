@@ -143,6 +143,7 @@ export function deserializeGame(document) {
     if (!tile || tile.producer) throw new Error('Producer position collision');
     tile.producer = producer;
   }
+  grid.rebuildActiveTileSets();
 
   return {
     grid,

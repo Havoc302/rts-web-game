@@ -3,28 +3,27 @@ import { RoadNetwork } from './RoadNetwork.js';
 import { CoverageManager } from './CoverageManager.js';
 
 export class ServiceManager {
+  static previousEmergencyCoverage = new WeakMap();
+
   static updateServices(grid, totalPopulation, employmentRate = 1.0, workforce = null) {
-    // 1. Reset tile service distances
-    for (let y = 0; y < grid.height; y++) {
-      for (let x = 0; x < grid.width; x++) {
-        const tile = grid.tiles[y][x];
-        tile.serviceDistances = {
-          police: Infinity,
-          fire: Infinity,
-          hospital: Infinity,
-          school: Infinity,
-          library: Infinity,
-          cityHall: Infinity,
-        };
-        tile.services = {
-          police: false,
-          fire: false,
-          hospital: false,
-          school: false,
-          library: false,
-          cityHall: false,
-        };
-      }
+    // 1. Only zoned tiles consume or react to service coverage.
+    for (const tile of grid.getActiveZonedTiles()) {
+      tile.serviceDistances = {
+        police: Infinity,
+        fire: Infinity,
+        hospital: Infinity,
+        school: Infinity,
+        library: Infinity,
+        cityHall: Infinity,
+      };
+      tile.services = {
+        police: false,
+        fire: false,
+        hospital: false,
+        school: false,
+        library: false,
+        cityHall: false,
+      };
     }
 
     const serviceKeys = [
@@ -106,11 +105,9 @@ export class ServiceManager {
       // Compute road network distances for school, library, and City Hall.
       const { roadDistancesMap } = RoadNetwork.computeProducerDistances(grid, type);
 
-      // Apply road distances to tiles
-      for (let y = 0; y < grid.height; y++) {
-        for (let x = 0; x < grid.width; x++) {
-          const tile = grid.tiles[y][x];
-          const roadKey = `${x},${y}`;
+      // Apply road distances to zoned tiles.
+      for (const tile of grid.getActiveZonedTiles()) {
+          const roadKey = `${tile.x},${tile.y}`;
 
           let minDist = Infinity;
 
@@ -124,7 +121,7 @@ export class ServiceManager {
           }
 
           // Check adjacent roads if tile is not a road
-          const neighbors = grid.getNeighbors(x, y);
+          const neighbors = grid.getNeighbors(tile.x, tile.y);
           for (const n of neighbors) {
             const nKey = `${n.x},${n.y}`;
             if (roadDistancesMap.has(nKey)) {
@@ -141,21 +138,46 @@ export class ServiceManager {
             tile.serviceDistances[key] = Math.min(tile.serviceDistances[key] ?? Infinity, minDist);
             tile.services[key] = true;
           }
-        }
       }
     }
 
     CoverageManager.updateAll(grid);
+    const previousCoverage = this.previousEmergencyCoverage.get(grid) || new Map();
+    const currentCoverage = new Map();
     for (const [coverageKey, serviceKey] of [['police', 'police'], ['fire', 'fire'], ['medical', 'hospital']]) {
+      for (const location of previousCoverage.get(coverageKey) || []) {
+        const [x, y] = location.split(',').map(Number);
+        const tile = grid.getTile(x, y);
+        if (!tile) continue;
+        if (tile.services) tile.services[serviceKey] = false;
+        if (tile.serviceDistances) tile.serviceDistances[serviceKey] = Infinity;
+      }
       const coverage = CoverageManager.getCoverageSet(grid, coverageKey);
-      for (let y = 0; y < grid.height; y++) {
-        for (let x = 0; x < grid.width; x++) {
-          if (!coverage.has(`${x},${y}`)) continue;
-          const tile = grid.tiles[y][x];
-          tile.serviceDistances[serviceKey] = 0;
-          tile.services[serviceKey] = true;
-        }
+      currentCoverage.set(coverageKey, new Set(coverage));
+      for (const location of coverage) {
+        const [x, y] = location.split(',').map(Number);
+        const tile = grid.getTile(x, y);
+        if (!tile) continue;
+        if (!tile.serviceDistances) tile.serviceDistances = {
+          police: Infinity,
+          fire: Infinity,
+          hospital: Infinity,
+          school: Infinity,
+          library: Infinity,
+          cityHall: Infinity,
+        };
+        if (!tile.services) tile.services = {
+          police: false,
+          fire: false,
+          hospital: false,
+          school: false,
+          library: false,
+          cityHall: false,
+        };
+        tile.serviceDistances[serviceKey] = 0;
+        tile.services[serviceKey] = true;
       }
     }
+    this.previousEmergencyCoverage.set(grid, currentCoverage);
   }
 }

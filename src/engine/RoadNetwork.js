@@ -56,12 +56,9 @@ export class RoadNetwork {
 
     const connectedZonedTiles = [];
 
-    for (let y = 0; y < grid.height; y++) {
-      for (let x = 0; x < grid.width; x++) {
-        const tile = grid.getTile(x, y);
-        if (!tile || tile.zone === 'none') continue;
+    for (const tile of grid.getActiveZonedTiles()) {
 
-        const neighbors = grid.getNeighbors(x, y);
+        const neighbors = grid.getNeighbors(tile.x, tile.y);
         const producerMapForTile = new Map(); // producerId -> { distance, producer }
 
         for (const n of neighbors) {
@@ -90,7 +87,6 @@ export class RoadNetwork {
             allCandidatesSorted: sortedCandidates,
           });
         }
-      }
     }
 
     return { roadDistancesMap, connectedZonedTiles };

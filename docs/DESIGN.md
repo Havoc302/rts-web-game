@@ -6,7 +6,7 @@
 | Author | TBD |
 | Date | 2026-09-17 |
 | Status | Living draft (rev 7) |
-| Version covered | `APP_VERSION` `0.1.8` (`src/version.js`); current working tree |
+| Version covered | `APP_VERSION` `0.1.9` (`src/version.js`); current working tree |
 | Intended in-repo path | `docs/DESIGN.md` |
 | Repo | `g:\Repos\rts-web-game` (`origin`: `https://github.com/Havoc302/rts-web-game.git`) |
 | Working tree at inventory | Documentation is checked against the current implementation; uncommitted changes may exist. |
@@ -49,7 +49,7 @@ B&C2000 is a **single-player, client-only, paused-by-default city builder**. A s
 3. **Military production has no unit sink.** Arms and tanks are visible stockpiles, but barracks, vehicle depots, units, and world-map deployment are later phases.
 4. **Emergency coverage now uses cached direct/road/road-side sets.** Survey work remains incomplete.
 5. **Survey work is incomplete.** The survey overlay, per-tick cost deduction, cancellation rules, and treasury integration remain outstanding.
-6. **Canvas 2D on a 200×200 / 32px map** still requires performance measurement despite chunked terrain rendering and viewport culling.
+6. **Canvas 2D on a 200×200 / 32px map** uses active tile registries and pollution dirty gating to avoid stable full-grid simulation work, but still requires measurement on target mobile devices.
 7. **UI and renderer behavior has limited automated coverage.** The engine suite is broad, but browser interaction and visual behavior remain mostly manual checks.
 
 ---
@@ -80,7 +80,15 @@ B&C2000 is a **single-player, client-only, paused-by-default city builder**. A s
 Implemented and covered by the current test runner:
 
 - Pause-safe placement previews, treasury accounting, famine recovery, agriculture occupancy, resource consumption, fuel/refining, crime, fire, civic staffing, mobile input/layout, wind/solar/battery connectivity, version synchronization, and chunked terrain rendering.
-- Unified test execution through `npm test`; the current baseline is 24 passing test files.
+- Unified test execution through `npm test`; the current baseline is 25 passing test files.
+
+### Simulation performance
+
+`Grid` maintains active registries for zones, roads, fire candidates, active fires, and repairing tiles. Simulation, utility allocation, services, road-network zone discovery, resources, crime, fire processing, relocation, and road maintenance use those registries instead of repeatedly scanning all 40,000 tiles. Save import rebuilds the registries from restored tile state.
+
+Pollution uses a dirty/state-signature gate after utility allocation. It recomputes when terrain, industrial source state, sewage shortfalls, or relevant coal/sewage/water producer state changes; stable ticks reuse the last pollution field. Terrain-wide pollution work remains intentionally isolated to those dirty recalculations.
+
+The current automated suite validates registry maintenance and pollution gating. A real-device run at 1x, 2x, and 5x is still required to establish mobile timing targets.
 
 Outstanding implementation work:
 
@@ -998,11 +1006,11 @@ Phase 1 stays paused-by-default sandbox (0% tax, $25,000) for solo city-building
 
 28. **Overworld Biome Generation.** `BIOME_TYPES` (`PLAINS`, `HILLY`, `MOUNTAINOUS`, `SWAMP`) modify procedural terrain generation: Hilly/Mountainous scale rock clusters (+25% / +50%); Plains reduce rock clusters (-50%); Swamp reduces forest (-50%), increases lakes (4-6), and forces fork/merge rivers. `generateProceduralTerrain(biome)` accepts the biome directly.
 
-29. **Single-source versioning.** `src/version.js` (`APP_VERSION = '0.1.8'`) is the single source of truth for version strings. `package.json` version and cache-busting consumers derive from it. Verified by `tests/version-sync.test.js`.
+29. **Single-source versioning.** `src/version.js` (`APP_VERSION = '0.1.9'`) is the single source of truth for version strings. `package.json` version and cache-busting consumers derive from it. Verified by `tests/version-sync.test.js`.
 
 30. **Desktop Pan and Drag Painting.** Desktop left-drag with the Pan tool pans the camera; clicking without dragging selects the tile without opening the inspector. Inspect Tile opens the inspector. Left-drag painting is restricted to repeatable tools (roads, bridges, tunnels, zones, bulldoze); single-placement buildings and surveys do not drag-paint.
 
-31. **Unified Test Runner.** `tests/run-all.js` discovers and executes all 24 test suites across the engine and simulation. `npm test` runs this master suite.
+31. **Unified Test Runner.** `tests/run-all.js` discovers and executes all 25 test suites across the engine and simulation. `npm test` runs this master suite.
 
 ---
 

@@ -161,14 +161,9 @@ export class UtilityManager {
       p.usedCapacity = 0;
     });
 
-    for (let y = 0; y < grid.height; y++) {
-      for (let x = 0; x < grid.width; x++) {
-        const tile = grid.getTile(x, y);
-        if (tile && tile.zone !== 'none') {
-          tile.shortfall[utilityKey] = true;
-          tile.distanceToProducer[utilityKey] = Infinity;
-        }
-      }
+    for (const tile of grid.getActiveZonedTiles()) {
+      tile.shortfall[utilityKey] = true;
+      tile.distanceToProducer[utilityKey] = Infinity;
     }
 
     if (producers.length === 0) {

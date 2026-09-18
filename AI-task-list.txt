@@ -581,3 +581,17 @@ Validation:
 - `node tests/save-game.test.js` passes round-trip, malformed JSON, unsupported version, and running-save rejection checks.
 - `npm test` passes all 24 test files.
 - Browser download/file-picker smoke testing remains manual.
+
+Current task: Optimize mobile simulation ticks with active tile registries and pollution gating.
+
+- [done] Add Grid-maintained active registries for zoned tiles, roads, fire candidates, active fires, and repairing tiles; rebuild them after map generation and save import.
+- [done] Replace full-map simulation, utility, service, road-network, resource, crime, fire, and relocation work with active-tile iteration where only modified gameplay tiles matter.
+- [done] Gate pollution recomputation behind a state signature covering terrain, industrial density/fire state, sewage shortfalls, and relevant producer throughput/capacity/operational state.
+- [done] Preserve emergency coverage on non-zoned tiles while clearing only prior cached coverage when coverage shrinks.
+- [done] Add `tests/active-tile-registry.test.js` for registry maintenance and stable/dirty pollution behavior.
+- [done] Bump the patch version to 0.1.9 for the mobile simulation performance fix.
+
+Validation:
+- `npm test` passes all 25 test files.
+- Core simulation, resource, tax, fire, service, coverage, river pollution, and save-import regression tests pass.
+- Manual mobile smoke test remains required: run a minimal city for several minutes at 1x/2x/5x and confirm the browser remains responsive.

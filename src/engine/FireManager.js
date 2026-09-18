@@ -21,30 +21,24 @@ export class FireManager {
   static updateFires(grid, stats) {
     stats.fireInjuries = 0;
 
-    for (let y = 0; y < grid.height; y++) {
-      for (let x = 0; x < grid.width; x++) {
-        const tile = grid.tiles[y][x];
-        if (tile.destroyed || tile.onFire) continue;
-        if ((tile.fireRepair ?? 1) < 1) {
-          tile.fireRepair = Math.min(1, (tile.fireRepair || 0) + FIRE_CONFIG.REPAIR_PER_TICK);
-        }
-        if (!this.isFlammable(tile)) continue;
+    for (const tile of grid.repairingTiles) {
+      tile.fireRepair = Math.min(1, (tile.fireRepair || 0) + FIRE_CONFIG.REPAIR_PER_TICK);
+      if (tile.fireRepair >= 1) grid.repairingTiles.delete(tile);
+    }
 
-        const chance = this.getIgnitionChance(tile);
-        if (chance > 0 && Math.random() < chance) {
-          tile.onFire = true;
-          tile.fireDamage = 0;
-        }
+    for (const tile of grid.getFireCandidateTiles()) {
+      if (tile.destroyed || tile.onFire || !this.isFlammable(tile)) continue;
+      const chance = this.getIgnitionChance(tile);
+      if (chance > 0 && Math.random() < chance) {
+        tile.onFire = true;
+        tile.fireDamage = 0;
+        grid.activeFireTiles.add(tile);
       }
     }
 
-    const burningTiles = [];
+    const burningTiles = Array.from(grid.getActiveFireTiles());
 
-    for (let y = 0; y < grid.height; y++) {
-      for (let x = 0; x < grid.width; x++) {
-        const tile = grid.tiles[y][x];
-        if (!tile.onFire) continue;
-        burningTiles.push(tile);
+    for (const tile of burningTiles) {
 
         if (tile.zone === ZONE.RESIDENTIAL && tile.population > 0) {
           const residentsToRelocate = Math.ceil(
@@ -65,7 +59,11 @@ export class FireManager {
           if (tile.fireDamage <= 0) {
             tile.onFire = false;
             tile.fireDamage = 0;
-            if (damageBefore > 0) tile.fireRepair = 0;
+            grid.activeFireTiles.delete(tile);
+            if (damageBefore > 0) {
+              tile.fireRepair = 0;
+              grid.repairingTiles.add(tile);
+            }
             continue;
           }
         }
@@ -76,13 +74,13 @@ export class FireManager {
             const remainingResidents = Math.max(0, tile.population - (tile.fireDisplacedPopulation || 0));
             stats.displacedPopulation = (stats.displacedPopulation || 0) + remainingResidents;
           }
-          grid.bulldoze(x, y);
+          grid.bulldoze(tile.x, tile.y);
           tile.destroyed = true;
           tile.onFire = false;
           tile.fireDamage = 0;
           tile.fireRepair = 1;
+          grid.activeFireTiles.delete(tile);
         }
-      }
     }
 
     for (const tile of burningTiles) {
@@ -93,6 +91,7 @@ export class FireManager {
         if (Math.random() < FIRE_CONFIG.SPREAD_CHANCE_PER_TICK) {
           neighbor.onFire = true;
           neighbor.fireDamage = 0;
+          grid.activeFireTiles.add(neighbor);
         }
       }
     }
