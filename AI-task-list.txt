@@ -657,3 +657,37 @@ Current task: Reduce header clutter and correct passive renewable warnings.
 Validation:
 - Inspector status and wind/solar regression tests pass.
 - `npm test` passes all 27 test files.
+
+Current task: Profile and eliminate remaining mobile tick stalls.
+
+Goal: A 200x200 city must remain responsive on mobile. Work in the stages below, mark each stage `[done]` only after its stated check passes, and stop after any failing check to repair that stage before continuing.
+
+Stage 1 - Establish measurements:
+- [ ] Add optional per-stage timing to `Simulation.tick()` behind a debug flag or explicit test helper. Measure prepare, stats-before, utilities, pollution, services, crime, fire, resources, stats-after, and growth separately.
+- [ ] Extend `tests/small-town-soak.test.js` with a 200x200 minimal-town fixture matching the user layout: 20% tax; upstream Water Pump; downstream Sewage Plant; battery + adjacent Windmill; roads; R/C/I/A zones. Run 50 ticks with controlled randomness and assert finite/bounded state only. Do not add machine-specific timing thresholds yet.
+- [ ] Run the soak fixture locally and record the slowest stage(s) in this file before optimizing them.
+
+Stage 2 - Stop repeated service work:
+- [ ] Make `ServiceManager.updateServices()` skip coverage/assignment work unless service buildings, road topology, staffing, operational state, or service budgets changed. Keep staffing/running-cost updates correct when population or workforce changes.
+- [ ] Replace transient coordinate-string handling in service coverage with tile references or numeric tile IDs where it is a measured bottleneck.
+- [ ] Check: service, coverage, clinic, and 200x200 soak tests pass.
+
+Stage 3 - Track pollution deltas:
+- [ ] Replace full-grid pollution reset/aggregate work with a tracked set of polluted/water-polluted tiles. Clear and recompute only prior affected tiles plus current source radii when `pollutionDirty` is true.
+- [ ] Keep river pollution, contaminated Water Pump behavior, forest absorption, and pollution HUD totals equivalent to current behavior.
+- [ ] Check: river-pollution, simulation pollution checks, and 200x200 soak test pass.
+
+Stage 4 - Reduce stable-tick work:
+- [ ] Cache or incrementally maintain pollution average/max and road cost so `computeStats()` does not need full-grid scans twice every tick on a stable map.
+- [ ] Preserve exact stats after placement, bulldoze, fire destruction/repair, density changes, and save import.
+- [ ] Check: small-town soak and all accounting/tax/resource tests pass.
+
+Stage 5 - Browser rendering/UI budget:
+- [ ] Measure render-loop and HUD/inspector update time separately. Update HUD/inspector only when displayed values change or at a bounded mobile cadence; never delay simulation state.
+- [ ] Confirm terrain chunks and overlays do not force whole-map redraws after normal simulation ticks.
+- [ ] Check manually on the reporting phone at 1x, 2x, and 5x for at least 50 ticks.
+
+Stage 6 - Release verification:
+- [ ] Run `npm test`, editor diagnostics, and `git diff --check`.
+- [ ] Update `docs/DESIGN.md` with the measured bottleneck and final caching rules.
+- [ ] Bump the patch version only after the mobile reproduction is verified on-device.

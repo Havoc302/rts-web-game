@@ -80,7 +80,7 @@ B&C2000 is a **single-player, client-only, paused-by-default city builder**. A s
 Implemented and covered by the current test runner:
 
 - Pause-safe placement previews, treasury accounting, famine recovery, agriculture occupancy, resource consumption, fuel/refining, crime, fire, civic staffing, mobile input/layout, wind/solar/battery connectivity, version synchronization, and chunked terrain rendering.
-- Unified test execution through `npm test`; the current baseline is 25 passing test files.
+- Unified test execution through `npm test`; the current baseline is 27 passing test files.
 
 ### Simulation performance
 
@@ -88,7 +88,18 @@ Implemented and covered by the current test runner:
 
 Pollution uses a dirty/state-signature gate after utility allocation. It recomputes when terrain, industrial source state, sewage shortfalls, or relevant coal/sewage/water producer state changes; stable ticks reuse the last pollution field. Terrain-wide pollution work remains intentionally isolated to those dirty recalculations.
 
-The current automated suite validates registry maintenance and pollution gating. A real-device run at 1x, 2x, and 5x is still required to establish mobile timing targets.
+The current automated suite validates registry maintenance, pollution gating, a 50-tick small-town soak scenario, and Inspector status rules. A real-device run at 1x, 2x, and 5x is still required to establish mobile timing targets.
+
+### Mobile Performance Plan
+
+Do not make another broad performance refactor without timing evidence. The next pass instruments `Simulation.tick()` by stage and adds a deterministic 200x200 reproduction based on the reported small town. Optimize only the measured bottleneck in independently validated stages:
+
+1. Cache service assignment/coverage work when its inputs are unchanged.
+2. Track polluted and water-polluted tiles so pollution recalculation clears and recomputes only affected areas.
+3. Incrementally maintain stable-map aggregates rather than rescanning the full grid twice per tick.
+4. Measure and bound browser render, HUD, and inspector work separately from simulation.
+
+Correctness remains the constraint: river direction, utility shortfalls, fire repair/destruction, population growth, save import, and HUD totals must remain equivalent after every optimization. The staged implementation checklist and validation commands live in `AI-task-list.txt`.
 
 Outstanding implementation work:
 
