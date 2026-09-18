@@ -6,7 +6,7 @@
 | Author | TBD |
 | Date | 2026-09-17 |
 | Status | Living draft (rev 7) |
-| Version covered | `APP_VERSION` `0.1.9` (`src/version.js`); current working tree |
+| Version covered | `APP_VERSION` `0.1.12` (`src/version.js`); current working tree |
 | Intended in-repo path | `docs/DESIGN.md` |
 | Repo | `g:\Repos\rts-web-game` (`origin`: `https://github.com/Havoc302/rts-web-game.git`) |
 | Working tree at inventory | Documentation is checked against the current implementation; uncommitted changes may exist. |
@@ -326,7 +326,7 @@ Resource/factory producers are explicitly categorized for staffing. Utility prod
 
 Crime (`CrimeManager`): decay 1/tick; spawn chance `0.05 + jobScarcity * 2.5` on a sample of up to 15 **R/C/I** tiles (agriculture excluded); 85% police suppression; +2 per event, cap 10; diffusion to unpoliced R/C/I neighbors above 4. Tax loss 5% per crime point, cap 50%. Growth penalty −2 at crime ≥ 3.
 
-Fire (`FireManager`): agricultural occupancy participates in ignition and spread. Forest 0.01%/tick. Burning homes relocate 50%/tick; 5 injuries/tile/tick; +10 damage/tick; destroy at 100 via `grid.bulldoze` + `destroyed`. Suppression from the nearest operational fire station is applied before damage growth. Roads, bridges, tunnels, water, and uninhabited flat tiles are not flammable; inhabited zones, producers, forests, and mountains can burn.
+Fire (`FireManager`): agricultural occupancy participates in ignition and spread. Forests ignite at 0.001%/tick and spread to each adjacent forest at 1%/tick. Each wildfire has one 0.1% chance, resolved when it begins, to create one injury; it never creates additional injuries while burning. Burning inhabited zones and producers create 5 injuries/tile/tick. Burning homes relocate 50%/tick; +10 damage/tick; destroy at 100 via `grid.bulldoze` + `destroyed`. A burnt-out forest becomes non-flammable and cannot spread further. Suppression from the nearest operational fire station is applied before damage growth. Roads, bridges, tunnels, water, mountains, and uninhabited flat tiles are not flammable.
 
 The realistic fire model is implemented: roads, bridges, tunnels, water, mountains, and uninhabited flat tiles do not burn; forests, producers, and inhabited zones can ignite and receive spread. Firefighter effectiveness remains a later balance pass.
 
@@ -1006,7 +1006,7 @@ Phase 1 stays paused-by-default sandbox (0% tax, $25,000) for solo city-building
 
 28. **Overworld Biome Generation.** `BIOME_TYPES` (`PLAINS`, `HILLY`, `MOUNTAINOUS`, `SWAMP`) modify procedural terrain generation: Hilly/Mountainous scale rock clusters (+25% / +50%); Plains reduce rock clusters (-50%); Swamp reduces forest (-50%), increases lakes (4-6), and forces fork/merge rivers. `generateProceduralTerrain(biome)` accepts the biome directly.
 
-29. **Single-source versioning.** `src/version.js` (`APP_VERSION = '0.1.9'`) is the single source of truth for version strings. `package.json` version and cache-busting consumers derive from it. Verified by `tests/version-sync.test.js`.
+29. **Single-source versioning.** `src/version.js` (`APP_VERSION = '0.1.12'`) is the single source of truth for version strings. `package.json` version and cache-busting consumers derive from it. Verified by `tests/version-sync.test.js`.
 
 30. **Desktop Pan and Drag Painting.** Desktop left-drag with the Pan tool pans the camera; clicking without dragging selects the tile without opening the inspector. Inspect Tile opens the inspector. Left-drag painting is restricted to repeatable tools (roads, bridges, tunnels, zones, bulldoze); single-placement buildings and surveys do not drag-paint.
 

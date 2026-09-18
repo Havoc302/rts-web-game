@@ -595,3 +595,22 @@ Validation:
 - `npm test` passes all 25 test files.
 - Core simulation, resource, tax, fire, service, coverage, river pollution, and save-import regression tests pass.
 - Manual mobile smoke test remains required: run a minimal city for several minutes at 1x/2x/5x and confirm the browser remains responsive.
+
+Current task: Prevent runaway wilderness fires from freezing mobile browsers.
+
+- [done] Root cause: forest fires spread to every adjacent forest at the same 15% rate as urban fires, creating thousands of active fires and 5 hospital injuries per wilderness tile.
+- [done] Add a dedicated 0.5% forest-to-forest spread rate while retaining the existing 15% urban/structure spread rate.
+- [done] Count fire injuries only for burning inhabited zones and producer tiles, not uninhabited forests.
+- [done] Add a regression proving uninhabited forest fires create no hospital demand.
+- [done] Bump the patch version to 0.1.10.
+
+Validation:
+- `node tests/fire-repair.test.js` passes.
+- `npm test` passes all 25 test files.
+
+Current task: Correct wilderness fire injury and spread balance.
+
+- [done] Set forest ignition to 0.001% per tile per tick and forest-to-forest spread to 1% per adjacent tile per tick.
+- [done] Give each wildfire one 0.1% chance to cause one injury for its whole burn duration, rather than rolling a new injury chance each tick; inhabited zones and producer tiles retain their existing injury behavior.
+- [done] Confirm burnt-out forest tiles become non-flammable and cannot spread fire further.
+- [done] Bump the patch version to 0.1.12.

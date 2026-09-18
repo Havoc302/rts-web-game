@@ -32,6 +32,7 @@ export class FireManager {
       if (chance > 0 && Math.random() < chance) {
         tile.onFire = true;
         tile.fireDamage = 0;
+        if (tile.terrain === TERRAIN.FOREST) tile.forestFireInjury = null;
         grid.activeFireTiles.add(tile);
       }
     }
@@ -48,7 +49,14 @@ export class FireManager {
           stats.displacedPopulation = (stats.displacedPopulation || 0) + residentsToRelocate;
         }
 
-        stats.fireInjuries += FIRE_CONFIG.INJURIES_PER_BURNING_TILE;
+        if (tile.terrain === TERRAIN.FOREST) {
+          if (tile.forestFireInjury == null) {
+            tile.forestFireInjury = Math.random() < FIRE_CONFIG.FOREST_FIRE_INJURY_CHANCE;
+          }
+          if (tile.forestFireInjury) stats.fireInjuries += 1;
+        } else if (tile.zone !== ZONE.NONE || tile.producer) {
+          stats.fireInjuries += FIRE_CONFIG.INJURIES_PER_BURNING_TILE;
+        }
 
         const station = this.findNearestStation(grid, tile);
         if (station) {
@@ -88,9 +96,13 @@ export class FireManager {
       for (const neighbor of grid.getNeighbors8(tile.x, tile.y)) {
         if (neighbor.onFire || neighbor.destroyed) continue;
         if (!this.isFlammable(neighbor)) continue;
-        if (Math.random() < FIRE_CONFIG.SPREAD_CHANCE_PER_TICK) {
+        const spreadChance = tile.terrain === TERRAIN.FOREST && neighbor.terrain === TERRAIN.FOREST
+          ? FIRE_CONFIG.FOREST_SPREAD_CHANCE_PER_TICK
+          : FIRE_CONFIG.SPREAD_CHANCE_PER_TICK;
+        if (Math.random() < spreadChance) {
           neighbor.onFire = true;
           neighbor.fireDamage = 0;
+          if (neighbor.terrain === TERRAIN.FOREST) neighbor.forestFireInjury = null;
           grid.activeFireTiles.add(neighbor);
         }
       }

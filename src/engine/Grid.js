@@ -140,6 +140,7 @@ export class Grid {
       onFire: false,
       fireDamage: 0,
       fireRepair: 1,
+      forestFireInjury: null,
       destroyed: false,
     };
   }

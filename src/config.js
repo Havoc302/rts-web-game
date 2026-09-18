@@ -710,7 +710,7 @@ export const MEDICAL_CONFIG = {
 
 export const FIRE_CONFIG = {
   BASE_IGNITION_CHANCE: 0.0001,           // Fixed standalone infrastructure chance: 0.01% per tick
-  FOREST_IGNITION_CHANCE: 0.0001,         // Fixed forest ignition chance: 0.01% per tick
+  FOREST_IGNITION_CHANCE: 0.00001,        // Fixed forest ignition chance: 0.001% per tick
   MAX_IGNITION_CHANCE_NON_INDUSTRIAL: 0.01, // Maximum occupied tile risk (1% per tick)
   MAX_IGNITION_CHANCE_INDUSTRIAL: 0.02,   // Maximum occupied industrial tile risk (2% per tick)
   HIGH_POLLUTION_IGNITION_THRESHOLD: 5,   // Pollution level at which ignition becomes more likely
@@ -719,6 +719,8 @@ export const FIRE_CONFIG = {
   DAMAGE_PER_TICK: 10,                    // Fire damage accumulated per tick (10 ticks to reach 100)
   MAX_DAMAGE: 100,                         // Damage threshold that destroys the burning building
   SPREAD_CHANCE_PER_TICK: 0.15,           // Chance to ignite an adjacent non-dirt/road tile per tick
+  FOREST_SPREAD_CHANCE_PER_TICK: 0.01,    // Natural wildfire spread chance: 1% per adjacent forest tile per tick
+  FOREST_FIRE_INJURY_CHANCE: 0.001,       // One-time 0.1% chance a wildfire causes one injury
   INJURIES_PER_BURNING_TILE: 5,           // Burn trauma patients added to hospital demand per active fire tick
   BASE_SUPPRESSION_POWER: 55,             // Suppression subtracted from fire damage per tick when a station covers the tile
   MOUNTAIN_IGNITION_CHANCE: 0.0001,       // Mountains hold fuel and can ignite

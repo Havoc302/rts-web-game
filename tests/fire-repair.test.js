@@ -17,6 +17,29 @@ import { FIRE_CONFIG, PRODUCER_TYPE, TERRAIN, ZONE } from '../src/config.js';
 }
 
 {
+  const grid = new Grid(8, 8, 1);
+  for (const row of grid.tiles) for (const tile of row) tile.terrain = TERRAIN.FLAT;
+  const forest = grid.getTile(3, 3);
+  forest.terrain = TERRAIN.FOREST;
+  forest.onFire = true;
+  grid.rebuildActiveTileSets();
+
+  const stats = { fireInjuries: 0, displacedPopulation: 0 };
+  const previousRandom = Math.random;
+  Math.random = () => 0;
+  try {
+    FireManager.updateFires(grid, stats);
+    assert.strictEqual(stats.fireInjuries, 1, 'A wildfire injury should contribute one patient');
+    assert.strictEqual(forest.forestFireInjury, true, 'Wildfire injury chance should resolve once per fire');
+    stats.fireInjuries = 0;
+    FireManager.updateFires(grid, stats);
+    assert.strictEqual(stats.fireInjuries, 1, 'A wildfire should not create additional injuries on later ticks');
+  } finally {
+    Math.random = previousRandom;
+  }
+}
+
+{
   const grid = new Grid(10, 10, 1);
   for (const row of grid.tiles) for (const tile of row) tile.terrain = TERRAIN.FLAT;
   grid.placeProducer(1, 1, PRODUCER_TYPE.POWER_PLANT, 100);
