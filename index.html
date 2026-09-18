@@ -129,55 +129,6 @@
           <span class="stat-icon-text">😊</span>
           <span class="value" id="stat-happiness">50</span>
         </div>
-        <div class="stat-item resource-ticker" title="Stockpiles">
-          <svg class="stat-icon"><use href="#hud-stockpile"/></svg>
-          <span class="resource-values">
-            <span class="stock-chip" title="Food">
-              <svg class="stat-icon stock-icon"><use href="#hud-food"/></svg>
-              <span id="stat-food">0</span>
-            </span>
-            <span class="stock-chip" title="Coal">
-              <svg class="stat-icon stock-icon"><use href="#hud-coal"/></svg>
-              <span id="stat-coal">0</span>
-            </span>
-            <span class="stock-chip" title="Iron">
-              <svg class="stat-icon stock-icon"><use href="#hud-iron"/></svg>
-              <span id="stat-iron">0</span>
-            </span>
-            <span class="stock-chip" title="Bauxite">
-              <svg class="stat-icon stock-icon"><use href="#hud-bauxite"/></svg>
-              <span id="stat-bauxite">0</span>
-            </span>
-            <span class="stock-chip" title="Iron bars">
-              <span class="stock-label">Fe</span>
-              <span id="stat-iron-bar">0</span>
-            </span>
-            <span class="stock-chip" title="Bauxite bars">
-              <span class="stock-label">Al</span>
-              <span id="stat-bauxite-bar">0</span>
-            </span>
-            <span class="stock-chip" title="Oil">
-              <span class="stock-label">Oil</span>
-              <span id="stat-oil">0</span>
-            </span>
-            <span class="stock-chip" title="Fuel">
-              <span class="stock-label">Fuel</span>
-              <span id="stat-fuel">0</span>
-            </span>
-            <span class="stock-chip" title="Goods">
-              <svg class="stat-icon stock-icon"><use href="#hud-goods"/></svg>
-              <span id="stat-goods">0</span>
-            </span>
-            <span class="stock-chip" title="Arms">
-              <span class="stock-label">Arms</span>
-              <span id="stat-arms">0</span>
-            </span>
-            <span class="stock-chip" title="Tanks">
-              <span class="stock-label">Tanks</span>
-              <span id="stat-tanks">0</span>
-            </span>
-          </span>
-        </div>
         <div class="stat-item tax-control" title="Tax Rate">
           <svg class="stat-icon"><use href="#hud-tax"/></svg>
           <input type="range" id="tax-slider" min="0" max="100" value="0" step="5" />
@@ -237,6 +188,12 @@
 
       <!-- Utilities HUD -->
       <div class="utility-hud glass">
+        <div class="utility-hud-tabs" role="tablist" aria-label="City information">
+          <button class="utility-hud-tab-button active" type="button" data-hud-tab="utilities">Utilities</button>
+          <button class="utility-hud-tab-button" type="button" data-hud-tab="storage">Storage</button>
+          <button class="utility-hud-tab-button" type="button" data-hud-tab="budgets">Budgets</button>
+        </div>
+        <section class="utility-hud-tab active" data-hud-panel="utilities">
         <h3>Utility Demand & Capacity</h3>
         <div class="utility-meter">
           <div class="meter-header">
@@ -286,6 +243,24 @@
           <div class="info-row"><span class="label">School-age:</span><span class="val" id="stat-school-age">0</span></div>
           <div class="info-row"><span class="label">Retirees:</span><span class="val" id="stat-retirees">0</span></div>
         </div>
+        </section>
+        <section class="utility-hud-tab" data-hud-panel="storage">
+          <h3>Storage</h3>
+          <div class="storage-grid">
+            <div class="storage-item"><span>Food</span><strong id="stat-food">0</strong></div>
+            <div class="storage-item"><span>Coal</span><strong id="stat-coal">0</strong></div>
+            <div class="storage-item"><span>Iron Ore</span><strong id="stat-iron">0</strong></div>
+            <div class="storage-item"><span>Bauxite</span><strong id="stat-bauxite">0</strong></div>
+            <div class="storage-item"><span>Iron Bars</span><strong id="stat-iron-bar">0</strong></div>
+            <div class="storage-item"><span>Bauxite Bars</span><strong id="stat-bauxite-bar">0</strong></div>
+            <div class="storage-item"><span>Oil</span><strong id="stat-oil">0</strong></div>
+            <div class="storage-item"><span>Fuel</span><strong id="stat-fuel">0</strong></div>
+            <div class="storage-item"><span>Goods</span><strong id="stat-goods">0</strong></div>
+            <div class="storage-item"><span>Arms</span><strong id="stat-arms">0</strong></div>
+            <div class="storage-item"><span>Tanks</span><strong id="stat-tanks">0</strong></div>
+          </div>
+        </section>
+        <section class="utility-hud-tab" data-hud-panel="budgets">
         <div class="service-budgets">
           <h3>Service Budgets</h3>
           <label>Police <input type="range" min="0" max="100" step="5" value="100" data-service-budget="police_station"><span id="police_station-budget-value">100%</span></label>
@@ -295,6 +270,7 @@
           <label>Library <input type="range" min="0" max="100" step="5" value="100" data-service-budget="library"><span id="library-budget-value">100%</span></label>
           <label>Pensions <input type="range" min="0" max="100" step="5" value="100" id="pension-budget-slider"><span id="pension-budget-value">100%</span></label>
         </div>
+        </section>
       </div>
 
       <!-- Left Tools Drawer -->

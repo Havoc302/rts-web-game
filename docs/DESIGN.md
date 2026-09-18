@@ -6,7 +6,7 @@
 | Author | TBD |
 | Date | 2026-09-17 |
 | Status | Living draft (rev 7) |
-| Version covered | `APP_VERSION` `0.1.15` (`src/version.js`); current working tree |
+| Version covered | `APP_VERSION` `0.1.16` (`src/version.js`); current working tree |
 | Intended in-repo path | `docs/DESIGN.md` |
 | Repo | `g:\Repos\rts-web-game` (`origin`: `https://github.com/Havoc302/rts-web-game.git`) |
 | Working tree at inventory | Documentation is checked against the current implementation; uncommitted changes may exist. |
@@ -346,7 +346,8 @@ Happiness (`HAPPINESS_CONFIG`) is a 0–100 city score starting at 50, combining
 
 `index.html` + `style.css`: glass panels, Inter + JetBrains Mono, SVG HUD sprites.
 
-- Top bar: pop, treasury, income, service cost (includes pensions), road cost, jobs available, employment %, stockpile chips for food, coal, iron, bauxite, bars, oil, fuel, goods, arms, and tanks, tax slider, tick, clock.
+- Top bar: pop, treasury, income, service cost (includes pensions), road cost, jobs available, employment %, happiness, tax slider, tick, and clock. Stockpiles live in the right HUD's Storage tab.
+- Right HUD tabs: Utility Demand & Capacity plus demographics, Storage for all stockpiles, and Service Budgets.
 - Overlay picker: Normal, Power, Water, Sewage, Pollution, Crime, Police, Fire, Hospital.
 - Utility HUD: demand/capacity meters, hospital patients, pollution avg/max, demographics, service + pension budget sliders.
 - Tool drawer groups: General, Transport, Zoning, Utility Producers, Production, Civic, Exploration.
@@ -997,7 +998,7 @@ Phase 1 stays paused-by-default sandbox (0% tax, $25,000) for solo city-building
 
 28. **Overworld Biome Generation.** `BIOME_TYPES` (`PLAINS`, `HILLY`, `MOUNTAINOUS`, `SWAMP`) modify procedural terrain generation: Hilly/Mountainous scale rock clusters (+25% / +50%); Plains reduce rock clusters (-50%); Swamp reduces forest (-50%), increases lakes (4-6), and forces fork/merge rivers. `generateProceduralTerrain(biome)` accepts the biome directly.
 
-29. **Single-source versioning.** `src/version.js` (`APP_VERSION = '0.1.15'`) is the single source of truth for version strings. `package.json` version and cache-busting consumers derive from it. Verified by `tests/version-sync.test.js`.
+29. **Single-source versioning.** `src/version.js` (`APP_VERSION = '0.1.16'`) is the single source of truth for version strings. `package.json` version and cache-busting consumers derive from it. Verified by `tests/version-sync.test.js`.
 
 30. **Desktop Pan and Drag Painting.** Desktop left-drag with the Pan tool pans the camera; clicking without dragging selects the tile without opening the inspector. Inspect Tile opens the inspector. Left-drag painting is restricted to repeatable tools (roads, bridges, tunnels, zones, bulldoze); single-placement buildings and surveys do not drag-paint.
 

@@ -646,3 +646,14 @@ Current task: Fix passive renewable status in the Tile Inspector.
 
 Validation:
 - `npm test` passes all 27 test files.
+
+Current task: Reduce header clutter and correct passive renewable warnings.
+
+- [done] Suppress the obsolete `Needs Utilities!` producer-header warning for passive Windmills and Solar Panels.
+- [done] Add tabbed right-HUD views: Utility Demand & Capacity, Storage, and Service Budgets.
+- [done] Move all stockpile values from the top header to the Storage tab without changing the existing HUD update IDs.
+- [done] Bump the patch version to 0.1.16.
+
+Validation:
+- Inspector status and wind/solar regression tests pass.
+- `npm test` passes all 27 test files.

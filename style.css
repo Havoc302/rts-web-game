@@ -317,6 +317,51 @@ body {
   letter-spacing: 0.05em;
 }
 
+.utility-hud-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--panel-border);
+  margin: -4px -4px 12px;
+}
+
+.utility-hud-tab-button {
+  flex: 1;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font: 600 0.68rem var(--font-mono);
+  letter-spacing: 0;
+  padding: 8px 4px;
+}
+
+.utility-hud-tab-button.active {
+  border-bottom-color: var(--accent);
+  color: var(--text-main);
+}
+
+.utility-hud-tab { display: none; }
+.utility-hud-tab.active { display: block; }
+
+.storage-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.storage-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 7px;
+  border: 1px solid var(--panel-border);
+  background: rgba(255, 255, 255, 0.04);
+  font: 0.7rem var(--font-mono);
+}
+
+.storage-item span { color: var(--text-muted); }
+.storage-item strong { color: var(--text-main); }
+
 .utility-meter {
   margin-bottom: 10px;
 }

@@ -87,6 +87,15 @@ class GameApp {
       });
     });
 
+    document.querySelectorAll('[data-hud-tab]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('[data-hud-tab]').forEach((tab) => tab.classList.toggle('active', tab === btn));
+        document.querySelectorAll('.utility-hud-tab').forEach((panel) => {
+          panel.classList.toggle('active', panel.dataset.hudPanel === btn.dataset.hudTab);
+        });
+      });
+    });
+
     document.getElementById('btn-pause').addEventListener('click', () => this.setSpeed(0));
     document.getElementById('btn-speed-1').addEventListener('click', () => this.setSpeed(1));
     document.getElementById('btn-speed-2').addEventListener('click', () => this.setSpeed(2));
@@ -855,7 +864,7 @@ class GameApp {
       const roadStatusStr = isBatteryDependent
         ? connectionStatus.message ? ` (${connectionStatus.message})` : ''
         : prodHasRoad ? '' : ' ⚠️ (Needs Road!)';
-      const utilityStatusStr = PRODUCER_CONFIG[tile.producer.type]?.utilityUsage && !tile.producer.operational
+      const utilityStatusStr = !isBatteryDependent && PRODUCER_CONFIG[tile.producer.type]?.utilityUsage && !tile.producer.operational
         ? ' ⚠️ (Needs Utilities!)'
         : '';
       const contaminatedStr = tile.producer.contaminated ? ' ☣️ Contaminated!' : '';
