@@ -705,3 +705,61 @@ Stage 6 - Release verification:
 - [ ] Run `npm test`, editor diagnostics, and `git diff --check`.
 - [ ] Update `docs/DESIGN.md` with the measured bottleneck and final caching rules.
 - [ ] Bump the patch version only after the mobile reproduction is verified on-device.
+
+Current task: Rework standalone saves to seed-regenerated sparse state.
+
+- [ ] Replace full 40,000-tile JSON serialization with a compact versioned save document containing seed, map dimensions, biome, and terrain-generation version.
+- [ ] On load, regenerate the base map from the saved seed/dimensions/biome before applying saved state.
+- [ ] Serialize only tile overrides that differ from the regenerated base or represent player interaction: roads, bridges, tunnels, zones, density, growth, population/jobs, fire/damage/repair, pollution/crime, utility state, destroyed state, and survey progress/results.
+- [ ] Do not save hidden ore for untouched tiles; save discovered ore and surveyed no-deposit tiles so survey knowledge is preserved.
+- [ ] Save all producers and mutable producer state separately, including IDs, capacity, storage, operational state, utility counters, staffing, and active surveys.
+- [ ] Restore simulation state: paused tick/time, tax/pension settings, treasury, stockpiles, budgets, camera, overlay, active tool, and UI settings; always restore paused.
+- [ ] Add `GENERATION_VERSION` validation/migration so future terrain/ore algorithm changes do not silently corrupt old saves.
+- [ ] Replace pretty JSON download with compact JSON and add size/round-trip tests proving normal saves are far smaller than the current full-tile format.
+- [ ] Preserve compatibility with existing save version 1 through an explicit migration or reject it with a clear user-facing error.
+
+Validation:
+- [ ] Round-trip a modified and surveyed small town through seed regeneration and sparse overrides.
+- [ ] Verify untouched hidden ore is regenerated, while discovered ore and surveyed no-deposit tiles persist.
+- [ ] Verify a saved fire, utility state, stockpile, producer, camera, and paused simulation restore exactly.
+- [ ] Run `npm test`, diagnostics, and `git diff --check`.
+
+Current task: Add stacked global education tax bonuses from Schools and Universities.
+
+Design rule:
+- School demand is `round(population * 0.15)`.
+- University demand is `round(population * 0.05)`.
+- School capacity is staffed School jobs multiplied by `EDUCATION_CONFIG.STUDENT_CAPACITY_PER_JOB` (Libraries are decoupled from student capacity and growth scores, contributing strictly to public happiness).
+- University capacity is staffed University jobs multiplied by the same student-seat factor.
+- `schoolRatio = min(1, schoolCapacity / schoolDemand)` when demand is nonzero; otherwise zero.
+- `uniRatio = min(1, universityCapacity / universityDemand)` when demand is nonzero; otherwise zero.
+- Global zone tax multiplier is `1 + schoolRatio * 0.15 + uniRatio * 0.20`, applied to base residential/commercial/industrial/agricultural tax before crime tax loss.
+- Partial education coverage scales linearly. Education does not create residents or jobs; it only modifies tax yield.
+
+Implementation stages:
+
+Stage 1 - Configuration and service definition:
+- [ ] Add `UNIVERSITY: 'university'` to `SERVICE_TYPE` and `PRODUCER_TYPE` through the existing service spread.
+- [ ] Add `EDUCATION_CONFIG` with `SCHOOL_DEMAND_RATIO: 0.15`, `UNI_DEMAND_RATIO: 0.05`, `STUDENT_CAPACITY_PER_JOB: 20`, `MAX_SCHOOL_TAX_BONUS: 0.15`, and `MAX_UNI_TAX_BONUS: 0.20`.
+- [ ] Add `SERVICE_CONFIG[UNIVERSITY]` using the repo's pre-scaled money convention, explicit cost/running-cost values, utility usage, jobs, radius, population thresholds, and `category: 'service'`. Do not reintroduce `MONEY_MULTIPLIER`.
+- [ ] Add University to any service/building configuration maps that currently enumerate service types.
+
+Stage 2 - Simulation accounting:
+- [ ] Add `schoolDemand`, `universityDemand`, `schoolCapacity`, `universityCapacity`, and `educationTaxMultiplier` to `Simulation.stats` and reset them in `computeStats()`.
+- [ ] Sum staffed School and Library jobs for school capacity; sum staffed University jobs for university capacity. Count only operational/active service buildings according to existing service staffing rules.
+- [ ] Compute demand and capped fulfillment ratios from current population.
+- [ ] Apply `educationTaxMultiplier` to each zone's base tax before fire-repair, fuel, and crime-loss modifiers are applied; keep crime loss calculated after the education bonus.
+- [ ] Ensure zero population produces zero education demand and a neutral tax multiplier of `1.0`.
+
+Stage 3 - Service ownership and UI:
+- [ ] Make `ServiceManager` staff University using the existing service worker pool, budget, utility, running-cost, and coverage mechanisms.
+- [ ] Add a University button to the Civic Services toolbar with build info and cost.
+- [ ] Add education demand/capacity and tax multiplier details to the HUD or the Service Budgets/Education tab without re-cluttering the top bar.
+- [ ] Update the Tile Inspector/build info for University where service details are displayed.
+
+Stage 4 - Tests and validation:
+- [ ] Add a focused education test for zero population, no education, full School/Library coverage, full University coverage, and partial capacity ratios.
+- [ ] Assert the exact stack: no education `1.0`, school-only full coverage `1.15`, school + university full coverage `1.35`.
+- [ ] Assert tax revenue applies the multiplier before crime loss and does not alter population/jobs directly.
+- [ ] Run service, tax, income, small-town soak, and full `npm test` suites.
+- [ ] Run diagnostics and `git diff --check`; bump the patch/minor version only after all checks pass.

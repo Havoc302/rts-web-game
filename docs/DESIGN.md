@@ -44,7 +44,7 @@ B&C2000 is a **single-player, client-only, paused-by-default city builder**. A s
 
 ### Pain points
 
-1. **Standalone JSON save/load is implemented.** Saving is available only while paused and captures the full tile/producer/simulation state; importing always restores the game paused. Browser download/file-picker behavior remains a manual smoke test.
+1. **Standalone JSON save/load exists but needs compaction.** Saving is available only while paused and importing restores the game paused. The next persistence pass must regenerate the base map from `seed + dimensions + biome + generation version`, then apply sparse player/state overrides rather than serializing every tile.
 2. **`Simulation.tick` remains a large orchestrator.** Its pause/preview semantics are now explicit and tested, but named stage extraction is still outstanding.
 3. **Military production has no unit sink.** Arms and tanks are visible stockpiles, but barracks, vehicle depots, units, and world-map deployment are later phases.
 4. **Emergency coverage now uses cached direct/road/road-side sets.** Survey work remains incomplete.
@@ -106,6 +106,7 @@ Correctness remains the constraint: river direction, utility shortfalls, fire re
 Outstanding implementation work:
 
 - Browser-level validation of JSON save download/import.
+- Stacked education tax bonuses from School capacity (staffed Schools only) and University capacity. Ratios: 15% school demand and 5% university demand; full coverage gives +15% and +20% tax yield respectively, with linear partial coverage. Libraries are decoupled from student capacity and growth scores (`LIBRARY_DESIRABILITY_BONUS: 0`), contributing exclusively to public happiness.
 - Named tick-stage extraction and performance benchmarking on a populated 200×200 map.
 - Survey overlay, survey cost/cancellation, and treasury integration.
 - Dedicated happiness HUD display and stronger browser-level UI/touch validation.
@@ -337,6 +338,10 @@ Medical: patients from residents (retirees ×3, more if pensions underfunded), i
 - **Hospital:** Costs $6,000, scales across Light/Medium/High tiers (jobs 10/50/200, radius 10/50/200).
 - **Clinic:** Costs $2,000, fixed size (does not grow larger; light density only, max 5 jobs), serves up to 5,000 population, radius 10, provides patient capacity (jobs × 15) and full medical service coverage to nearby tiles.
 
+- **Library:** Costs $2,500, running cost $1 per job. Decoupled from education metrics and residential growth deltas (`LIBRARY_DESIRABILITY_BONUS: 0`); coverage feeds strictly into the global public happiness score calculation.
+- **School:** Costs $3,500, running cost $2 per job. Generates primary student capacity for school demand (`15%` of population), contributing up to a +15% stacked global tax bonus at 100% fulfillment.
+- **University:** Costs $12,000, running cost $8 per job. Generates higher-education capacity for university demand (`5%` of population), contributing up to a +20% stacked global tax bonus at 100% fulfillment.
+
 ### Resources, industry, happiness
 
 `ResourceManager` stockpile keys: `food, coal, oil, fuel, ironOre, bauxiteOre, ironBar, bauxiteBar, consumerGoods, arms, tanks`.
@@ -388,7 +393,7 @@ Node `assert` scripts; `package.json` `"test"` runs `tests/run-all.js`, which di
 | `small-town-soak.test.js` | Deterministic 50-tick mixed-zone town, upstream water intake, utility chain, bounded medical demand, and finite stats | Manual device performance remains necessary |
 | `demographics.test.js` | 40/40/20 jobs, split, pensions, retiree patients | — |
 
-**Still lightly tested:** `main.js` input and treasury wiring, `Renderer.js`, CSS/HTML, visual HUD behavior, browser touch interaction, JSON file download/import in a real browser, and performance on a full 200×200 city.
+**Still lightly tested:** `main.js` input and treasury wiring, `Renderer.js`, CSS/HTML, visual HUD behavior, browser touch interaction, JSON file download/import in a real browser, sparse-save size/compatibility, and performance on a full 200×200 city.
 
 ---
 
@@ -610,7 +615,7 @@ Rules:
 | Incomplete civilian resource loops | High | Key Decision 12 in Phase 1 |
 | Multi-year product mistaken for next-month PRs | High | Phase 1 = PRs 1–8b only; world map / Firebase / nukes are later slices |
 | Two halls on one city grid | High | Rejected; one city grid per civilisation |
-| Save/load browser workflow | Medium | Manual download/import smoke test; round-trip engine test exists |
+| Save/load format size and evolution | High | Regenerate seed base, apply sparse overrides, include generation version and migration tests |
 | Canvas 2D + world map + mobile | Medium | Chunked cache; world map is a simpler region renderer |
 | `config.js` kitchen sink | Medium | Keep through Phase 1; split combat/world later |
 | Leftover `POWER_PLANT`, `BASE_INCOME`, seed key, version drift | Low | Hygiene PRs |
