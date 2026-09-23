@@ -699,9 +699,9 @@ Stage 2 - Stop repeated service work:
 - [done] Check: service, coverage, clinic, and 200x200 soak tests pass.
 
 Stage 3 - Track pollution deltas:
-- [ ] Replace full-grid pollution reset/aggregate work with a tracked set of polluted/water-polluted tiles. Clear and recompute only prior affected tiles plus current source radii when `pollutionDirty` is true.
-- [ ] Keep river pollution, contaminated Water Pump behavior, forest absorption, and pollution HUD totals equivalent to current behavior.
-- [ ] Check: river-pollution, simulation pollution checks, and 200x200 soak test pass.
+- [done] Replace full-grid pollution reset/aggregate work with a tracked set of polluted/water-polluted tiles. Clear and recompute only prior affected tiles plus current source radii when `pollutionDirty` is true.
+- [done] Keep river pollution, contaminated Water Pump behavior, forest absorption, and pollution HUD totals equivalent to current behavior.
+- [done] Check: river-pollution, simulation pollution checks, and 200x200 soak test pass.
 
 Stage 4 - Reduce stable-tick work:
 - [ ] Cache or incrementally maintain pollution average/max and road cost so `computeStats()` does not need full-grid scans twice every tick on a stable map.

@@ -31,6 +31,8 @@ export class Grid {
     this.activeFireTiles = new Set();
     this.fireCandidateTiles = new Set();
     this.repairingTiles = new Set();
+    this.pollutedTiles = new Set();
+    this.pollutedWaterTiles = new Set();
     this.pollutionDirty = true;
     this.pollutionStateKey = null;
 
@@ -136,6 +138,8 @@ export class Grid {
       surveyProgress: 0,
       surveyRequired: 0,
       riverFlowDir: null,
+      isPolluted: false,
+      riverPollution: 0,
       crime: 0,
       onFire: false,
       fireDamage: 0,
@@ -160,6 +164,8 @@ export class Grid {
     this.activeFireTiles.clear();
     this.fireCandidateTiles.clear();
     this.repairingTiles.clear();
+    this.pollutedTiles = new Set();
+    this.pollutedWaterTiles = new Set();
     for (const row of this.tiles) {
       for (const tile of row) {
         if (tile.zone !== ZONE.NONE) this.activeZonedTiles.add(tile);
@@ -169,6 +175,8 @@ export class Grid {
           this.fireCandidateTiles.add(tile);
         }
         if ((tile.fireRepair ?? 1) < 1) this.repairingTiles.add(tile);
+        if (tile.pollution > 0) this.pollutedTiles.add(tile);
+        if (tile.isPolluted || tile.riverPollution > 0) this.pollutedWaterTiles.add(tile);
       }
     }
   }

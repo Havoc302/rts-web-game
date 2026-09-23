@@ -29,47 +29,45 @@ export class PollutionManager {
   }
 
   static computePollution(grid) {
-    // Step 1: Reset
-    for (let y = 0; y < grid.height; y++) {
-      for (let x = 0; x < grid.width; x++) {
-        grid.tiles[y][x].pollution = 0;
-      }
+    if (!grid.pollutedTiles) grid.pollutedTiles = new Set();
+    if (!grid.pollutedWaterTiles) grid.pollutedWaterTiles = new Set();
+
+    // Step 1: Reset prior affected tiles
+    for (const tile of grid.pollutedTiles) {
+      tile.pollution = 0;
     }
+    grid.pollutedTiles.clear();
+
     for (const p of grid.producers) {
       p.contaminated = false;
     }
 
     // Step 2: Source A — Industrial zone radius emission
-    for (let y = 0; y < grid.height; y++) {
-      for (let x = 0; x < grid.width; x++) {
-        const tile = grid.getTile(x, y);
-        if (!tile || tile.zone !== ZONE.INDUSTRIAL) continue;
+    for (const tile of grid.getActiveZonedTiles()) {
+      if (tile.zone !== ZONE.INDUSTRIAL) continue;
 
-        const radius = POLLUTION_CONFIG.INDUSTRIAL_RADIUS[tile.density] || POLLUTION_CONFIG.DEFAULT_INDUSTRIAL_RADIUS;
-        const emission = POLLUTION_CONFIG.INDUSTRIAL_EMISSION[tile.density] || POLLUTION_CONFIG.DEFAULT_INDUSTRIAL_EMISSION;
+      const radius = POLLUTION_CONFIG.INDUSTRIAL_RADIUS[tile.density] || POLLUTION_CONFIG.DEFAULT_INDUSTRIAL_RADIUS;
+      const emission = POLLUTION_CONFIG.INDUSTRIAL_EMISSION[tile.density] || POLLUTION_CONFIG.DEFAULT_INDUSTRIAL_EMISSION;
 
-        this.spreadPollution(grid, x, y, radius, emission);
-      }
+      this.spreadPollution(grid, tile.x, tile.y, radius, emission);
     }
 
     // Step 3: Source B — Sewage backup emission from shortfall-flagged tiles
-    for (let y = 0; y < grid.height; y++) {
-      for (let x = 0; x < grid.width; x++) {
-        const tile = grid.getTile(x, y);
-        if (!tile || tile.zone === ZONE.NONE) continue;
-        if (!tile.shortfall.sewage) continue;
+    for (const tile of grid.getActiveZonedTiles()) {
+      if (!tile.shortfall.sewage) continue;
 
-        this.spreadPollution(
-          grid, x, y,
-          POLLUTION_CONFIG.SEWAGE_BACKUP_RADIUS,
-          POLLUTION_CONFIG.SEWAGE_BACKUP_EMISSION
-        );
-      }
+      this.spreadPollution(
+        grid, tile.x, tile.y,
+        POLLUTION_CONFIG.SEWAGE_BACKUP_RADIUS,
+        POLLUTION_CONFIG.SEWAGE_BACKUP_EMISSION
+      );
     }
 
     // Step 3b: Source B2 — Coal power plant smokestack emission
-    for (const plant of grid.producers.filter((p) => p.type === PRODUCER_TYPE.COAL_PLANT)) {
-      this.spreadPollution(grid, plant.x, plant.y, COAL_CONFIG.RADIUS, COAL_CONFIG.EMISSION);
+    for (const plant of grid.producers) {
+      if (plant.type === PRODUCER_TYPE.COAL_PLANT) {
+        this.spreadPollution(grid, plant.x, plant.y, COAL_CONFIG.RADIUS, COAL_CONFIG.EMISSION);
+      }
     }
 
     // Step 4: Source C — River discharge contamination
@@ -93,28 +91,23 @@ export class PollutionManager {
       }
     }
 
-    // Step 5: Forest pollution absorption
-    for (let y = 0; y < grid.height; y++) {
-      for (let x = 0; x < grid.width; x++) {
-        const tile = grid.tiles[y][x];
-        if (tile.terrain === TERRAIN.FOREST && tile.pollution > 0) {
-          tile.pollution = Math.max(0, tile.pollution - FOREST_POLLUTION_ABSORPTION);
-        }
+    // Step 5: Forest pollution absorption (only check tiles that are currently polluted)
+    for (const tile of grid.pollutedTiles) {
+      if (tile.terrain === TERRAIN.FOREST && tile.pollution > 0) {
+        tile.pollution = Math.max(0, tile.pollution - FOREST_POLLUTION_ABSORPTION);
       }
     }
   }
 
   static computeWaterPollution(grid) {
-    // 1. Reset water pollution status
-    for (let y = 0; y < grid.height; y++) {
-      for (let x = 0; x < grid.width; x++) {
-        const tile = grid.tiles[y][x];
-        if (tile.terrain === TERRAIN.WATER) {
-          tile.isPolluted = false;
-          tile.riverPollution = 0;
-        }
-      }
+    if (!grid.pollutedWaterTiles) grid.pollutedWaterTiles = new Set();
+
+    // 1. Reset water pollution status of previously polluted water tiles
+    for (const tile of grid.pollutedWaterTiles) {
+      tile.isPolluted = false;
+      tile.riverPollution = 0;
     }
+    grid.pollutedWaterTiles.clear();
 
     // 2. Find sewage plants and their neighboring water tiles
     const sewagePlants = grid.producers.filter((p) => p.type === PRODUCER_TYPE.SEWAGE_PLANT);
@@ -123,8 +116,8 @@ export class PollutionManager {
     const sourceStrengths = new Map();
     const addSourceStrength = (tile, strength) => {
       if (strength <= 0) return;
-      const key = `${tile.x},${tile.y}`;
-      sourceStrengths.set(key, (sourceStrengths.get(key) || 0) + strength);
+      const key = tile.y * grid.width + tile.x;
+      sourceStrengths.set(key, { tile, strength: (sourceStrengths.get(key)?.strength || 0) + strength });
     };
 
     for (const plant of sewagePlants) {
@@ -140,11 +133,10 @@ export class PollutionManager {
 
     const queue = [];
     const visited = new Set();
-    for (const [key, strength] of sourceStrengths) {
-      const [x, y] = key.split(',').map(Number);
-      const tile = grid.getTile(x, y);
+    for (const [key, { tile, strength }] of sourceStrengths) {
       tile.riverPollution = strength;
       tile.isPolluted = true;
+      grid.pollutedWaterTiles.add(tile);
       visited.add(key);
       queue.push({ tile, strength });
     }
@@ -177,11 +169,12 @@ export class PollutionManager {
           : false;
 
         if (isDownstream) {
-          const neighborKey = `${neighbor.x},${neighbor.y}`;
+          const neighborKey = neighbor.y * grid.width + neighbor.x;
           if (visited.has(neighborKey)) continue;
           visited.add(neighborKey);
           neighbor.riverPollution = nextStrength;
           neighbor.isPolluted = true;
+          grid.pollutedWaterTiles.add(neighbor);
           queue.push({ tile: neighbor, strength: nextStrength });
         }
       }
@@ -189,6 +182,7 @@ export class PollutionManager {
   }
 
   static spreadPollution(grid, cx, cy, radius, emission) {
+    if (!grid.pollutedTiles) grid.pollutedTiles = new Set();
     const minY = Math.max(0, cy - radius);
     const maxY = Math.min(grid.height - 1, cy + radius);
     const minX = Math.max(0, cx - radius);
@@ -199,7 +193,11 @@ export class PollutionManager {
         const dist = Math.abs(x - cx) + Math.abs(y - cy);
         if (dist <= radius) {
           const amount = Math.max(0, emission - dist);
-          grid.tiles[y][x].pollution += amount;
+          if (amount > 0) {
+            const tile = grid.tiles[y][x];
+            tile.pollution += amount;
+            grid.pollutedTiles.add(tile);
+          }
         }
       }
     }
