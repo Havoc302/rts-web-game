@@ -6,26 +6,6 @@ export class ServiceManager {
   static previousEmergencyCoverage = new WeakMap();
 
   static updateServices(grid, totalPopulation, employmentRate = 1.0, workforce = null) {
-    // 1. Only zoned tiles consume or react to service coverage.
-    for (const tile of grid.getActiveZonedTiles()) {
-      tile.serviceDistances = {
-        police: Infinity,
-        fire: Infinity,
-        hospital: Infinity,
-        school: Infinity,
-        library: Infinity,
-        cityHall: Infinity,
-      };
-      tile.services = {
-        police: false,
-        fire: false,
-        hospital: false,
-        school: false,
-        library: false,
-        cityHall: false,
-      };
-    }
-
     const serviceKeys = [
       { type: SERVICE_TYPE.POLICE_STATION, key: 'police' },
       { type: SERVICE_TYPE.FIRE_STATION, key: 'fire' },
@@ -39,8 +19,9 @@ export class ServiceManager {
       ? Math.round(Math.max(0, totalPopulation) * DEMOGRAPHICS_CONFIG.WORKFORCE_RATE)
       : workforce;
     let availableWorkers = Math.max(0, Math.floor(workerPool));
+    let producerStateSignature = '';
 
-    for (const { type, key } of serviceKeys) {
+    for (const { type } of serviceKeys) {
       const config = SERVICE_CONFIG[type];
       if (!config) continue;
 
@@ -80,10 +61,10 @@ export class ServiceManager {
         prod.filledJobs = Math.min(budgetedJobs, availableWorkers);
         availableWorkers -= prod.filledJobs;
 
-        const fillRatio = prod.totalJobs > 0 ? prod.filledJobs / prod.totalJobs : 0;
         if (!prod.operational) {
           prod.effectiveRadius = 0;
           prod.runningCost = 0;
+          producerStateSignature += `${prod.id}:${prod.x},${prod.y}:0:0:0:${prod.budget};`;
           return;
         }
         const maxRadius = config.radius[density] || SERVICE_GLOBAL_CONFIG.DEFAULT_SERVICE_RADIUS;
@@ -98,66 +79,110 @@ export class ServiceManager {
         prod.runningCost = config.runningCostPerJob
           ? Math.ceil(prod.filledJobs * config.runningCostPerJob * demandFactor * budgetRatio)
           : Math.ceil(baseCost * staffingFactor * demandFactor * budgetRatio);
+
+        producerStateSignature += `${prod.id}:${prod.x},${prod.y}:1:${prod.filledJobs}:${prod.effectiveRadius}:${prod.budget};`;
       });
+    }
 
+    const cached = this.previousEmergencyCoverage.get(grid);
+    const coverageManagerDirty = Boolean(
+      CoverageManager.dirtyFlags.fire ||
+      CoverageManager.dirtyFlags.police ||
+      CoverageManager.dirtyFlags.medical
+    );
+    const needsCoverageUpdate = !cached ||
+      coverageManagerDirty ||
+      cached.coverageVersion !== grid.coverageVersion ||
+      cached.activeZonedTilesCount !== grid.activeZonedTiles.size ||
+      cached.producerStateSignature !== producerStateSignature;
+
+    if (!needsCoverageUpdate) {
+      return;
+    }
+
+    // Reset services on all active zoned tiles
+    for (const tile of grid.getActiveZonedTiles()) {
+      tile.serviceDistances = {
+        police: Infinity,
+        fire: Infinity,
+        hospital: Infinity,
+        school: Infinity,
+        library: Infinity,
+        cityHall: Infinity,
+      };
+      tile.services = {
+        police: false,
+        fire: false,
+        hospital: false,
+        school: false,
+        library: false,
+        cityHall: false,
+      };
+    }
+
+    // Clear previously covered tiles that might not be zoned tiles
+    if (cached?.coveredTiles) {
+      for (const [coverageKey, serviceKey] of [['police', 'police'], ['fire', 'fire'], ['medical', 'hospital']]) {
+        for (const tile of cached.coveredTiles[coverageKey] || []) {
+          if (tile.services) tile.services[serviceKey] = false;
+          if (tile.serviceDistances) tile.serviceDistances[serviceKey] = Infinity;
+        }
+      }
+    }
+
+    // Compute road network distances for school, library, and City Hall
+    for (const { type, key } of serviceKeys) {
       if (key === 'police' || key === 'fire' || key === 'hospital') continue;
+      const producers = grid.producers.filter((p) => p.type === type && p.operational);
+      if (producers.length === 0) continue;
 
-      // Compute road network distances for school, library, and City Hall.
       const { roadDistancesMap } = RoadNetwork.computeProducerDistances(grid, type);
 
-      // Apply road distances to zoned tiles.
       for (const tile of grid.getActiveZonedTiles()) {
-          const roadKey = `${tile.x},${tile.y}`;
+        const roadKey = `${tile.x},${tile.y}`;
+        let minDist = Infinity;
 
-          let minDist = Infinity;
+        // Check tile itself if it's a road
+        if (roadDistancesMap.has(roadKey)) {
+          for (const [pId, info] of roadDistancesMap.get(roadKey)) {
+            if (info.distance <= info.producer.effectiveRadius && info.distance < minDist) {
+              minDist = info.distance;
+            }
+          }
+        }
 
-          // Check tile itself if it's a road
-          if (roadDistancesMap.has(roadKey)) {
-            for (const [pId, info] of roadDistancesMap.get(roadKey)) {
-              if (info.distance <= info.producer.effectiveRadius && info.distance < minDist) {
-                minDist = info.distance;
+        // Check adjacent roads if tile is not a road
+        const neighbors = grid.getNeighbors(tile.x, tile.y);
+        for (const n of neighbors) {
+          const nKey = `${n.x},${n.y}`;
+          if (roadDistancesMap.has(nKey)) {
+            for (const [pId, info] of roadDistancesMap.get(nKey)) {
+              const distToTile = info.distance + 1;
+              if (info.distance <= info.producer.effectiveRadius && distToTile < minDist) {
+                minDist = distToTile;
               }
             }
           }
+        }
 
-          // Check adjacent roads if tile is not a road
-          const neighbors = grid.getNeighbors(tile.x, tile.y);
-          for (const n of neighbors) {
-            const nKey = `${n.x},${n.y}`;
-            if (roadDistancesMap.has(nKey)) {
-              for (const [pId, info] of roadDistancesMap.get(nKey)) {
-                const distToTile = info.distance + 1;
-                if (info.distance <= info.producer.effectiveRadius && distToTile < minDist) {
-                  minDist = distToTile;
-                }
-              }
-            }
-          }
-
-          if (minDist < Infinity) {
-            tile.serviceDistances[key] = Math.min(tile.serviceDistances[key] ?? Infinity, minDist);
-            tile.services[key] = true;
-          }
+        if (minDist < Infinity) {
+          tile.serviceDistances[key] = Math.min(tile.serviceDistances[key] ?? Infinity, minDist);
+          tile.services[key] = true;
+        }
       }
     }
 
     CoverageManager.updateAll(grid);
-    const previousCoverage = this.previousEmergencyCoverage.get(grid) || new Map();
-    const currentCoverage = new Map();
+    const newCoveredTiles = { police: [], fire: [], medical: [] };
     for (const [coverageKey, serviceKey] of [['police', 'police'], ['fire', 'fire'], ['medical', 'hospital']]) {
-      for (const location of previousCoverage.get(coverageKey) || []) {
-        const [x, y] = location.split(',').map(Number);
-        const tile = grid.getTile(x, y);
-        if (!tile) continue;
-        if (tile.services) tile.services[serviceKey] = false;
-        if (tile.serviceDistances) tile.serviceDistances[serviceKey] = Infinity;
-      }
       const coverage = CoverageManager.getCoverageSet(grid, coverageKey);
-      currentCoverage.set(coverageKey, new Set(coverage));
       for (const location of coverage) {
-        const [x, y] = location.split(',').map(Number);
+        const comma = location.indexOf(',');
+        const x = Number(location.slice(0, comma));
+        const y = Number(location.slice(comma + 1));
         const tile = grid.getTile(x, y);
         if (!tile) continue;
+        newCoveredTiles[coverageKey].push(tile);
         if (!tile.serviceDistances) tile.serviceDistances = {
           police: Infinity,
           fire: Infinity,
@@ -178,6 +203,12 @@ export class ServiceManager {
         tile.services[serviceKey] = true;
       }
     }
-    this.previousEmergencyCoverage.set(grid, currentCoverage);
+
+    this.previousEmergencyCoverage.set(grid, {
+      coverageVersion: grid.coverageVersion,
+      activeZonedTilesCount: grid.activeZonedTiles.size,
+      producerStateSignature,
+      coveredTiles: newCoveredTiles,
+    });
   }
 }

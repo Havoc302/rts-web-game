@@ -142,7 +142,7 @@ export class CoverageManager {
           ];
           for (const n of neighbors) {
             if (grid.isInBounds(n.x, n.y) && grid.getTile(n.x, n.y)?.hasRoad) {
-              const posKey = `${n.x},${n.y}`;
+              const posKey = n.y * grid.width + n.x;
               if (!visitedRoads.has(posKey)) {
                 visitedRoads.set(posKey, 1);
                 startingRoads.push({ x: n.x, y: n.y, dist: 1 });
@@ -169,10 +169,10 @@ export class CoverageManager {
           ];
           for (const d of dirs) {
             if (grid.isInBounds(d.x, d.y) && grid.getTile(d.x, d.y)?.hasRoad) {
-              const keyStr = `${d.x},${d.y}`;
+              const keyNum = d.y * grid.width + d.x;
               const nextDist = curr.dist + 1;
-              if (!visitedRoads.has(keyStr) || visitedRoads.get(keyStr) > nextDist) {
-                visitedRoads.set(keyStr, nextDist);
+              if (!visitedRoads.has(keyNum) || visitedRoads.get(keyNum) > nextDist) {
+                visitedRoads.set(keyNum, nextDist);
                 queue.push({ x: d.x, y: d.y, dist: nextDist });
               }
             }

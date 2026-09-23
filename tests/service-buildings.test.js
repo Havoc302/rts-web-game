@@ -82,4 +82,27 @@ assert.ok(police.totalJobs < fullBudgetJobs, 'Reduced budget should reduce servi
 assert.ok(CoverageManager.getCoverageSet(grid, 'police').size < fullBudgetCoverage, 'Reduced budget should reduce service coverage');
 assert.ok(police.runningCost < fullBudgetCost, 'Reduced budget should reduce service running cost');
 
+// Stage 2 - Coverage caching test
+const cachedBefore = ServiceManager.previousEmergencyCoverage.get(grid);
+assert.ok(cachedBefore, 'ServiceManager should record cached coverage metadata');
+const sentinelTile = grid.getTile(3, 3);
+sentinelTile.testMarker = 'preserved';
+ServiceManager.updateServices(grid, 5000, 1);
+const cachedAfter = ServiceManager.previousEmergencyCoverage.get(grid);
+assert.strictEqual(cachedAfter, cachedBefore, 'Unchanged state should skip coverage/assignment and keep cached metadata');
+assert.strictEqual(sentinelTile.testMarker, 'preserved', 'Skipped coverage should not re-wipe tile state');
+
+// Population/workforce change updates running cost and staffing correctly
+ServiceManager.updateServices(grid, 10000, 1);
+assert.ok(police.runningCost >= fullBudgetCost * 0.5, 'Higher population should scale service running cost');
+
+// Building operational change invalidates cache
+police.operational = false;
+ServiceManager.updateServices(grid, 10000, 1);
+assert.notStrictEqual(
+  ServiceManager.previousEmergencyCoverage.get(grid).producerStateSignature,
+  cachedBefore.producerStateSignature,
+  'Operational change must update producer state signature and recalculate',
+);
+
 console.log('Service building utility and dynamic growth tests passed.');

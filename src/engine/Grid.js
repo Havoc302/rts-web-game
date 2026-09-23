@@ -587,6 +587,7 @@ export class Grid {
     tile.growthScore = 0;
     this.activeZonedTiles.add(tile);
     this.fireCandidateTiles.add(tile);
+    this.coverageVersion++;
     this.pollutionDirty = true;
     return true;
   }
