@@ -2,7 +2,7 @@ import { Grid } from './engine/Grid.js';
 import { Simulation } from './engine/Simulation.js';
 import { Renderer } from './engine/Renderer.js';
 import { UtilityManager } from './engine/UtilityManager.js';
-import { getProducerConnectionStatus } from './engine/InspectorStatus.js';
+import { getProducerConnectionStatus, getTileUtilityStatus, formatProducerCapacity } from './engine/InspectorStatus.js';
 import { deserializeGameFromJson, serializeGameToJson } from './engine/SaveGame.js';
 import { APP_VERSION, ZONE, TERRAIN, PRODUCER_TYPE, PRODUCER_CONFIG, FACTORY_RECIPES, COSTS, TILE_SIZE, STARTING_TREASURY, RESIDENTIAL_CAPACITY, JOBS_PROVIDED, FOREST_POLLUTION_ABSORPTION, FOREST_DESIRABILITY_RADIUS, CRIME_CONFIG, MEDICAL_CONFIG, POWER_PRODUCER_TYPES, POLLUTION_CONFIG, COAL_CONFIG, WIND_CONFIG, SOLAR_CONFIG, BATTERY_CONFIG, DENSITY, RENDERER_CONFIG, TERRAIN_GENERATION_CONFIG, MAP_SEED_STORAGE_KEY, splitDemographics } from './config.js';
 
@@ -822,38 +822,9 @@ class GameApp {
     const isConnected = connectionStatus ? connectionStatus.isConnected : this.grid.isRoadAdjacent(tile.x, tile.y);
     document.getElementById('inspect-connected').textContent = isConnected ? 'Yes' : 'No';
 
-    const formatUtil = (key) => {
-      if (tile.producer) {
-        const producerConfig = PRODUCER_CONFIG[tile.producer.type];
-        if (producerConfig?.utility === key) {
-          return 'Produces This Utility';
-        }
-        if (isBatteryDependent) return 'Not Required';
-        const usage = producerConfig?.utilityUsage;
-        if (usage && (usage[key] > 0 || producerConfig?.activeUtilityUsage?.[key] > 0)) {
-          if (!isConnected) return 'No Local Road';
-          return tile.producer.utilityShortfall?.[key] ? 'Shortfall (Building Offline)' : 'Serviced';
-        }
-        return 'Not Required';
-      }
-
-      const d = tile.distanceToProducer[key];
-      if (d === Infinity) {
-        if (!isConnected) return 'No Local Road';
-        const prods = key === 'power'
-          ? this.grid.producers.filter((p) => POWER_PRODUCER_TYPES.includes(p.type))
-          : this.grid.producers.filter((p) => p.type === (key === 'water' ? 'water_tower' : 'sewage_plant'));
-        if (prods.length === 0) return 'No Producer Built';
-        const prodHasRoad = prods.some((p) => this.grid.isRoadAdjacent(p.x, p.y));
-        if (!prodHasRoad) return 'Producer Needs Road!';
-        return 'Unconnected Road Network!';
-      }
-      return tile.shortfall[key] ? `Dist ${d} (Plant Full!)` : `Dist ${d} (Serviced)`;
-    };
-
-    document.getElementById('inspect-power').textContent = formatUtil('power');
-    document.getElementById('inspect-water').textContent = formatUtil('water');
-    document.getElementById('inspect-sewage').textContent = formatUtil('sewage');
+    document.getElementById('inspect-power').textContent = getTileUtilityStatus(this.grid, tile, 'power');
+    document.getElementById('inspect-water').textContent = getTileUtilityStatus(this.grid, tile, 'water');
+    document.getElementById('inspect-sewage').textContent = getTileUtilityStatus(this.grid, tile, 'sewage');
 
     const prodPanel = document.getElementById('producer-details');
     if (tile.producer) {
@@ -877,7 +848,7 @@ class GameApp {
         capVal.textContent = '⚠️ Offline (Must be adjacent to Battery Storage)';
       } else if (tile.producer.type === PRODUCER_TYPE.BATTERY) {
         capLabel.textContent = 'Load / Capacity:';
-        capVal.textContent = `${tile.producer.usedCapacity} / ${tile.producer.capacity} (Stored: ${Math.round(tile.producer.storedEnergy || 0)} / ${tile.producer.maxStorage})`;
+        capVal.textContent = formatProducerCapacity(tile.producer, this.grid);
       } else if (tile.producer.type === PRODUCER_TYPE.HOSPITAL || tile.producer.type === PRODUCER_TYPE.CLINIC) {
         const staff = tile.producer.filledJobs || 0;
         const patientCap = staff * MEDICAL_CONFIG.HOSPITAL_PATIENT_CAPACITY_PER_JOB;
@@ -885,7 +856,7 @@ class GameApp {
         capVal.textContent = `${patientCap} (${staff} staffed)`;
       } else if (config?.utility === 'power' || config?.utility === 'water' || config?.utility === 'sewage') {
         capLabel.textContent = 'Load / Capacity:';
-        capVal.textContent = `${tile.producer.usedCapacity} / ${tile.producer.capacity ?? 0}`;
+        capVal.textContent = formatProducerCapacity(tile.producer, this.grid);
       } else if (config?.jobs) {
         capLabel.textContent = 'Staff:';
         capVal.textContent = `${(tile.producer.filledJobs || 0).toLocaleString()} / ${(tile.producer.totalJobs || 0).toLocaleString()}`;

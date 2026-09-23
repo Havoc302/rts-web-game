@@ -6,6 +6,8 @@ import { CrimeManager } from './CrimeManager.js';
 import { FireManager } from './FireManager.js';
 import { ResourceManager } from './ResourceManager.js';
 
+const now = typeof performance !== 'undefined' ? () => performance.now() : () => Date.now();
+
 export class Simulation {
   constructor(grid) {
     this.grid = grid;
@@ -15,6 +17,10 @@ export class Simulation {
     this.taxRate = 0;
     this.pensionBudget = SERVICE_GLOBAL_CONFIG.BUDGET_MAX_VALUE;
     this.resourceManager = new ResourceManager();
+    this.enableTiming = false;
+    this.lastStageTimings = null;
+    this.accumulatedStageTimings = null;
+    this.timingTickCount = 0;
     this.stats = {
       population: 0,
       incomePerTick: 0,
@@ -61,35 +67,125 @@ export class Simulation {
     };
   }
 
-  // advanceWorld=false is HUD preview only:
-  // - no tickCount++, no prepareTick, no resource/famine mutation
-  // - allocateAll runs in preview mode (no wind reroll, no battery writes)
-  // GameApp.simTick() is the only caller that may apply the returned income to treasury.
   tick(advanceWorld = true, treasury = Infinity) {
+    const timing = this.enableTiming;
+    let t0, t1;
+    const timings = timing ? {} : null;
+
+    if (timing) t0 = now();
     this.surveyExpenses = 0;
     if (advanceWorld) {
       this.tickCount++;
       this.resourceManager.prepareTick(this.grid);
     }
+    if (timing) {
+      t1 = now();
+      timings['prepare'] = t1 - t0;
+      t0 = t1;
+    }
 
     this.computeStats();
+    if (timing) {
+      t1 = now();
+      timings['stats-before'] = t1 - t0;
+      t0 = t1;
+    }
+
     UtilityManager.allocateAll(this.grid, this.getHourOfDay(), { preview: !advanceWorld });
+    if (timing) {
+      t1 = now();
+      timings['utilities'] = t1 - t0;
+      t0 = t1;
+    }
+
     PollutionManager.updateIfNeeded(this.grid);
+    if (timing) {
+      t1 = now();
+      timings['pollution'] = t1 - t0;
+      t0 = t1;
+    }
+
     ServiceManager.updateServices(this.grid, this.stats.population, this.stats.employmentRate, this.stats.totalEmployablePopulation);
+    if (timing) {
+      t1 = now();
+      timings['services'] = t1 - t0;
+      t0 = t1;
+    }
+
     if (advanceWorld) {
       CrimeManager.updateCrime(this.grid, this.stats);
+    }
+    if (timing) {
+      t1 = now();
+      timings['crime'] = t1 - t0;
+      t0 = t1;
+    }
+
+    if (advanceWorld) {
       FireManager.updateFires(this.grid, this.stats);
+    }
+    if (timing) {
+      t1 = now();
+      timings['fire'] = t1 - t0;
+      t0 = t1;
+    }
+
+    if (advanceWorld) {
       this.relocateDisplacedPopulation(this.stats.displacedPopulation || 0);
       this.updateSurveys(treasury);
       this.resourceManager.update(this.grid, this.stats);
     }
+    if (timing) {
+      t1 = now();
+      timings['resources'] = t1 - t0;
+      t0 = t1;
+    }
 
     this.computeStats();
+    if (timing) {
+      t1 = now();
+      timings['stats-after'] = t1 - t0;
+      t0 = t1;
+    }
+
     if (advanceWorld) {
       this.updateGrowthAndDensity();
     }
+    if (timing) {
+      t1 = now();
+      timings['growth'] = t1 - t0;
+      timings['total'] = Object.values(timings).reduce((a, b) => a + b, 0);
+      this.lastStageTimings = timings;
+      if (!this.accumulatedStageTimings) {
+        this.accumulatedStageTimings = {};
+        this.timingTickCount = 0;
+      }
+      this.timingTickCount++;
+      for (const [k, v] of Object.entries(timings)) {
+        this.accumulatedStageTimings[k] = (this.accumulatedStageTimings[k] || 0) + v;
+      }
+    }
 
     return this.stats.incomePerTick;
+  }
+
+  getStageTimings() {
+    return {
+      last: this.lastStageTimings,
+      accumulated: this.accumulatedStageTimings,
+      averages: this.accumulatedStageTimings && this.timingTickCount > 0
+        ? Object.fromEntries(
+            Object.entries(this.accumulatedStageTimings).map(([k, v]) => [k, v / this.timingTickCount])
+          )
+        : null,
+      tickCount: this.timingTickCount,
+    };
+  }
+
+  resetStageTimings() {
+    this.lastStageTimings = null;
+    this.accumulatedStageTimings = null;
+    this.timingTickCount = 0;
   }
 
   updateSurveys(treasury = Infinity) {
