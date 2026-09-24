@@ -721,9 +721,20 @@ Validation:
 - `node tests/version-sync.test.js` passes with `APP_VERSION` `0.1.18`.
 
 Stage 5 - Browser rendering/UI budget:
-- [ ] Measure render-loop and HUD/inspector update time separately. Update HUD/inspector only when displayed values change or at a bounded mobile cadence; never delay simulation state.
-- [ ] Confirm terrain chunks and overlays do not force whole-map redraws after normal simulation ticks.
+- [done] Measure render-loop and HUD/inspector update time separately. Update HUD/inspector only when displayed values change or at a bounded mobile cadence; never delay simulation state.
+- [done] Confirm terrain chunks and overlays do not force whole-map redraws after normal simulation ticks.
 - [ ] Check manually on the reporting phone at 1x, 2x, and 5x for at least 50 ticks.
+
+  Implementation:
+  - `Renderer.enableTiming` records per-frame render time separately from `Simulation.enableTiming`. `?debugTiming=1` enables both and logs averages every 120 frames.
+  - HUD/inspector DOM writes use `src/engine/UiRefresh.js` snapshots and skip unchanged fields. Mobile coarse-pointer layouts also bound refreshes to `RENDERER_CONFIG.HUD_MOBILE_CADENCE_MS` (500ms). User actions force an immediate refresh. Simulation ticks always run first.
+  - Terrain chunk rebuilds are incremental for `Grid.markTerrainChanged()` (forest bulldoze/fire). Same-chunk dirty tiles rebuild once. Overlay mode paints visible tiles only and does not invalidate the terrain cache. Map regen and save import still do a full cache rebuild.
+
+Validation:
+- `node tests/hud-update.test.js` passes snapshot dirty-fields, mobile cadence, and "ticks still advance" checks.
+- `node tests/renderer-cache.test.js` passes stable-tick, overlay, incremental bulldoze, and full-regen cache checks.
+- `npm test` passes all 29 test files.
+- Phone check at 1x / 2x / 5x for 50 ticks is still outstanding. Use `?debugTiming=1` on-device to compare render vs HUD vs sim averages. Do not bump the patch version until that check is recorded.
 
 Stage 6 - Release verification:
 - [ ] Run `npm test`, editor diagnostics, and `git diff --check`.

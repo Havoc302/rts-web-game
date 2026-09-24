@@ -788,6 +788,7 @@ export const RENDERER_CONFIG = {
   DELTA_TIME_MAX: 0.1,                     // Maximum animation time accumulated per frame
   TERRAIN_BUILD_BUDGET: 1200,              // Terrain-cache tiles built per frame
   TERRAIN_CHUNK_TILES: 64,                 // Chunk size in tiles (64×32px = 2048px, under a 4096 GPU cap)
+  HUD_MOBILE_CADENCE_MS: 500,              // Max HUD/inspector DOM refresh rate on coarse-pointer layouts
 };
 
 

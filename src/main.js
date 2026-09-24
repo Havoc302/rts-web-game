@@ -3,8 +3,21 @@ import { Simulation } from './engine/Simulation.js';
 import { Renderer } from './engine/Renderer.js';
 import { UtilityManager } from './engine/UtilityManager.js';
 import { getProducerConnectionStatus, getTileUtilityStatus, formatProducerCapacity } from './engine/InspectorStatus.js';
+import {
+  applyHudSnapshot,
+  buildHudSnapshot,
+  buildInspectorSignature,
+  changedHudFields,
+  createUiTimingBucket,
+  getHudCadenceMs,
+  recordUiTiming,
+  shouldRefreshUi,
+  uiTimingAverages,
+} from './engine/UiRefresh.js';
 import { deserializeGameFromJson, serializeGameToJson } from './engine/SaveGame.js';
 import { APP_VERSION, ZONE, TERRAIN, PRODUCER_TYPE, PRODUCER_CONFIG, FACTORY_RECIPES, COSTS, TILE_SIZE, STARTING_TREASURY, RESIDENTIAL_CAPACITY, JOBS_PROVIDED, FOREST_POLLUTION_ABSORPTION, FOREST_DESIRABILITY_RADIUS, CRIME_CONFIG, MEDICAL_CONFIG, POWER_PRODUCER_TYPES, POLLUTION_CONFIG, COAL_CONFIG, WIND_CONFIG, SOLAR_CONFIG, BATTERY_CONFIG, DENSITY, RENDERER_CONFIG, TERRAIN_GENERATION_CONFIG, MAP_SEED_STORAGE_KEY, splitDemographics } from './config.js';
+
+const nowMs = typeof performance !== 'undefined' ? () => performance.now() : () => Date.now();
 
 class GameApp {
   constructor() {
@@ -35,6 +48,20 @@ class GameApp {
     this.touchMoved = false;
 
     this.simInterval = null;
+    this._hudSnapshot = null;
+    this._hudAppliedAt = null;
+    this._pendingHud = false;
+    this._inspectorSignature = '';
+    this._inspectorTile = null;
+    this._inspectorAppliedAt = null;
+    this._pendingInspectorTile = null;
+    this.hudTiming = createUiTimingBucket();
+    this.inspectorTiming = createUiTimingBucket();
+    this.enableUiTiming = typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('debugTiming');
+    if (this.enableUiTiming) {
+      this.simulation.enableTiming = true;
+      this.renderer.enableTiming = true;
+    }
 
     this.initCanvasSize();
     this.bindUIEvents();
@@ -111,7 +138,7 @@ class GameApp {
         const value = document.getElementById(`${type}-budget-value`);
         if (value) value.textContent = `${budget}%`;
         this.simulation.computeStats();
-        this.updateHUD();
+        this.updateHUD({ force: true });
       });
     });
 
@@ -123,7 +150,7 @@ class GameApp {
         const value = document.getElementById('pension-budget-value');
         if (value) value.textContent = `${budget}%`;
         this.simulation.computeStats();
-        this.updateHUD();
+        this.updateHUD({ force: true });
       });
     }
 
@@ -134,7 +161,7 @@ class GameApp {
         this.simulation.taxRate = val;
         document.getElementById('tax-rate-val').textContent = val;
         this.simulation.computeStats();
-        this.updateHUD();
+        this.updateHUD({ force: true });
       });
     }
 
@@ -201,7 +228,7 @@ class GameApp {
     this.simulation.computeStats();
     this.renderer.selectedTile = null;
     this.renderer.hoverTile = null;
-    this.updateHUD();
+    this.updateHUD({ force: true });
     this.renderer.render(this.simulation);
   }
 
@@ -250,7 +277,7 @@ class GameApp {
       this.renderer.setOverlayMode(imported.ui.overlayMode);
       document.querySelectorAll('.overlay-btn').forEach((button) => button.classList.toggle('active', button.dataset.mode === imported.ui.overlayMode));
       this.simulation.stats = imported.simulation.stats;
-      this.updateHUD();
+      this.updateHUD({ force: true });
       this.renderer.render(this.simulation);
     } catch (error) {
       window.alert(`Unable to load save: ${error.message}`);
@@ -284,81 +311,23 @@ class GameApp {
     }
   }
 
-  updateHUD() {
-    document.getElementById('stat-pop').textContent = this.simulation.stats.population.toLocaleString();
-    document.getElementById('stat-cash').textContent = `$${this.treasury.toLocaleString()}`;
-    document.getElementById('stat-income').textContent = `+$${this.simulation.stats.incomePerTick.toLocaleString()}`;
-    const expensesEl = document.getElementById('stat-service-expenses');
-    if (expensesEl) expensesEl.textContent = `-$${this.simulation.stats.serviceExpenses.toLocaleString()}`;
-    const roadExpensesEl = document.getElementById('stat-road-expenses');
-    if (roadExpensesEl) roadExpensesEl.textContent = `-$${this.simulation.stats.roadExpenses.toLocaleString()}`;
-    document.getElementById('stat-tick').textContent = this.simulation.tickCount;
-
-    const hour = this.simulation.getHourOfDay();
-    const isDay = this.simulation.isDaytime();
-    const displayHour = hour % 12 === 0 ? 12 : hour % 12;
-    const ampm = hour < 12 ? 'AM' : 'PM';
-    const timeEl = document.getElementById('stat-time');
-    if (timeEl) timeEl.textContent = `${isDay ? '☀️' : '🌙'} ${displayHour}:00 ${ampm}`;
-
-    const stats = this.simulation.stats;
-
-    const jobsAvailEl = document.getElementById('stat-jobs-avail');
-    if (jobsAvailEl) jobsAvailEl.textContent = stats.jobsAvailable.toLocaleString();
-
-    const empRateEl = document.getElementById('stat-emp-rate');
-    if (empRateEl) empRateEl.textContent = `${Math.round(stats.employmentRate * 100)}%`;
-
-    const workforceEl = document.getElementById('stat-workforce');
-    if (workforceEl) workforceEl.textContent = (stats.totalEmployablePopulation || 0).toLocaleString();
-    const schoolAgeEl = document.getElementById('stat-school-age');
-    if (schoolAgeEl) schoolAgeEl.textContent = (stats.schoolAge || 0).toLocaleString();
-    const retireesEl = document.getElementById('stat-retirees');
-    if (retireesEl) retireesEl.textContent = (stats.retirees || 0).toLocaleString();
-
-    const stockpile = stats.resources?.stockpile || {};
-    const setStock = (id, value) => {
-      const el = document.getElementById(id);
-      if (el) el.textContent = Math.round(value || 0);
-    };
-    setStock('stat-food', stockpile.food);
-    setStock('stat-coal', stockpile.coal);
-    setStock('stat-iron', stockpile.ironOre);
-    setStock('stat-bauxite', stockpile.bauxiteOre);
-    setStock('stat-iron-bar', stockpile.ironBar);
-    setStock('stat-bauxite-bar', stockpile.bauxiteBar);
-    setStock('stat-oil', stockpile.oil);
-    setStock('stat-fuel', stockpile.fuel);
-    setStock('stat-goods', stockpile.consumerGoods);
-    setStock('stat-arms', stockpile.arms);
-    setStock('stat-tanks', stockpile.tanks);
-
-    const happinessEl = document.getElementById('stat-happiness');
-    if (happinessEl) happinessEl.textContent = Math.round(stats.happiness ?? 0);
-
-    this.updateMeter('meter-power-text', 'meter-power-fill', stats.powerDemand, stats.powerCapacity, true);
-    this.updateMeter('meter-water-text', 'meter-water-fill', stats.waterDemand, stats.waterCapacity, true);
-    this.updateMeter('meter-sewage-text', 'meter-sewage-fill', stats.sewageDemand, stats.sewageCapacity, true);
-    this.updateMeter('meter-hospital-text', 'meter-hospital-fill', stats.patientDemand, stats.patientCapacity);
-    this.updateMeter('meter-fuel-text', 'meter-fuel-fill', stats.fuelDemand || 0, stockpile.fuel || 0, true);
-
-    const pollEl = document.getElementById('meter-pollution-text');
-    if (pollEl) pollEl.textContent = `Avg ${stats.avgPollution} / Max ${stats.maxPollution}`;
-    const pollFill = document.getElementById('meter-pollution-fill');
-    if (pollFill) {
-      const pct = stats.maxPollution > 0 ? Math.min(100, Math.round((stats.avgPollution / Math.max(stats.maxPollution, 1)) * 100)) : 0;
-      pollFill.style.width = `${pct}%`;
+  updateHUD({ force = false } = {}) {
+    const started = this.enableUiTiming ? nowMs() : 0;
+    const snapshot = buildHudSnapshot(this.simulation, this.treasury);
+    const changed = changedHudFields(this._hudSnapshot, snapshot);
+    const cadenceMs = getHudCadenceMs(this.isMobileLayout());
+    const at = nowMs();
+    if (!shouldRefreshUi({ force, fieldCount: changed.length, now: at, lastAppliedAt: this._hudAppliedAt, cadenceMs })) {
+      this._pendingHud = changed.length > 0;
+      recordUiTiming(this.hudTiming, this.enableUiTiming ? nowMs() - started : 0, false);
+      return false;
     }
-  }
-
-  updateMeter(textId, fillId, demand, capacity, formatDecimals = false) {
-    const displayDemand = formatDecimals ? demand.toFixed(2) : demand;
-    const displayCapacity = formatDecimals ? capacity.toFixed(2) : capacity;
-    document.getElementById(textId).textContent = `${displayDemand} / ${displayCapacity}`;
-    const pct = capacity > 0 ? Math.min(100, Math.round((demand / capacity) * 100)) : 0;
-    const fillEl = document.getElementById(fillId);
-    fillEl.style.width = `${pct}%`;
-    fillEl.style.backgroundColor = demand > capacity ? '#ef4444' : '';
+    applyHudSnapshot(snapshot, changed, document);
+    this._hudSnapshot = snapshot;
+    this._hudAppliedAt = at;
+    this._pendingHud = false;
+    recordUiTiming(this.hudTiming, this.enableUiTiming ? nowMs() - started : 0, true);
+    return true;
   }
 
   setActiveTool(tool) {
@@ -525,7 +494,7 @@ class GameApp {
     if (this.activeTool === 'inspect') {
       this.renderer.selectedTile = tile;
       document.getElementById('inspector-panel').classList.add('visible');
-      this.updateInspector(tile);
+      this.updateInspector(tile, { force: true });
       return;
     }
     if (this.activeTool === 'pan') {
@@ -596,9 +565,9 @@ class GameApp {
     if (success) {
       this.treasury -= cost;
       this.simulation.tick(false);
-      this.updateHUD();
+      this.updateHUD({ force: true });
       if (this.renderer.selectedTile) {
-        this.updateInspector(this.renderer.selectedTile);
+        this.updateInspector(this.renderer.selectedTile, { force: true });
       }
       // Only single-placement buildings (producers) auto-revert to Pan; repeatable
       // tools like roads/zones/bulldoze stay active so you can keep placing.
@@ -718,7 +687,26 @@ class GameApp {
     }
   }
 
-  updateInspector(tile) {
+  updateInspector(tile, { force = false } = {}) {
+    if (!tile) return false;
+    const started = this.enableUiTiming ? nowMs() : 0;
+    const signature = buildInspectorSignature(this.grid, tile);
+    const differentTile = this._inspectorTile !== tile;
+    const changed = signature !== this._inspectorSignature;
+    const cadenceMs = getHudCadenceMs(this.isMobileLayout());
+    const at = nowMs();
+    if (!shouldRefreshUi({
+      force: force || differentTile,
+      fieldCount: changed ? 1 : 0,
+      now: at,
+      lastAppliedAt: this._inspectorAppliedAt,
+      cadenceMs,
+    })) {
+      this._pendingInspectorTile = changed ? tile : null;
+      recordUiTiming(this.inspectorTiming, this.enableUiTiming ? nowMs() - started : 0, false);
+      return false;
+    }
+
     document.getElementById('inspect-coord').textContent = `(${tile.x}, ${tile.y})`;
     document.getElementById('inspect-terrain').textContent = tile.terrain;
 
@@ -867,11 +855,33 @@ class GameApp {
     } else {
       prodPanel.style.display = 'none';
     }
+
+    this._inspectorTile = tile;
+    this._inspectorSignature = signature;
+    this._inspectorAppliedAt = at;
+    this._pendingInspectorTile = null;
+    recordUiTiming(this.inspectorTiming, this.enableUiTiming ? nowMs() - started : 0, true);
+    return true;
+  }
+
+  logUiTimingIfNeeded() {
+    if (!this.enableUiTiming) return;
+    const frames = this.renderer.renderFrameCount;
+    if (frames === 0 || frames % 120 !== 0) return;
+    console.log('[debugTiming]', {
+      sim: this.simulation.getStageTimings().averages,
+      render: this.renderer.getRenderTimings(),
+      hud: uiTimingAverages(this.hudTiming),
+      inspector: uiTimingAverages(this.inspectorTiming),
+    });
   }
 
   startRenderLoop() {
     const loop = () => {
       this.renderer.render(this.simulation);
+      if (this._pendingHud) this.updateHUD();
+      if (this._pendingInspectorTile) this.updateInspector(this._pendingInspectorTile);
+      this.logUiTimingIfNeeded();
       requestAnimationFrame(loop);
     };
     requestAnimationFrame(loop);

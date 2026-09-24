@@ -20,6 +20,12 @@ export class Renderer {
     this.lastRenderTime = 0;
     this.terrainChunks = [];
     this.terrainChunksVersion = -1;
+    this.enableTiming = false;
+    this.lastRenderMs = 0;
+    this.accumulatedRenderMs = 0;
+    this.renderFrameCount = 0;
+    this.lastTerrainRebuild = { kind: 'none', chunksRebuilt: 0 };
+    this.lastOverlayDraws = 0;
   }
 
   setCamera(x, y, zoom = this.zoom) {
@@ -32,12 +38,30 @@ export class Renderer {
     this.overlayMode = mode;
   }
 
+  getRenderTimings() {
+    return {
+      lastMs: this.lastRenderMs,
+      averageMs: this.renderFrameCount > 0 ? this.accumulatedRenderMs / this.renderFrameCount : 0,
+      frameCount: this.renderFrameCount,
+      lastTerrainRebuild: this.lastTerrainRebuild,
+      lastOverlayDraws: this.lastOverlayDraws,
+    };
+  }
+
+  resetRenderTimings() {
+    this.lastRenderMs = 0;
+    this.accumulatedRenderMs = 0;
+    this.renderFrameCount = 0;
+  }
+
   render(simulation) {
     const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
     if (this.zoom < RENDERER_CONFIG.LOW_DETAIL_THRESHOLD && this.lastRenderTime > 0 && now - this.lastRenderTime < 33) return;
     const elapsed = this.lastRenderTime > 0 ? Math.min(RENDERER_CONFIG.DELTA_TIME_MAX, (now - this.lastRenderTime) / 1000) : 0;
     this.lastRenderTime = now;
     this.animTime += elapsed;
+    this.lastTerrainRebuild = { kind: 'none', chunksRebuilt: 0 };
+    this.lastOverlayDraws = 0;
 
     const ctx = this.ctx;
     const width = this.canvas.width;
@@ -112,6 +136,7 @@ export class Renderer {
         }
 
         if (this.overlayMode !== 'normal') {
+          this.lastOverlayDraws += 1;
           this.renderOverlay(ctx, tile, px, py);
         }
 
@@ -155,19 +180,37 @@ export class Renderer {
     }
 
     ctx.restore();
+
+    if (this.enableTiming) {
+      const ms = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - now;
+      this.lastRenderMs = ms;
+      this.accumulatedRenderMs += ms;
+      this.renderFrameCount += 1;
+    }
   }
 
   ensureVisibleTerrainChunks(startTileX, startTileY, endTileX, endTileY) {
     const chunkTiles = RENDERER_CONFIG.TERRAIN_CHUNK_TILES;
     if (this.terrainChunksVersion !== this.grid.terrainVersion) {
-      if (this.terrainChunks.length > 0 && this.grid.terrainChangedTiles) {
-        for (const position of this.grid.terrainChangedTiles) {
-          const [x, y] = position.split(',').map(Number);
+      const changedTiles = this.grid.consumeTerrainChanges();
+      if (this.terrainChunks.length > 0 && changedTiles) {
+        const rebuilt = new Set();
+        for (const position of changedTiles) {
+          const x = position % this.grid.width;
+          const y = Math.floor(position / this.grid.width);
           const chunk = this.terrainChunks[Math.floor(y / chunkTiles)]?.[Math.floor(x / chunkTiles)];
-          if (chunk) this.buildTerrainChunk(chunk);
+          if (chunk && !rebuilt.has(chunk)) {
+            this.buildTerrainChunk(chunk);
+            rebuilt.add(chunk);
+          }
         }
+        this.lastTerrainRebuild = { kind: 'incremental', chunksRebuilt: rebuilt.size };
       } else {
         this.terrainChunks = this.createTerrainChunks(chunkTiles);
+        this.lastTerrainRebuild = {
+          kind: 'full',
+          chunksRebuilt: this.terrainChunks.reduce((count, row) => count + row.length, 0),
+        };
       }
       this.terrainChunksVersion = this.grid.terrainVersion;
     }

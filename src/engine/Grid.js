@@ -47,6 +47,22 @@ export class Grid {
     localStorage.removeItem(MAP_SEED_STORAGE_KEY_LEGACY);
   }
 
+  terrainKey(x, y) {
+    return y * this.width + x;
+  }
+
+  markTerrainChanged(x, y) {
+    this.terrainVersion++;
+    if (!this.terrainChangedTiles) this.terrainChangedTiles = new Set();
+    this.terrainChangedTiles.add(this.terrainKey(x, y));
+  }
+
+  consumeTerrainChanges() {
+    const changed = this.terrainChangedTiles;
+    this.terrainChangedTiles = new Set();
+    return changed;
+  }
+
   getInitialSeed() {
     if (typeof window !== 'undefined') {
       const urlParams = new URLSearchParams(window.location.search);
@@ -741,9 +757,7 @@ export class Grid {
     }
     if (tile.terrain === TERRAIN_TYPE.FOREST) {
       tile.terrain = TERRAIN_TYPE.EMPTY;
-      this.terrainVersion++;
-      if (!this.terrainChangedTiles) this.terrainChangedTiles = new Set();
-      this.terrainChangedTiles.add(`${x},${y}`);
+      this.markTerrainChanged(x, y);
       this.fireCandidateTiles.delete(tile);
       this.pollutionDirty = true;
       modified = true;
