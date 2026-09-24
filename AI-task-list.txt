@@ -712,11 +712,13 @@ Stage 4 - Reduce stable-tick work:
   - `Grid.pollutionSum` / `Grid.pollutionMax` are refreshed in `PollutionManager.computePollution()` and `Grid.rebuildActiveTileSets()`.
   - `computeStats()` uses those aggregates and `activeZonedTiles` / `activeRoadTiles` instead of scanning all 40,000 tiles.
   - Map regen clears the pollution cache; save import rebuilds it from restored tile pollution.
+- [done] Bump the patch version to 0.1.18.
 
 Validation:
 - `node tests/active-tile-registry.test.js` passes cache-vs-scan, stable-tick, bulldoze, and save-import aggregate checks.
 - `node tests/small-town-soak.test.js` passes.
 - `npm test` passes all 27 test files.
+- `node tests/version-sync.test.js` passes with `APP_VERSION` `0.1.18`.
 
 Stage 5 - Browser rendering/UI budget:
 - [ ] Measure render-loop and HUD/inspector update time separately. Update HUD/inspector only when displayed values change or at a bounded mobile cadence; never delay simulation state.
