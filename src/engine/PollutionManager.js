@@ -97,6 +97,8 @@ export class PollutionManager {
         tile.pollution = Math.max(0, tile.pollution - FOREST_POLLUTION_ABSORPTION);
       }
     }
+
+    grid.refreshPollutionAggregates();
   }
 
   static computeWaterPollution(grid) {

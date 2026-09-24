@@ -20,9 +20,11 @@ import { DENSITY, HAPPINESS_CONFIG, TERRAIN, ZONE } from '../src/config.js';
   residential.zone = ZONE.RESIDENTIAL;
   residential.density = DENSITY.HIGH;
   residential.growthScore = 50;
+  grid.activeZonedTiles.add(residential);
   const commercial = grid.getTile(1, 2);
   commercial.zone = ZONE.COMMERCIAL;
   commercial.density = DENSITY.HIGH;
+  grid.activeZonedTiles.add(commercial);
 
   const sim = new Simulation(grid);
   sim.taxRate = 50;

@@ -11,6 +11,7 @@ for (const row of grid.tiles) {
 const residential = grid.getTile(1, 1);
 residential.zone = ZONE.RESIDENTIAL;
 residential.density = DENSITY.LIGHT;
+grid.activeZonedTiles.add(residential);
 const simulation = new Simulation(grid);
 simulation.taxRate = 100;
 simulation.computeStats();

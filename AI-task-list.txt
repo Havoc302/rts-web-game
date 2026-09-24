@@ -704,9 +704,19 @@ Stage 3 - Track pollution deltas:
 - [done] Check: river-pollution, simulation pollution checks, and 200x200 soak test pass.
 
 Stage 4 - Reduce stable-tick work:
-- [ ] Cache or incrementally maintain pollution average/max and road cost so `computeStats()` does not need full-grid scans twice every tick on a stable map.
-- [ ] Preserve exact stats after placement, bulldoze, fire destruction/repair, density changes, and save import.
-- [ ] Check: small-town soak and all accounting/tax/resource tests pass.
+- [done] Cache or incrementally maintain pollution average/max and road cost so `computeStats()` does not need full-grid scans twice every tick on a stable map.
+- [done] Preserve exact stats after placement, bulldoze, fire destruction/repair, density changes, and save import.
+- [done] Check: small-town soak and all accounting/tax/resource tests pass.
+
+  Implementation:
+  - `Grid.pollutionSum` / `Grid.pollutionMax` are refreshed in `PollutionManager.computePollution()` and `Grid.rebuildActiveTileSets()`.
+  - `computeStats()` uses those aggregates and `activeZonedTiles` / `activeRoadTiles` instead of scanning all 40,000 tiles.
+  - Map regen clears the pollution cache; save import rebuilds it from restored tile pollution.
+
+Validation:
+- `node tests/active-tile-registry.test.js` passes cache-vs-scan, stable-tick, bulldoze, and save-import aggregate checks.
+- `node tests/small-town-soak.test.js` passes.
+- `npm test` passes all 27 test files.
 
 Stage 5 - Browser rendering/UI budget:
 - [ ] Measure render-loop and HUD/inspector update time separately. Update HUD/inspector only when displayed values change or at a bounded mobile cadence; never delay simulation state.

@@ -465,6 +465,7 @@ console.log('Running Phase 1 Core Loop Automated Verification Tests...\n');
   laborTile.zone = ZONE.RESIDENTIAL;
   laborTile.density = DENSITY.HIGH;
   laborTile.growthScore = GROWTH_CONFIG.MAX_SCORE;
+  grid.activeZonedTiles.add(laborTile);
 
   // Inject high pollution to both
   resTile.pollution = 10;
@@ -521,15 +522,18 @@ console.log('Running Phase 1 Core Loop Automated Verification Tests...\n');
   const cTile = grid.getTile(1, 1);
   cTile.zone = ZONE.COMMERCIAL;
   cTile.density = DENSITY.LIGHT;
+  grid.activeZonedTiles.add(cTile);
 
   const iTile = grid.getTile(1, 2);
   iTile.zone = ZONE.INDUSTRIAL;
   iTile.density = DENSITY.MEDIUM;
+  grid.activeZonedTiles.add(iTile);
 
   // 1 Res Light starts at 0 population until growthScore rises above 0
   const rTile = grid.getTile(1, 3);
   rTile.zone = ZONE.RESIDENTIAL;
   rTile.density = DENSITY.LIGHT;
+  grid.activeZonedTiles.add(rTile);
 
   sim.computeStats();
 

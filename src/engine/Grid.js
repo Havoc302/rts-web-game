@@ -35,6 +35,8 @@ export class Grid {
     this.pollutedWaterTiles = new Set();
     this.pollutionDirty = true;
     this.pollutionStateKey = null;
+    this.pollutionSum = 0;
+    this.pollutionMax = 0;
 
     this.initGrid();
   }
@@ -86,8 +88,12 @@ export class Grid {
     this.activeFireTiles.clear();
     this.fireCandidateTiles.clear();
     this.repairingTiles.clear();
+    this.pollutedTiles.clear();
+    this.pollutedWaterTiles.clear();
     this.pollutionDirty = true;
     this.pollutionStateKey = null;
+    this.pollutionSum = 0;
+    this.pollutionMax = 0;
     for (let y = 0; y < this.height; y++) {
       const row = [];
       for (let x = 0; x < this.width; x++) {
@@ -179,6 +185,20 @@ export class Grid {
         if (tile.isPolluted || tile.riverPollution > 0) this.pollutedWaterTiles.add(tile);
       }
     }
+    this.refreshPollutionAggregates();
+  }
+
+  refreshPollutionAggregates() {
+    let sum = 0;
+    let max = 0;
+    for (const tile of this.pollutedTiles) {
+      const pollution = tile.pollution || 0;
+      if (pollution <= 0) continue;
+      sum += pollution;
+      if (pollution > max) max = pollution;
+    }
+    this.pollutionSum = sum;
+    this.pollutionMax = max;
   }
 
   getFireCandidateTiles() {

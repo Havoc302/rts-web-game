@@ -19,6 +19,7 @@ function occupiedResidential(grid, density = DENSITY.HIGH) {
   tile.zone = ZONE.RESIDENTIAL;
   tile.density = density;
   tile.growthScore = 50;
+  grid.activeZonedTiles.add(tile);
   return tile;
 }
 
@@ -63,6 +64,7 @@ function occupiedResidential(grid, density = DENSITY.HIGH) {
   const commercial = grid.getTile(1, 2);
   commercial.zone = ZONE.COMMERCIAL;
   commercial.density = DENSITY.HIGH;
+  grid.activeZonedTiles.add(commercial);
 
   const simulation = new Simulation(grid);
   simulation.computeStats();

@@ -411,23 +411,14 @@ export class Simulation {
 
     stats.roadExpenses = this.grid.activeRoadTiles.size * ROAD_MAINTENANCE_COST;
 
-    let totalPollution = 0;
-    let tileCount = 0;
+    const tileCount = this.grid.width * this.grid.height;
+    stats.maxPollution = this.grid.pollutionMax || 0;
+    stats.avgPollution = tileCount > 0 ? Math.round(((this.grid.pollutionSum || 0) / tileCount) * 10) / 10 : 0;
+
     const highTaxPressure = this.getHighTaxPressure();
     const jobsMultiplier = 1 - highTaxPressure * LABOR_TAX_GROWTH_CONFIG.MAX_HIGH_TAX_JOBS_REDUCTION;
 
-    for (let y = 0; y < this.grid.height; y++) {
-      for (let x = 0; x < this.grid.width; x++) {
-        const tile = this.grid.getTile(x, y);
-
-        if (tile.pollution > stats.maxPollution) {
-          stats.maxPollution = tile.pollution;
-        }
-        totalPollution += tile.pollution;
-        tileCount++;
-
-        if (!tile || tile.zone === ZONE.NONE) continue;
-
+    for (const tile of this.grid.activeZonedTiles) {
         stats.powerDemand += UtilityManager.getTileUtilityUsage(tile, 'power');
         stats.waterDemand += UtilityManager.getTileUtilityUsage(tile, 'water');
         stats.sewageDemand += UtilityManager.getTileUtilityUsage(tile, 'sewage');
@@ -455,7 +446,6 @@ export class Simulation {
           tile.totalJobs = 0;
           tile.filledJobs = 0;
         }
-      }
     }
 
     const demographics = splitDemographics(stats.population);
@@ -527,7 +517,6 @@ export class Simulation {
     stats.untreatedPatients = Math.max(0, stats.patientDemand - stats.patientCapacity);
 
     stats.incomePerTick = Math.round(income);
-    stats.avgPollution = tileCount > 0 ? Math.round((totalPollution / tileCount) * 10) / 10 : 0;
     this.stats = stats;
   }
 

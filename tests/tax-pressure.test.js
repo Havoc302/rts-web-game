@@ -12,10 +12,12 @@ const residential = grid.getTile(1, 1);
 residential.zone = ZONE.RESIDENTIAL;
 residential.density = DENSITY.HIGH;
 residential.growthScore = 50;
+grid.activeZonedTiles.add(residential);
 
 const industrial = grid.getTile(1, 2);
 industrial.zone = ZONE.INDUSTRIAL;
 industrial.density = DENSITY.HIGH;
+grid.activeZonedTiles.add(industrial);
 
 const simulation = new Simulation(grid);
 simulation.taxRate = 40;

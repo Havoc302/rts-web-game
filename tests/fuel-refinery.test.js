@@ -43,6 +43,7 @@ import { DENSITY, ORE_TYPE, PRODUCER_TYPE, RESOURCE_CONFIG, TERRAIN, ZONE } from
   residential.zone = ZONE.RESIDENTIAL;
   residential.density = DENSITY.HIGH;
   residential.growthScore = 50;
+  grid.activeZonedTiles.add(residential);
   const sim = new Simulation(grid);
   sim.taxRate = 100;
   sim.computeStats();
