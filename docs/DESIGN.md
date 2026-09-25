@@ -4,9 +4,9 @@
 | --- | --- |
 | Title | Build & Conquer 2000 (B&C2000) — Architecture & Product Design |
 | Author | TBD |
-| Date | 2026-09-17 |
-| Status | Living draft (rev 7) |
-| Version covered | `APP_VERSION` `0.1.18` (`src/version.js`); current working tree |
+| Date | 2026-09-25 |
+| Status | Living draft (rev 8) |
+| Version covered | `APP_VERSION` `0.1.19` (`src/version.js`); current working tree |
 | Intended in-repo path | `docs/DESIGN.md` |
 | Repo | `g:\Repos\rts-web-game` (`origin`: `https://github.com/Havoc302/rts-web-game.git`) |
 | Working tree at inventory | Documentation is checked against the current implementation; uncommitted changes may exist. |
@@ -49,8 +49,8 @@ B&C2000 is a **single-player, client-only, paused-by-default city builder**. A s
 3. **Military production has no unit sink.** Arms and tanks are visible stockpiles, but barracks, vehicle depots, units, and world-map deployment are later phases.
 4. **Emergency coverage now uses cached direct/road/road-side sets.** Survey work remains incomplete.
 5. **Survey work is incomplete.** The survey overlay, per-tick cost deduction, cancellation rules, and treasury integration remain outstanding.
-6. **Canvas 2D on a 200×200 / 32px map** uses active tile registries and pollution dirty gating to avoid stable full-grid simulation work, but still requires measurement on target mobile devices.
-7. **UI and renderer behavior has limited automated coverage.** The engine suite is broad, but browser interaction and visual behavior remain mostly manual checks.
+6. **Canvas 2D on a 200×200 / 32px map** uses active tile registries, pollution dirty gating, cached stats aggregates, chunked terrain, and bounded HUD/inspector updates. A reporting-phone run at 1x, 2x, and 5x confirmed the city stays responsive after those stages.
+7. **UI and renderer behavior has limited automated coverage.** HUD snapshots, inspector signatures, and terrain-chunk invalidation now have Node tests; browser interaction and visual behavior remain mostly manual checks.
 
 ---
 
@@ -79,37 +79,46 @@ B&C2000 is a **single-player, client-only, paused-by-default city builder**. A s
 
 Implemented and covered by the current test runner:
 
-- Pause-safe placement previews, treasury accounting, famine recovery, agriculture occupancy, resource consumption, fuel/refining, crime, fire, civic staffing, mobile input/layout, wind/solar/battery connectivity, version synchronization, and chunked terrain rendering.
-- Unified test execution through `npm test`; the current baseline is 27 passing test files.
+- Pause-safe placement previews, treasury accounting, famine recovery, agriculture occupancy, resource consumption, fuel/refining, crime, fire, civic staffing, mobile input/layout, wind/solar/battery connectivity, version synchronization, chunked terrain rendering, and bounded HUD/inspector updates.
+- Unified test execution through `npm test`; the current baseline is 29 passing test files.
 
 ### Simulation performance
 
 `Grid` maintains active registries for zones, roads, fire candidates, active fires, and repairing tiles. Simulation, utility allocation, services, road-network zone discovery, resources, crime, fire processing, relocation, and road maintenance use those registries instead of repeatedly scanning all 40,000 tiles. Save import rebuilds the registries from restored tile state.
 
-Pollution uses a dirty/state-signature gate after utility allocation. It recomputes when terrain, industrial source state, sewage shortfalls, or relevant coal/sewage/water producer state changes; stable ticks reuse the last pollution field. Terrain-wide pollution work remains intentionally isolated to those dirty recalculations.
+A timed 200×200 50-tick soak, before the later cache stages, spent about 9.04 ms/tick on the measurement machine. The slowest stages were `computeStats` (stats-before + stats-after, ~4.58 ms, more than half of tick time) and pollution (~3.36 ms). Utilities and fire were ~0.46 ms each; remaining stages were ≤0.10 ms.
 
-The current automated suite validates registry maintenance, pollution gating, a 50-tick small-town soak scenario, and Inspector status rules. A real-device run at 1x, 2x, and 5x is still required to establish mobile timing targets.
+Caching rules now in force:
+
+- **Services.** `ServiceManager.updateServices()` skips coverage/assignment unless service buildings, road topology, staffing, operational state, or service budgets changed. Staffing and running costs still update when population or workforce changes.
+- **Pollution.** After utility allocation, a dirty/state-signature gate recomputes only prior affected tiles plus current source radii. `Grid.pollutionSum` / `Grid.pollutionMax` refresh during that recompute and during `rebuildActiveTileSets()`. Stable ticks reuse the last pollution field.
+- **Stats.** `computeStats()` reads those pollution aggregates plus `activeZonedTiles` / `activeRoadTiles` instead of scanning all 40,000 tiles. Placement, bulldoze, fire, density changes, and save import keep the same totals as a full scan.
+- **HUD / inspector.** `UiRefresh` snapshots skip unchanged DOM fields. Coarse-pointer mobile layouts also bound HUD/inspector refreshes to `RENDERER_CONFIG.HUD_MOBILE_CADENCE_MS` (500 ms). User actions force an immediate refresh. Simulation ticks always run first.
+- **Terrain cache.** 64×64 offscreen chunks, viewport blit only. `Grid.markTerrainChanged()` rebuilds dirty chunks once per frame. Overlay mode paints visible tiles only and does not invalidate chunks. Map regen and save import rebuild the full cache.
+
+`?debugTiming=1` enables `Simulation.enableTiming` and `Renderer.enableTiming` and logs averages every 120 frames. A reporting-phone run at 1x, 2x, and 5x confirmed the city stays responsive after these stages.
 
 ### Mobile Performance Plan
 
-Do not make another broad performance refactor without timing evidence. The next pass instruments `Simulation.tick()` by stage and adds a deterministic 200x200 reproduction based on the reported small town. Optimize only the measured bottleneck in independently validated stages:
+Do not make another broad performance refactor without timing evidence. The staged pass is complete:
 
 1. Cache service assignment/coverage work when its inputs are unchanged.
 2. Track polluted and water-polluted tiles so pollution recalculation clears and recomputes only affected areas.
 3. Incrementally maintain stable-map aggregates rather than rescanning the full grid twice per tick.
 4. Measure and bound browser render, HUD, and inspector work separately from simulation.
 
-The next pass also corrects two inspector regressions before profiling conclusions are drawn: utility producers must show their actual connected/serviced state, and all producer load/capacity values must use two decimal places.
+Inspector regressions found during that pass are also closed: utility producers show their actual connected/serviced state, and producer load/capacity values use two decimal places.
 
 Correctness remains the constraint: river direction, utility shortfalls, fire repair/destruction, population growth, save import, and HUD totals must remain equivalent after every optimization. The staged implementation checklist and validation commands live in `AI-task-list.txt`.
 
 Outstanding implementation work:
 
 - Browser-level validation of JSON save download/import.
+- Compact seed-regenerated sparse saves (replace full-tile JSON).
 - Stacked education tax bonuses from School capacity (staffed Schools only) and University capacity. Ratios: 15% school demand and 5% university demand; full coverage gives +15% and +20% tax yield respectively, with linear partial coverage. Libraries are decoupled from student capacity and growth scores (`LIBRARY_DESIRABILITY_BONUS: 0`), contributing exclusively to public happiness.
-- Named tick-stage extraction and performance benchmarking on a populated 200×200 map.
+- Named tick-stage extraction (`stagePrepare` / `stageUtilities` / …).
 - Survey overlay, survey cost/cancellation, and treasury integration.
-- Dedicated happiness HUD display and stronger browser-level UI/touch validation.
+- Stronger browser-level UI/touch validation.
 - Military unit production and world-map systems remain later phases, not Phase 1 blockers.
 
 ### Phase 1 non-goals (not product non-goals)
@@ -175,6 +184,8 @@ flowchart TB
 | Clock | 1 tick = 1 in-game hour, 24-hour day, day 06:00–18:00 | `TICKS_PER_HOUR`, `DAY_START_HOUR`, `NIGHT_START_HOUR` |
 | Zoom | 0.4–2.5, default 1.0; low-detail below 0.7 | `RENDERER_CONFIG` |
 | Terrain cache budget | 1,200 tiles/frame while building | `RENDERER_CONFIG.TERRAIN_BUILD_BUDGET` |
+| Terrain chunk size | 64 tiles (2048 px, under a 4096 GPU cap) | `RENDERER_CONFIG.TERRAIN_CHUNK_TILES` |
+| Mobile HUD cadence | 500 ms on coarse-pointer layouts | `RENDERER_CONFIG.HUD_MOBILE_CADENCE_MS` |
 | Dev | `"dev": "npx serve ."` | `package.json` |
 | Version | `0.1.6` from `src/version.js`, synchronized with `package.json` and cache-busting consumers | `tests/version-sync.test.js` |
 | `config.js` | 690 lines total (~637 non-blank) | file |
@@ -260,7 +271,7 @@ While paused, `advanceWorld` is false, so crime/fire/surveys/growth/`tickCount` 
 - **Zoom.** Wheel, cursor-centered (`RENDERER_CONFIG.ZOOM_MIN/MAX`).
 - **Touch tap-to-build** after `< 8px` movement.
 - **Mobile.** `matchMedia('(max-width: 820px) and (hover: none) and (pointer: coarse)')`. Off-canvas tool/HUD drawers, safe-area offsets, auto-switch to Pan after placing a `producer_*` only.
-- **Renderer.** Viewport culling; offscreen terrain cache rebuilt incrementally (full-map 6400×6400 canvas); night tint `NIGHT_TINT_ALPHA = 0.35`; low-detail path under zoom 0.7 (and 33 ms throttle). Overlays: power, water, sewage, pollution, crime. Code also understands police/fire/hospital overlays (`renderOverlay`) but **HTML does not expose those buttons**.
+- **Renderer.** Viewport culling; 64×64 offscreen terrain chunks with viewport blit; dirty-tile incremental rebuilds via `Grid.markTerrainChanged()`; overlays paint visible tiles only and do not invalidate chunks. Night tint `NIGHT_TINT_ALPHA = 0.35`; low-detail path under zoom 0.7 (and 33 ms throttle). Overlay picker: power, water, sewage, pollution, crime, survey, police, fire, hospital.
 
 Art is 100% procedural canvas (houses, fields, spinning windmill blades, battery fill, river chevrons, fire flicker). Mines, warehouses, smelter, silo, oil derrick fall through to a generic colored rect + 5-letter label in `renderProducerTile`.
 
@@ -370,7 +381,8 @@ Happiness (`HAPPINESS_CONFIG`) is a 0–100 city score starting at 50, combining
 - Utility HUD: demand/capacity meters, hospital patients, pollution avg/max, demographics, service + pension budget sliders.
 - Tool drawer groups: General, Transport, Zoning, Utility Producers, Production, Civic, Exploration.
 - Build-info panel for `producer_*` and R/C/I/A zones.
-- Tile inspector: terrain, road/bridge, zone, density, pop/jobs, demographics, industrial recipe select, silo storage select, growth, pollution, crime, fire, ore, utilities, producer load.
+- Tile inspector: terrain, road/bridge, zone, density, pop/jobs, demographics, industrial recipe select, silo storage select, growth, pollution, crime, fire, ore, utilities, producer load. Inspector DOM work skips when the selected-tile signature is unchanged; mobile layouts share the HUD cadence bound.
+- HUD text/meters apply only dirty fields from `buildHudSnapshot()`. User actions force a refresh. Simulation state is never delayed to spare the DOM.
 - Mobile drawers and toggles as above.
 
 ### Test surface
@@ -390,10 +402,13 @@ Node `assert` scripts; `package.json` `"test"` runs `tests/run-all.js`, which di
 | `industrial-economics.test.js` | Zone cost $300; `BASE_INCOME` I > C | Tests a table the sim no longer uses — delete the table |
 | `school-cost.test.js` / `service-expense-scale.test.js` | Job-based running costs | — |
 | `resource-management.test.js` | Agriculture, mines, smelter, food, goods, fuel, and famine behavior | More end-to-end production-chain assertions are useful |
-| `small-town-soak.test.js` | Deterministic 50-tick mixed-zone town, upstream water intake, utility chain, bounded medical demand, and finite stats | Manual device performance remains necessary |
+| `small-town-soak.test.js` | Deterministic 50-tick mixed-zone town, upstream water intake, utility chain, bounded medical demand, and finite stats | Device timing is recorded in `AI-task-list.txt`; phone check at 1x/2x/5x passed |
+| `active-tile-registry.test.js` | Registry maintenance, pollution cache vs scan, stable-tick aggregates, bulldoze, save import | — |
+| `hud-update.test.js` | HUD snapshots, dirty fields, mobile cadence, ticks still advance | — |
+| `renderer-cache.test.js` | Terrain-chunk identity on stable ticks, overlay non-invalidation, incremental bulldoze, full regen | — |
 | `demographics.test.js` | 40/40/20 jobs, split, pensions, retiree patients | — |
 
-**Still lightly tested:** `main.js` input and treasury wiring, `Renderer.js`, CSS/HTML, visual HUD behavior, browser touch interaction, JSON file download/import in a real browser, sparse-save size/compatibility, and performance on a full 200×200 city.
+**Still lightly tested:** `main.js` input and treasury wiring, CSS/HTML, visual HUD behavior, browser touch interaction, JSON file download/import in a real browser, and sparse-save size/compatibility. Full-map mobile responsiveness was verified on the reporting phone after Stage 5.
 
 ---
 
@@ -1016,11 +1031,11 @@ Phase 1 stays paused-by-default sandbox (0% tax, $25,000) for solo city-building
 
 28. **Overworld Biome Generation.** `BIOME_TYPES` (`PLAINS`, `HILLY`, `MOUNTAINOUS`, `SWAMP`) modify procedural terrain generation: Hilly/Mountainous scale rock clusters (+25% / +50%); Plains reduce rock clusters (-50%); Swamp reduces forest (-50%), increases lakes (4-6), and forces fork/merge rivers. `generateProceduralTerrain(biome)` accepts the biome directly.
 
-29. **Single-source versioning.** `src/version.js` (`APP_VERSION = '0.1.18'`) is the single source of truth for version strings. `package.json` version and cache-busting consumers derive from it. Verified by `tests/version-sync.test.js`.
+29. **Single-source versioning.** `src/version.js` (`APP_VERSION = '0.1.19'`) is the single source of truth for version strings. `package.json` version and cache-busting consumers derive from it. Verified by `tests/version-sync.test.js`.
 
 30. **Desktop Pan and Drag Painting.** Desktop left-drag with the Pan tool pans the camera; clicking without dragging selects the tile without opening the inspector. Inspect Tile opens the inspector. Left-drag painting is restricted to repeatable tools (roads, bridges, tunnels, zones, bulldoze); single-placement buildings and surveys do not drag-paint.
 
-31. **Unified Test Runner.** `tests/run-all.js` discovers and executes all 25 test suites across the engine and simulation. `npm test` runs this master suite.
+31. **Unified Test Runner.** `tests/run-all.js` discovers and executes all 29 test suites across the engine and simulation. `npm test` runs this master suite.
 
 ---
 
