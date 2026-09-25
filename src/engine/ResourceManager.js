@@ -12,6 +12,11 @@ import {
 } from '../config.js';
 import { UtilityManager } from './UtilityManager.js';
 
+export function happinessDemandModifier(happiness) {
+  const score = Number.isFinite(happiness) ? happiness : HAPPINESS_CONFIG.BASE_SCORE;
+  return (score - HAPPINESS_CONFIG.BASE_SCORE) * HAPPINESS_CONFIG.GROWTH_DELTA_PER_POINT;
+}
+
 const EMPTY_STOCKPILE = {
   food: 0,
   coal: 0,
@@ -53,7 +58,7 @@ export class ResourceManager {
     const goodsResult = this.consumeConsumerGoods(stats.population || 0);
     const fuelResult = this.consumeFuel(grid);
     stats.happiness = this.calculateHappiness(grid, stats, goodsResult.goodsRatio, foodResult.shortfall > 0);
-    stats.happinessGrowthModifier = stats.happiness * HAPPINESS_CONFIG.GROWTH_DELTA_PER_POINT;
+    stats.happinessGrowthModifier = happinessDemandModifier(stats.happiness);
     stats.foodShortfall = foodResult.shortfall;
     stats.goodsRatio = goodsResult.goodsRatio;
     stats.fuelDemand = fuelResult.demand;

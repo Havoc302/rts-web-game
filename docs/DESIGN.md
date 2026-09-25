@@ -6,7 +6,7 @@
 | Author | TBD |
 | Date | 2026-09-25 |
 | Status | Living draft (rev 8) |
-| Version covered | `APP_VERSION` `0.1.19` (`src/version.js`); current working tree |
+| Version covered | `APP_VERSION` `0.1.21` (`src/version.js`); current working tree |
 | Intended in-repo path | `docs/DESIGN.md` |
 | Repo | `g:\Repos\rts-web-game` (`origin`: `https://github.com/Havoc302/rts-web-game.git`) |
 | Working tree at inventory | Documentation is checked against the current implementation; uncommitted changes may exist. |
@@ -44,7 +44,7 @@ B&C2000 is a **single-player, client-only, paused-by-default city builder**. A s
 
 ### Pain points
 
-1. **Standalone JSON save/load exists but needs compaction.** Saving is available only while paused and importing restores the game paused. The next persistence pass must regenerate the base map from `seed + dimensions + biome + generation version`, then apply sparse player/state overrides rather than serializing every tile.
+1. **Standalone JSON save/load is sparse and seed-regenerated.** Saving is available only while paused and importing restores the game paused. `SAVE_VERSION` 2 stores seed, dimensions, biome, and `GENERATION_VERSION`, then sparse tile overrides and producers. Version 1 full-tile files still load through an explicit migration. A generation-version mismatch is refused rather than rebuilding the wrong map.
 2. **`Simulation.tick` remains a large orchestrator.** Its pause/preview semantics are now explicit and tested, but named stage extraction is still outstanding.
 3. **Military production has no unit sink.** Arms and tanks are visible stockpiles, but barracks, vehicle depots, units, and world-map deployment are later phases.
 4. **Emergency coverage now uses cached direct/road/road-side sets.** Survey work remains incomplete.
@@ -114,7 +114,6 @@ Correctness remains the constraint: river direction, utility shortfalls, fire re
 Outstanding implementation work:
 
 - Browser-level validation of JSON save download/import.
-- Compact seed-regenerated sparse saves (replace full-tile JSON).
 - Stacked education tax bonuses from School capacity (staffed Schools only) and University capacity. Ratios: 15% school demand and 5% university demand; full coverage gives +15% and +20% tax yield respectively, with linear partial coverage. Libraries are decoupled from student capacity and growth scores (`LIBRARY_DESIRABILITY_BONUS: 0`), contributing exclusively to public happiness.
 - Named tick-stage extraction (`stagePrepare` / `stageUtilities` / …).
 - Survey overlay, survey cost/cancellation, and treasury integration.
@@ -369,7 +368,7 @@ Medical: patients from residents (retirees ×3, more if pensions underfunded), i
 
 Famine loss is recalculated per advancing tick and cleared when food demand is met. Preview ticks do not run resource consumption or famine mutation.
 
-Happiness (`HAPPINESS_CONFIG`) is a 0–100 city score starting at 50, combining tax, employment, utilities, civic coverage, goods ratio, pollution, crime, untreated patients, fire injuries, and food shortfall. It feeds residential growth. A dedicated player-facing HUD value remains outstanding.
+Happiness (`HAPPINESS_CONFIG`) is a 0–100 SimCity 2000-style mayor rating. 50 is neutral. It combines tax, employment, utilities, civic coverage, goods ratio, pollution, crime, untreated patients, fire injuries, and food shortfall. Each point above 50 adds `GROWTH_DELTA_PER_POINT` (0.1) to residential growth; each point below 50 subtracts the same. That growth score drives residential occupancy, so an unhappy city loses residents without lowering density. Commercial and industrial growth still follow jobs and tax, not happiness.
 
 ### HUD and UI
 
@@ -408,7 +407,7 @@ Node `assert` scripts; `package.json` `"test"` runs `tests/run-all.js`, which di
 | `renderer-cache.test.js` | Terrain-chunk identity on stable ticks, overlay non-invalidation, incremental bulldoze, full regen | — |
 | `demographics.test.js` | 40/40/20 jobs, split, pensions, retiree patients | — |
 
-**Still lightly tested:** `main.js` input and treasury wiring, CSS/HTML, visual HUD behavior, browser touch interaction, JSON file download/import in a real browser, and sparse-save size/compatibility. Full-map mobile responsiveness was verified on the reporting phone after Stage 5.
+**Still lightly tested:** `main.js` input and treasury wiring, CSS/HTML, visual HUD behavior, browser touch interaction, and JSON file download/import in a real browser. Sparse-save size and version-1 migration are covered by `tests/save-game.test.js`. Full-map mobile responsiveness was verified on the reporting phone after Stage 5.
 
 ---
 
@@ -647,7 +646,9 @@ Phase 1 is client-only. Firebase APIs appear in Phase 4, not in PRs 1–8b.
 
 ```js
 // src/engine/persistence/SaveGame.js
-export const SAVE_VERSION = 1;
+export const SAVE_VERSION = 2;
+export const SAVE_VERSION_V1 = 1;
+export const GENERATION_VERSION = TERRAIN_GENERATION_CONFIG.GENERATION_VERSION;
 export const AUTOSAVE_KEY = 'bc2000_save';
 export const AUTOSAVE_EVERY_TICKS = 24; // one in-game day
 
@@ -711,121 +712,78 @@ return stats.incomePerTick  # GameApp.simTick is the only caller that applies it
 
 ## Data Model Changes
 
-### `SaveDocument` (Phase 1, `SAVE_VERSION = 1`)
+### `SaveDocument` (Phase 1, `SAVE_VERSION = 2`)
+
+Current files are compact JSON (`JSON.stringify` with no pretty-print). Load regenerates the base map from `map.seed` + dimensions + biome using `GENERATION_VERSION`, then applies sparse tile overrides and producers.
 
 ```js
 /**
 {% raw %}
  * @typedef {Object} SaveDocument
- * @property {1} version
- * @property {string} appVersion          // e.g. "0.1.8"
+ * @property {2} saveVersion
+ * @property {string} appVersion
+ * @property {number} generationVersion   // TERRAIN_GENERATION_CONFIG.GENERATION_VERSION
  * @property {string} savedAt             // ISO-8601
- * @property {number} seed
- * @property {number} width               // any positive size; GameApp session requires MAP_*
- * @property {number} height
- * @property {number} tickCount
- * @property {boolean} isPaused
- * @property {number} speed               // 0 | 1 | 2 | 5
- * @property {number} taxRate             // 0–100
- * @property {number} pensionBudget       // 0–100
+ * @property {{width:number,height:number,seed:number,biome:string|null,nextProducerId:number}} map
+ * @property {DirtyTile[]} tiles          // overrides vs regenerated base; no hidden ore
+ * @property {ProducerDTO[]} producers    // full mutable producer objects
+ * @property {object} simulation          // tickCount, taxRate, pensionBudget, stockpile, capacity, stats
  * @property {number} treasury
  * @property {{x:number,y:number,zoom:number}} camera
- * @property {string} overlayMode         // default "normal"
- * @property {number} nextProducerId
- * @property {number} simRngState         // uint32; wind/crime-rolls/fire
- * @property {Stockpile} stockpile        // all ResourceManager keys
- * @property {Record<string, number>} serviceBudgets
- * @property {string} terrain             // base64 Uint8Array length width*height
- * @property {string} ore                 // base64 Uint8Array; 0 none, 1–4 types
- * @property {string} riverDir            // base64 Uint8Array; 0 none, 1–8 headings
- * @property {DirtyTile[]} tiles          // sparse overlays only
- * @property {ProducerDTO[]} producers
- * @property {UnitDTO[]} units            // [] in v0.2
- * @property {FactionDTO[]=} factions     // omitted until faction PR; migrate to one player faction
+ * @property {{activeTool:string,overlayMode:string,autoSwitchToPan:boolean}} ui
  */
 
-/** Terrain palette — TILE_TERRAIN_CODES */
-export const TILE_TERRAIN_CODES = { flat: 0, mountain: 1, water: 2, forest: 3 };
-export const TILE_ORE_CODES = { none: 0, iron_ore: 1, bauxite: 2, coal: 3, oil: 4 };
-// riverDir: 0 none, 1 N, 2 NE, 3 E, 4 SE, 5 S, 6 SW, 7 W, 8 NW
-// quantized from riverFlowDir unit vector at save time.
-
 /**
- * DirtyTile — only tiles that differ from wilderness defaults
- * (no zone, no road, crime 0, not on fire, not destroyed, not surveying).
- * Flags bitmask:
- *   1 hasRoad, 2 hasBridge, 4 hasTunnel, 8 destroyed, 16 onFire, 32 oreDiscovered, 64 surveying
+ * DirtyTile — only tiles that differ from the regenerated base or hold player/sim state.
+ * Hidden `ore` is never written. Survey knowledge uses oreDiscovered + discoveredOre
+ * (omit discoveredOre for a surveyed no-deposit tile).
  *
  * @typedef {Object} DirtyTile
  * @property {number} x
  * @property {number} y
- * @property {number} flags
- * @property {string=} zone               // residential|commercial|industrial|agricultural
- * @property {string=} density            // light|medium|high
+ * @property {string=} terrain
+ * @property {{x:number,y:number}|null=} riverFlowDir
+ * @property {boolean=} hasRoad
+ * @property {boolean=} hasBridge
+ * @property {boolean=} hasTunnel
+ * @property {boolean=} destroyed
+ * @property {string=} zone
+ * @property {string=} density
  * @property {number=} growthScore
  * @property {string=} recipe
- * @property {number=} crime
- * @property {number=} fireDamage
- * @property {number=} relocatedPopulation
- * @property {number=} fireDisplacedPopulation
- * @property {number=} populationLoss
- * @property {string=} discoveredOre
- * @property {number=} surveyProgress
- * @property {number=} surveyRequired
- * @property {number=} surveyingBy        // producer id
- * @property {string=} ownerId            // 'player' | 'ai'; omit = wilderness; default 'player' after faction PR
- */
-
-/**
- * @typedef {Object} ProducerDTO
- * @property {number} id
- * @property {string} type                // must be a PRODUCER_TYPE value
- * @property {number} x
- * @property {number} y
- * @property {number} capacity
- * @property {number} usedCapacity
- * @property {boolean} operational
- * @property {number} utilityFailureTicks
- * @property {boolean} contaminated
- * @property {number} budget
- * @property {string=} density
- * @property {number=} runningCost
- * @property {number=} totalJobs
+ * @property {number=} population
+ * @property {number=} maxPopulation
  * @property {number=} filledJobs
- * @property {number=} storedEnergy
- * @property {number=} maxStorage
- * @property {boolean=} hasBatteryConnection
- * @property {{x:number,y:number}=} surveyTarget
+ * @property {number=} totalJobs
+ * @property {number=} crime
+ * @property {number=} pollution
+ * @property {boolean=} onFire
+ * @property {number=} fireDamage
+ * @property {number=} fireRepair
+ * @property {object=} shortfall
+ * @property {boolean=} oreDiscovered
+ * @property {string=} discoveredOre
+ * @property {number=} surveyingBy
  * @property {number=} surveyProgress
  * @property {number=} surveyRequired
- * @property {string=} recipe
- * @property {string=} storageType
- * @property {{type:string,progress:number,rally:{x:number,y:number}|null}=} queue  // Phase 2
- * @property {string=} ownerId            // 'player' | 'ai'; omit = wilderness
  */
 {% endraw %}
 ```
 
-Wire `ownerId` is the **string** `'player' | 'ai'` (same as runtime). Omit or `null` = wilderness. Do not encode as `0`/`1`.
+On load, `GameApp` regenerates derived utility distances with `tick(false)` (preview: no battery/wind persist) and always restores paused. Hidden ore on untouched tiles comes from seed regeneration.
 
-Pollution, utility shortfall, distances, and service coverage are **recomputed** on load via `tick(false)` (preview: no battery/wind persist), not stored.
+**Dimension checks.** `deserialize` accepts any `width`/`height` ≥ 1. Tests construct `Grid(8, 8)` and round-trip through `deserialize` without going through `GameApp`.
 
-**Dimension checks.** `deserialize` is **size-agnostic**: it accepts any `width`/`height` ≥ 1 that match the packed array lengths. `GameApp` **session load** rejects `width !== MAP_WIDTH || height !== MAP_HEIGHT` with a toast. Tests construct `Grid(8, 8)` and round-trip through `deserialize` without going through `GameApp`.
+**Size.** Naïve `JSON.stringify` of 40,000 fat tiles is tens of MB. A generated 40×40 town with a handful of roads/zones/producers serializes more than 10× smaller than the version-1 full-tile document. File export writes compact JSON.
 
-**Size estimate (corrected):** naïve `JSON.stringify` of 40,000 fat tiles is **tens of MB** (~20 MB at ~500 B/tile), not “several MB.” Sparse encoding:
+**Migrations.** `saveVersion === 1` loads the legacy full-tile document, then the next save writes version 2. `saveVersion > 2` is refused. `generationVersion` mismatch is refused with a user-facing error so a later terrain/ore algorithm cannot silently rebuild the wrong map. Unknown `producer.type` is refused. No `eval`, no function fields. A later world-map/faction PR can bump `SAVE_VERSION` again.
 
-- `terrain` + `ore` + `riverDir`: 3 × 40,000 B ≈ 120 KB raw, ~160 KB base64.
-- Typical city: ~2,000 dirty tiles × ~100 B ≈ 200 KB + ~50 producers × 250 B ≈ 12 KB → **~0.4 MB**.
-- Worst case every tile dirty: 40,000 × 100 B = 4 MB + arrays → **~4.2 MB**, inside common 5–10 MB localStorage caps but close. Quota path above applies.
+**Fixture tests (`tests/save-game.test.js`):**
 
-**Migrations.** `deserialize` runs `MIGRATIONS[n]` from `data.version` exclusive to `SAVE_VERSION`. Missing fields take `createDefaultTile` / empty stockpile defaults. `version > SAVE_VERSION` → refuse with toast. Unknown `producer.type` → refuse (do not drop silently). No `eval`, no function fields. Faction PR sets `SAVE_VERSION = 2` and migrates v1 top-level economy fields into `factions[0]`.
-
-**Fixture tests (PR 6 must include all of these):**
-
-1. Round-trip `Grid(8, 8)` with a zone, a road, a battery (`storedEnergy` ≠ 0), a burning tile (`onFire`, `fireDamage`), a surveyed ore tile, and an in-progress survey (station + target progress).
-2. Reject `version: 999` and a payload containing a `script` / function-like field.
-3. Serialize an empty 200×200 map; encoded `terrain`+`ore`+`riverDir` length < 200 KB; `tiles.length === 0`.
-4. After load, `tick(false)` restores utility distances without advancing `tickCount` and without changing battery `storedEnergy` or wind `capacity`.
+1. Round-trip a generated map with roads/zones, battery `storedEnergy`, fire, utility shortfall, discovered ore, and a surveyed no-deposit tile.
+2. Reject unknown `saveVersion` and a mismatched `generationVersion`.
+3. Load a version-1 full-tile document through the explicit migration and restore paused.
+4. A small town on a generated 40×40 map serializes more than 10× smaller than the version-1 full-tile document.
 
 ### Tile / producer additions (runtime, not all in v0.2 saves)
 
@@ -1031,7 +989,7 @@ Phase 1 stays paused-by-default sandbox (0% tax, $25,000) for solo city-building
 
 28. **Overworld Biome Generation.** `BIOME_TYPES` (`PLAINS`, `HILLY`, `MOUNTAINOUS`, `SWAMP`) modify procedural terrain generation: Hilly/Mountainous scale rock clusters (+25% / +50%); Plains reduce rock clusters (-50%); Swamp reduces forest (-50%), increases lakes (4-6), and forces fork/merge rivers. `generateProceduralTerrain(biome)` accepts the biome directly.
 
-29. **Single-source versioning.** `src/version.js` (`APP_VERSION = '0.1.19'`) is the single source of truth for version strings. `package.json` version and cache-busting consumers derive from it. Verified by `tests/version-sync.test.js`.
+29. **Single-source versioning.** `src/version.js` (`APP_VERSION = '0.1.21'`) is the single source of truth for version strings. `package.json` version and cache-busting consumers derive from it. Verified by `tests/version-sync.test.js`.
 
 30. **Desktop Pan and Drag Painting.** Desktop left-drag with the Pan tool pans the camera; clicking without dragging selects the tile without opening the inspector. Inspect Tile opens the inspector. Left-drag painting is restricted to repeatable tools (roads, bridges, tunnels, zones, bulldoze); single-placement buildings and surveys do not drag-paint.
 

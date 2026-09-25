@@ -244,7 +244,7 @@ export const HAPPINESS_CONFIG = {
   POLLUTION_PENALTY_PER_POINT: 1,         // Happiness points lost per pollution point
   CRIME_PENALTY_PER_POINT: 2,             // Happiness points lost per crime point
   FOOD_SHORTFALL_PENALTY: 25,             // Happiness penalty when food demand is unmet
-  GROWTH_DELTA_PER_POINT: 0.05,           // Residential growth delta per happiness point
+  GROWTH_DELTA_PER_POINT: 0.1,            // Residential demand delta per happiness point away from BASE_SCORE (50 is neutral)
   UNTREATED_PATIENT_PENALTY: 0.5,         // Happiness penalty per untreated patient
   CRIME_POINT_PENALTY: 0.5,               // Happiness penalty per crime point
   FIRE_INJURY_PENALTY: 0.1,               // Happiness penalty per fire injury
@@ -746,6 +746,7 @@ export const SERVICE_GLOBAL_CONFIG = {
 
 // Procedural map-generation balance controls. Adjust these to change map character.
 export const TERRAIN_GENERATION_CONFIG = {
+  GENERATION_VERSION: 1,                  // Bump when terrain or hidden-ore algorithms change
   DEFAULT_RANDOM_SEED: 12345,             // Fallback when parseInt(seed) is not a number
   RANDOM_SEED_MAX: 9000000,               // Upper bound for generated map seeds
   RANDOM_SEED_MIN: 100000,                // Lower bound for generated map seeds

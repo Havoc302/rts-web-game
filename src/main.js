@@ -277,6 +277,9 @@ class GameApp {
       this.renderer.setOverlayMode(imported.ui.overlayMode);
       document.querySelectorAll('.overlay-btn').forEach((button) => button.classList.toggle('active', button.dataset.mode === imported.ui.overlayMode));
       this.simulation.stats = imported.simulation.stats;
+      this.simulation.tick(false);
+      this.simulation.isPaused = true;
+      this.simulation.speed = 0;
       this.updateHUD({ force: true });
       this.renderer.render(this.simulation);
     } catch (error) {

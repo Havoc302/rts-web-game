@@ -285,6 +285,7 @@ export class Simulation {
         delta += taxGrowthModifier;
 
         if (tile.zone === ZONE.RESIDENTIAL) {
+          // Signed mayor-rating demand: scores below 50 shrink occupancy, scores above 50 grow it.
           delta += this.stats.happinessGrowthModifier || 0;
           // Forest desirability bonus
           if (this.hasNearbyForest(tile.x, tile.y)) {
