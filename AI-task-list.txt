@@ -810,7 +810,7 @@ Make sure to update design.md to match
 Stage 1 - User checks, fixes and prompts
 - [ ] When pressing the random seed button prompt user for confirmation to allow chance to cancel.
 - [ ] When pressing reset map button prompt user for confirmation to allow chance to cancel.
-- [ ] Add ability to punch zoom out on mobile.
+- [ ] Add ability to pinch zoom out on mobile.
 - [ ] Check food is actually being used up as a consumable on residential tiles based on population count in that tile. If it doesn't match the output of agricultural tiles add a severe hit to happiness.
 - [ ] Check growth rate increase from available jobs. Bonus should be scaled based on inverse of percentage of population employed to create an available jobs rate.
 - [ ] For building placement a highlighted square comes up for where is a valid location to place buildings. Make sure this happens for all building types. Windmills and solar panels can only go adjacent to a battery, all building types next to a road, even roads, water pumps and sewage plants next to water and a road. Make sure the highlighting also matches.

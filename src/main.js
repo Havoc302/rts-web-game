@@ -263,7 +263,8 @@ class GameApp {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `bc2000-save-${new Date().toISOString().slice(0, 10)}.json`;
+    const seed = this.grid?.seed ?? '0';
+    link.download = `bc2000-save-${new Date().toISOString().slice(0, 10)}-seed-${seed}.json`;
     link.click();
     URL.revokeObjectURL(url);
   }
