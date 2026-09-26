@@ -15,6 +15,7 @@ import {
   uiTimingAverages,
 } from './engine/UiRefresh.js';
 import { deserializeGameFromJson, serializeGameToJson } from './engine/SaveGame.js';
+import { AudioManager } from './engine/AudioManager.js';
 import { APP_VERSION, ZONE, TERRAIN, PRODUCER_TYPE, PRODUCER_CONFIG, FACTORY_RECIPES, COSTS, TILE_SIZE, STARTING_TREASURY, RESIDENTIAL_CAPACITY, JOBS_PROVIDED, FOREST_POLLUTION_ABSORPTION, FOREST_DESIRABILITY_RADIUS, CRIME_CONFIG, MEDICAL_CONFIG, POWER_PRODUCER_TYPES, POLLUTION_CONFIG, COAL_CONFIG, WIND_CONFIG, SOLAR_CONFIG, BATTERY_CONFIG, DENSITY, RENDERER_CONFIG, TERRAIN_GENERATION_CONFIG, MAP_SEED_STORAGE_KEY, splitDemographics } from './config.js';
 
 const nowMs = typeof performance !== 'undefined' ? () => performance.now() : () => Date.now();
@@ -66,6 +67,9 @@ class GameApp {
     this.initCanvasSize();
     this.bindUIEvents();
     this.bindCanvasEvents();
+
+    this.audioManager = new AudioManager();
+    this.initAudioUI();
 
     this.setSpeed(0);
     this.startRenderLoop();
@@ -222,6 +226,41 @@ class GameApp {
     });
   }
 
+  initAudioUI() {
+    const audioBtn = document.getElementById('btn-toggle-audio');
+    const promptModal = document.getElementById('audio-prompt-modal');
+    const btnYes = document.getElementById('btn-audio-yes');
+    const btnNo = document.getElementById('btn-audio-no');
+
+    const updateButtonState = (active) => {
+      if (!audioBtn) return;
+      audioBtn.textContent = active ? '🔊' : '🔇';
+      audioBtn.classList.toggle('active', active);
+    };
+
+    // Initial prompt modal handlers
+    if (btnYes && btnNo && promptModal) {
+      btnYes.addEventListener('click', () => {
+        this.audioManager.enable();
+        updateButtonState(true);
+        promptModal.style.display = 'none';
+      });
+
+      btnNo.addEventListener('click', () => {
+        updateButtonState(false);
+        promptModal.style.display = 'none';
+      });
+    }
+
+    // Toolbar Mute Button toggle
+    if (audioBtn) {
+      audioBtn.addEventListener('click', () => {
+        const isUnmuted = this.audioManager.toggleMute();
+        updateButtonState(isUnmuted);
+      });
+    }
+  }
+
   resetMapWithSeed(seed) {
     const validSeed = parseInt(seed, 10) || this.grid.seed;
     this.grid.randomizeGrid(validSeed);
@@ -323,6 +362,7 @@ class GameApp {
     if (this.simulation.isPaused) return;
     const income = this.simulation.tick(true, this.treasury);
     this.treasury += income - this.simulation.stats.serviceExpenses - this.simulation.stats.roadExpenses - (this.simulation.surveyExpenses || 0);
+    this.audioManager?.updatePopulation(this.simulation.stats.population);
     this.updateHUD();
     if (this.renderer.selectedTile) {
       this.updateInspector(this.renderer.selectedTile);

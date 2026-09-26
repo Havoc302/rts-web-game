@@ -162,6 +162,7 @@
         <button class="btn-icon" id="btn-regen-map" title="Randomize Seed & Regenerate">🎲</button>
         <button class="btn-icon" id="btn-save-game" title="Save Game">💾</button>
         <button class="btn-icon" id="btn-load-game" title="Load Game">📂</button>
+        <button class="btn-icon" id="btn-toggle-audio" title="Toggle Audio (Mute/Unmute)">🔇</button>
         <input type="file" id="game-file-input" accept="application/json,.json" hidden />
       </div>
 
@@ -471,8 +472,19 @@
           </div>
         </div>
       </aside>
-    </main>
   </div>
+
+  <div id="audio-prompt-modal" class="modal-overlay">
+    <div class="modal-box">
+      <h3>Enable City Ambience?</h3>
+      <p>Would you like to play procedural background audio during gameplay?</p>
+      <div class="modal-actions">
+        <button id="btn-audio-yes" class="btn-primary">Enable Audio</button>
+        <button id="btn-audio-no" class="btn-secondary">Keep Muted</button>
+      </div>
+    </div>
+  </div>
+
   <script type="module" src="src/main.js"></script>
 </body>
 </html>
