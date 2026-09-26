@@ -664,6 +664,9 @@ export const LABOR_TAX_GROWTH_CONFIG = {
   EMPLOYMENT_SHORTAGE_PENALTY: -1,
   MIN_SERVICE_EMPLOYMENT_RATE: 0.3,
 
+  // Job-market vacancy attraction bonus for residential growth.
+  MAX_JOB_ATTRACTION_BONUS: 3, // Max growth score bonus at 100% job vacancy
+
   // Tax pressure and its effect on population and jobs.
   LOW_TAX_GROWTH_BONUS: 1,
   GROWTH_NEUTRAL_RATE: 40,

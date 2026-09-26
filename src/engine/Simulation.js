@@ -342,10 +342,18 @@ export class Simulation {
           if (tileSchoolAge > 0 && !tile.services?.school) {
             delta += DEMOGRAPHICS_CONFIG.SCHOOL_UNMET_GROWTH_PENALTY;
           }
+          // Job-market vacancy attraction: scales from 0 at full employment to MAX_JOB_ATTRACTION_BONUS
+          // at 0% employment. Gated on full utility service and a non-zero job market to prevent
+          // the zero-job boundary condition from acting as a free magnet.
+          const totalJobs = this.stats.totalJobsProvided || 0;
+          if (isFullyServiced && totalJobs > 0) {
+            const vacancyRatio = 1.0 - (this.stats.employmentRate || 0);
+            delta += Math.round(LABOR_TAX_GROWTH_CONFIG.MAX_JOB_ATTRACTION_BONUS * vacancyRatio);
+          }
           // Residential growth stalls when workers cannot find matching jobs,
           // or when the city has no workplaces at all.
           const unemployed = this.stats.unemployedWorkers || 0;
-          const noJobMarket = (this.stats.totalJobsProvided || 0) === 0;
+          const noJobMarket = totalJobs === 0;
           if ((unemployed > 0 || noJobMarket) && delta > 0) {
             delta = 0;
           }

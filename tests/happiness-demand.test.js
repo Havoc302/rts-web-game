@@ -33,6 +33,7 @@ function servicedResidential(growthScore, jobsNearby = true) {
   simulation.stats.happinessGrowthModifier = 0;
   simulation.stats.unemployedWorkers = 0;
   simulation.stats.totalJobsProvided = 10;
+  simulation.stats.employmentRate = 1; // Jobs fully filled; vacancy bonus = 0
   simulation.updateGrowthAndDensity();
   const neutral = home.growthScore;
 
@@ -53,6 +54,7 @@ function servicedResidential(growthScore, jobsNearby = true) {
   simulation.stats.happinessGrowthModifier = happinessDemandModifier(0);
   simulation.stats.unemployedWorkers = 0;
   simulation.stats.totalJobsProvided = 10;
+  simulation.stats.employmentRate = 1; // Jobs fully filled; vacancy bonus = 0
   simulation.computeStats();
   const populationBefore = simulation.stats.population;
   simulation.updateGrowthAndDensity();

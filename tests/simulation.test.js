@@ -4,7 +4,7 @@ import { Simulation } from '../src/engine/Simulation.js';
 import { UtilityManager } from '../src/engine/UtilityManager.js';
 import { PollutionManager } from '../src/engine/PollutionManager.js';
 import { FireManager } from '../src/engine/FireManager.js';
-import { PRODUCER_TYPE, ZONE, DENSITY, GROWTH_CONFIG, MAP_WIDTH, MAP_HEIGHT, TERRAIN_TYPE, TERRAIN, CRIME_CONFIG, MEDICAL_CONFIG, FIRE_CONFIG, HAPPINESS_CONFIG, USAGE_RATES, JOBS_PROVIDED } from '../src/config.js';
+import { PRODUCER_TYPE, ZONE, DENSITY, GROWTH_CONFIG, MAP_WIDTH, MAP_HEIGHT, TERRAIN_TYPE, TERRAIN, CRIME_CONFIG, MEDICAL_CONFIG, FIRE_CONFIG, HAPPINESS_CONFIG, USAGE_RATES, JOBS_PROVIDED, LABOR_TAX_GROWTH_CONFIG } from '../src/config.js';
 
 console.log('Running Phase 1 Core Loop Automated Verification Tests...\n');
 
@@ -296,12 +296,14 @@ console.log('Running Phase 1 Core Loop Automated Verification Tests...\n');
   const originalUnemploymentScaler = CRIME_CONFIG.JOB_SCARCITY_CRIME_SCALER;
   const originalUnhealthyPenalty = MEDICAL_CONFIG.UNHEALTHY_GROWTH_PENALTY;
   const originalHappinessGrowth = HAPPINESS_CONFIG.GROWTH_DELTA_PER_POINT;
+  const originalJobAttractionBonus = LABOR_TAX_GROWTH_CONFIG.MAX_JOB_ATTRACTION_BONUS;
   Math.random = () => 0.999;
   CRIME_CONFIG.BASE_CRIME_CHANCE = 0;
   CRIME_CONFIG.JOB_SCARCITY_CRIME_SCALER = 0;
   // No hospital built in this test; disable the unrelated health penalty so growth math stays deterministic.
   MEDICAL_CONFIG.UNHEALTHY_GROWTH_PENALTY = 0;
   HAPPINESS_CONFIG.GROWTH_DELTA_PER_POINT = 0;
+  LABOR_TAX_GROWTH_CONFIG.MAX_JOB_ATTRACTION_BONUS = 0;
 
   // Run simulation ticks up to THRESHOLD_MEDIUM
   for (let i = 0; i < GROWTH_CONFIG.THRESHOLD_MEDIUM; i++) {
@@ -326,6 +328,7 @@ console.log('Running Phase 1 Core Loop Automated Verification Tests...\n');
   assert.strictEqual(zTile.growthScore, GROWTH_CONFIG.MAX_SCORE, 'Growth score should cap at full population');
   MEDICAL_CONFIG.UNHEALTHY_GROWTH_PENALTY = originalUnhealthyPenalty;
   HAPPINESS_CONFIG.GROWTH_DELTA_PER_POINT = originalHappinessGrowth;
+  LABOR_TAX_GROWTH_CONFIG.MAX_JOB_ATTRACTION_BONUS = originalJobAttractionBonus;
   console.log('✔ Test 4 Passed: Growth score & density progression correct');
 }
 
