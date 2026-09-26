@@ -803,6 +803,19 @@ Design rule:
 - Global zone tax multiplier is `1 + schoolRatio * 0.15 + uniRatio * 0.20`, applied to base residential/commercial/industrial/agricultural tax before crime tax loss.
 - Partial education coverage scales linearly. Education does not create residents or jobs; it only modifies tax yield.
 
+Optimisation and design fixes phase:
+
+Make sure to update design.md to match
+
+Stage 1 - User checks, fixes and prompts
+- [ ] When pressing the random seed button prompt user for confirmation to allow chance to cancel.
+- [ ] When pressing reset map button prompt user for confirmation to allow chance to cancel.
+- [ ] Add ability to punch zoom out on mobile.
+- [ ] Check food is actually being used up as a consumable on residential tiles based on population count in that tile. If it doesn't match the output of agricultural tiles add a severe hit to happiness.
+- [ ] Check growth rate increase from available jobs. Bonus should be scaled based on inverse of percentage of population employed to create an available jobs rate.
+- [ ] For building placement a highlighted square comes up for where is a valid location to place buildings. Make sure this happens for all building types. Windmills and solar panels can only go adjacent to a battery, all building types next to a road, even roads, water pumps and sewage plants next to water and a road. Make sure the highlighting also matches.
+- [ ] Set minimum text values for the top bar to reduce it moving back and forth and resizing as numbers go from 2 to 3 to 4 digits. Assume all top bar digits are at least 3 values until they go over that, set spacing for 3 characters minimum.
+
 Implementation stages:
 
 Stage 1 - Configuration and service definition:
