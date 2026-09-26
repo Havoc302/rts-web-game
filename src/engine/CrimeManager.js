@@ -1,67 +1,77 @@
-import { CRIME_CONFIG, ZONE } from '../config.js';
+import { CRIME_CONFIG, splitDemographics } from '../config.js';
 
 export class CrimeManager {
   static updateCrime(grid, stats) {
-    // 1. Decay crime only where crime can exist.
+    const totalWorkforce = stats.totalEmployablePopulation || 0;
+    const unemployed = stats.unemployedWorkers || 0;
+
+    // 1. Citywide Unemployment Risk Scaler (0.0 to 1.0)
+    const cityUnemploymentRate = totalWorkforce > 0 ? (unemployed / totalWorkforce) : 0;
+
     for (const tile of grid.getActiveZonedTiles()) {
-      tile.crime = Math.max(0, (tile.crime || 0) - CRIME_CONFIG.CRIME_DISSIPATION_RATE);
-    }
+      const currentCrime = tile.crime || 0;
+      const pop = tile.population || 0;
+      const jobs = tile.filledJobs || 0;
 
-    // 2. Compute crime probability from job scarcity (residents who want work
-    // but can't find any) rather than the jobs-side employment rate, so a
-    // city with abundant jobs stays low-crime even if few of the total
-    // openings are filled yet.
-    const employablePopulation = stats.totalEmployablePopulation ?? 0;
-    const jobScarcity = employablePopulation > 0
-      ? Math.max(0, (employablePopulation - (stats.jobsFilled ?? 0)) / employablePopulation)
-      : 0;
-    const crimeProbability = Math.min(1, CRIME_CONFIG.BASE_CRIME_CHANCE +
-      (jobScarcity * CRIME_CONFIG.JOB_SCARCITY_CRIME_SCALER));
-
-    // 3. Zoned tiles are maintained by Grid's active registry.
-    const zonedTiles = Array.from(grid.getActiveZonedTiles());
-
-    const sampleSize = Math.min(zonedTiles.length, CRIME_CONFIG.CRIME_EVENTS_PER_TICK_MAX);
-    const targets = this.sampleRandom(zonedTiles, sampleSize, grid.random);
-
-    // 4. Police check on each target
-    for (const tile of targets) {
-      if (Math.random() >= crimeProbability) continue;
-
-      if (tile.services?.police && Math.random() < CRIME_CONFIG.POLICE_SUPPRESSION_CHANCE) {
+      // Rule 1: No population/occupants = No crime. Dissipate existing crime on vacant tiles.
+      if (pop === 0 && jobs === 0) {
+        if (currentCrime > 0) {
+          tile.crime = Math.max(0, currentCrime - CRIME_CONFIG.CRIME_DISSIPATION_RATE * 2);
+        }
         continue;
       }
 
-      tile.crime = Math.min(CRIME_CONFIG.MAX_CRIME_LEVEL, (tile.crime || 0) + CRIME_CONFIG.CRIME_INCREMENT_PER_EVENT);
-    }
+      // Rule 2: Demographic Filtering — Only working-age population drives potential residential crime.
+      // Kids and retirees are excluded from the risk pool.
+      const tileWorkforce = pop > 0 ? splitDemographics(pop).workforce : jobs;
+      if (tileWorkforce <= 0) {
+        if (currentCrime > 0) {
+          tile.crime = Math.max(0, currentCrime - CRIME_CONFIG.CRIME_DISSIPATION_RATE);
+        }
+        continue;
+      }
 
-    // 5. Diffuse crime to adjacent unpoliced zoned tiles
-    const diffusions = [];
-    for (const tile of zonedTiles) {
-      if (tile.crime > CRIME_CONFIG.CRIME_DIFFUSION_THRESHOLD) {
-        for (const neighbor of grid.getNeighbors(tile.x, tile.y)) {
-          const isZoned = neighbor.zone === ZONE.RESIDENTIAL
-            || neighbor.zone === ZONE.COMMERCIAL
-            || neighbor.zone === ZONE.INDUSTRIAL
-            || neighbor.zone === ZONE.AGRICULTURAL;
-          if (isZoned && !neighbor.services?.police) {
-            diffusions.push(neighbor);
+      // Rule 3: Police Suppression Check
+      const hasPoliceCoverage = Boolean(tile.services?.police);
+      const suppressionChance = hasPoliceCoverage ? CRIME_CONFIG.POLICE_SUPPRESSION_CHANCE : 0;
+
+      if (Math.random() < suppressionChance) {
+        // Police presence actively reduces existing crime levels
+        if (currentCrime > 0) {
+          tile.crime = Math.max(0, currentCrime - CRIME_CONFIG.CRIME_DISSIPATION_RATE);
+        }
+        continue;
+      }
+
+      // Rule 4: Crime Risk Calculation
+      // Base risk scales off workforce density on the tile, multiplied by citywide unemployment pressure.
+      const workforceDensity = tileWorkforce / (tile.maxPopulation || 100);
+      const crimeProbability = CRIME_CONFIG.BASE_CRIME_CHANCE *
+                               workforceDensity *
+                               (1 + cityUnemploymentRate * CRIME_CONFIG.JOB_SCARCITY_CRIME_SCALER);
+
+      if (Math.random() < crimeProbability) {
+        tile.crime = Math.min(
+          CRIME_CONFIG.MAX_CRIME_LEVEL,
+          currentCrime + CRIME_CONFIG.CRIME_INCREMENT_PER_EVENT
+        );
+      } else if (currentCrime > 0) {
+        // Natural decay when no crime event triggers
+        tile.crime = Math.max(0, currentCrime - CRIME_CONFIG.CRIME_DISSIPATION_RATE);
+      }
+
+      // Rule 5: Crime Diffusion to Adjacent Occupied Tiles
+      if (tile.crime >= CRIME_CONFIG.CRIME_DIFFUSION_THRESHOLD) {
+        const neighbors = grid.getNeighbors(tile.x, tile.y);
+        for (const neighbor of neighbors) {
+          if (neighbor.zone && neighbor.zone !== 'none' && (neighbor.population > 0 || neighbor.filledJobs > 0)) {
+            neighbor.crime = Math.min(
+              CRIME_CONFIG.MAX_CRIME_LEVEL,
+              (neighbor.crime || 0) + CRIME_CONFIG.CRIME_DIFFUSION_INCREMENT
+            );
           }
         }
       }
     }
-    for (const tile of diffusions) {
-      tile.crime = Math.min(CRIME_CONFIG.MAX_CRIME_LEVEL, (tile.crime || 0) + CRIME_CONFIG.CRIME_DIFFUSION_INCREMENT);
-    }
-  }
-
-  static sampleRandom(items, count, rng = Math.random) {
-    const pool = items.slice();
-    const result = [];
-    for (let i = 0; i < count && pool.length > 0; i++) {
-      const idx = Math.floor(rng() * pool.length);
-      result.push(pool.splice(idx, 1)[0]);
-    }
-    return result;
   }
 }
