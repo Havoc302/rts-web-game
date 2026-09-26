@@ -39,6 +39,7 @@ export function buildHudSnapshot(simulation, treasury) {
     'stat-road-expenses': `-$${stats.roadExpenses.toLocaleString()}`,
     'stat-tick': String(simulation.tickCount),
     'stat-time': formatHudTime(simulation.getHourOfDay(), simulation.isDaytime()),
+    'stat-day': `Day ${Math.floor(simulation.tickCount / 24)}`,
     'stat-jobs-avail': stats.jobsAvailable.toLocaleString(),
     'stat-emp-rate': `${Math.round(stats.employmentRate * 100)}%`,
     'stat-workforce': (stats.totalEmployablePopulation || 0).toLocaleString(),

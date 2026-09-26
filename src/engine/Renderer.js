@@ -1,5 +1,6 @@
 import { TERRAIN, ZONE, DENSITY, PRODUCER_TYPE, PRODUCER_CONFIG, TILE_SIZE, ORE_CONFIG, NIGHT_TINT_ALPHA, RENDERER_CONFIG, POLLUTION_CONFIG } from '../config.js';
 import { UtilityManager } from './UtilityManager.js';
+import { TrafficManager } from './TrafficManager.js';
 
 export class Renderer {
   constructor(canvas, grid) {
@@ -26,6 +27,7 @@ export class Renderer {
     this.renderFrameCount = 0;
     this.lastTerrainRebuild = { kind: 'none', chunksRebuilt: 0 };
     this.lastOverlayDraws = 0;
+    this.trafficManager = new TrafficManager({ grid: this.grid });
   }
 
   setCamera(x, y, zoom = this.zoom) {
@@ -62,6 +64,11 @@ export class Renderer {
     this.animTime += elapsed;
     this.lastTerrainRebuild = { kind: 'none', chunksRebuilt: 0 };
     this.lastOverlayDraws = 0;
+
+    if (simulation) {
+      this.trafficManager.updateDensity(simulation, this.grid);
+      this.trafficManager.update(elapsed, this.grid);
+    }
 
     const ctx = this.ctx;
     const width = this.canvas.width;
@@ -157,6 +164,13 @@ export class Renderer {
         ctx.strokeRect(px, py, TILE_SIZE, TILE_SIZE);
       }
     }
+
+    this.trafficManager.draw(
+      ctx,
+      TILE_SIZE,
+      { x: -startX, y: -startY },
+      { left: visibleLeft, top: visibleTop, right: visibleRight, bottom: visibleBottom }
+    );
 
     if (this.hoverTile) {
       const hx = startX + this.hoverTile.x * TILE_SIZE;

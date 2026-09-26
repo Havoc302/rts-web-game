@@ -23,6 +23,7 @@ export class Simulation {
     this.timingTickCount = 0;
     this.stats = {
       population: 0,
+      maxPopulationCapacity: 0,
       incomePerTick: 0,
       powerDemand: 0,
       powerCapacity: 0,
@@ -384,6 +385,7 @@ export class Simulation {
     const foodShortfall = this.stats.foodShortfall || 0;
     const stats = {
       population: 0,
+      maxPopulationCapacity: 0,
       incomePerTick: 0,
       powerDemand: 0,
       powerCapacity: 0,
@@ -464,6 +466,7 @@ export class Simulation {
 
         if (tile.zone === ZONE.RESIDENTIAL) {
           const cap = RESIDENTIAL_CAPACITY[tile.density] || 0;
+          stats.maxPopulationCapacity += cap;
           const pop = Math.min(
             cap,
             Math.max(0, this.computeTilePopulation(tile, cap) + (tile.relocatedPopulation || 0) - (tile.fireDisplacedPopulation || 0) - (tile.populationLoss || 0)),

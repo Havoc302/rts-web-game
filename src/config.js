@@ -792,6 +792,14 @@ export const RENDERER_CONFIG = {
   HUD_MOBILE_CADENCE_MS: 500,              // Max HUD/inspector DOM refresh rate on coarse-pointer layouts
 };
 
+export const TRAFFIC_CONFIG = {
+  MAX_CARS_PER_ROAD_TILE: 0.3,
+  COLORS: ['#ff4d4d', '#4d79ff', '#ffff4d', '#ffffff', '#4dff88'],
+  SPEED_MIN: 0.02,
+  SPEED_MAX: 0.04,
+  CAR_SIZE: 3,
+};
+
 
 
 
