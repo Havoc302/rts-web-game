@@ -206,6 +206,20 @@ class GameApp {
       if (file) this.importGameFile(file);
       e.target.value = '';
     });
+
+    document.getElementById('btn-close-inspector')?.addEventListener('click', () => {
+      this.renderer.selectedTile = null;
+      document.getElementById('inspector-panel').classList.remove('visible');
+    });
+
+    document.addEventListener('pointerdown', (e) => {
+      const canvas = document.getElementById('game-canvas');
+      const panel = document.getElementById('inspector-panel');
+      if (e.target !== canvas && !panel?.contains(e.target)) {
+        this.renderer.selectedTile = null;
+        panel?.classList.remove('visible');
+      }
+    });
   }
 
   resetMapWithSeed(seed) {
@@ -492,7 +506,11 @@ class GameApp {
     const mouseY = e.clientY - rect.top;
     const tile = this.screenToTile(mouseX, mouseY);
 
-    if (!tile) return;
+    if (!tile) {
+      this.renderer.selectedTile = null;
+      document.getElementById('inspector-panel').classList.remove('visible');
+      return;
+    }
 
     if (this.activeTool === 'inspect') {
       this.renderer.selectedTile = tile;
@@ -504,6 +522,9 @@ class GameApp {
       this.renderer.selectedTile = tile;
       return;
     }
+
+    this.renderer.selectedTile = null;
+    document.getElementById('inspector-panel').classList.remove('visible');
 
     let success = false;
     let cost = 0;

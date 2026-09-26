@@ -20,6 +20,7 @@ export class FireManager {
 
   static updateFires(grid, stats) {
     stats.fireInjuries = 0;
+    stats.displacedPopulation = 0;
 
     for (const tile of grid.repairingTiles) {
       tile.fireRepair = Math.min(1, (tile.fireRepair || 0) + FIRE_CONFIG.REPAIR_PER_TICK);

@@ -65,9 +65,9 @@ export class PollutionManager {
 
     // Step 3b: Source B2 — Coal power plant smokestack emission
     for (const plant of grid.producers) {
-      if (plant.type === PRODUCER_TYPE.COAL_PLANT) {
-        this.spreadPollution(grid, plant.x, plant.y, COAL_CONFIG.RADIUS, COAL_CONFIG.EMISSION);
-      }
+      if (plant.type !== PRODUCER_TYPE.COAL_PLANT) continue;
+      if (!plant.operational || plant.destroyed) continue;
+      this.spreadPollution(grid, plant.x, plant.y, COAL_CONFIG.RADIUS, COAL_CONFIG.EMISSION);
     }
 
     // Step 4: Source C — River discharge contamination
@@ -147,24 +147,22 @@ export class PollutionManager {
     const offsets = [
       [1, 0], [-1, 0], [0, 1], [0, -1],
       [1, 1], [-1, 1], [1, -1], [-1, -1]
-    ];
+    ].map(([dx, dy]) => {
+      const dist = Math.hypot(dx, dy);
+      return { dx, dy, ndx: dx / dist, ndy: dy / dist };
+    });
 
     while (queue.length > 0) {
       const { tile: curr, strength } = queue.shift();
       const nextStrength = strength - POLLUTION_CONFIG.RIVER_SEWAGE_FALLOFF;
       if (nextStrength <= 0) continue;
 
-      for (const [dx, dy] of offsets) {
+      for (const { dx, dy, ndx, ndy } of offsets) {
         const nx = curr.x + dx;
         const ny = curr.y + dy;
 
         const neighbor = grid.getTile(nx, ny);
         if (!neighbor || neighbor.terrain !== TERRAIN.WATER) continue;
-
-        // Check if step (dx, dy) is in downstream flow direction
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        const ndx = dx / dist;
-        const ndy = dy / dist;
 
         const isDownstream = curr.riverFlowDir
           ? ndx * curr.riverFlowDir.x + ndy * curr.riverFlowDir.y > POLLUTION_CONFIG.RIVER_FLOW_DOWNSTREAM_THRESHOLD

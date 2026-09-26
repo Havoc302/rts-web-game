@@ -142,6 +142,9 @@ export class Simulation {
     }
 
     this.computeStats();
+    if (advanceWorld) {
+      this.settleRelocatedPopulation();
+    }
     if (timing) {
       t1 = now();
       timings['stats-after'] = t1 - t0;
@@ -240,6 +243,36 @@ export class Simulation {
       tile.relocatedPopulation = (tile.relocatedPopulation || 0) + moved;
       remaining -= moved;
     }
+  }
+
+  settleRelocatedPopulation() {
+    for (const tile of this.grid.getActiveZonedTiles()) {
+      if (tile.zone !== ZONE.RESIDENTIAL) continue;
+      if (!(tile.relocatedPopulation || tile.fireDisplacedPopulation)) continue;
+      this.syncGrowthScoreToPopulation(tile);
+      tile.relocatedPopulation = 0;
+      tile.fireDisplacedPopulation = 0;
+    }
+  }
+
+  syncGrowthScoreToPopulation(tile) {
+    const capacity = RESIDENTIAL_CAPACITY[tile.density] || 0;
+    if (capacity <= 0) {
+      tile.growthScore = 0;
+      return;
+    }
+    const progress = Math.min(1, Math.max(0, (tile.population || 0) / capacity));
+    const tMed = GROWTH_CONFIG.THRESHOLD_MEDIUM;
+    const tHigh = GROWTH_CONFIG.THRESHOLD_HIGH;
+    let growthScore;
+    if (tile.density === DENSITY.LIGHT) {
+      growthScore = progress * tMed;
+    } else if (tile.density === DENSITY.MEDIUM) {
+      growthScore = tMed + progress * (tHigh - tMed);
+    } else {
+      growthScore = tHigh + progress * (GROWTH_CONFIG.MAX_SCORE - tHigh);
+    }
+    tile.growthScore = Math.round(growthScore * 100) / 100;
   }
 
   getHourOfDay() {
@@ -375,6 +408,7 @@ export class Simulation {
       patientCapacity: 0,
       untreatedPatients: 0,
       fireInjuries,
+      displacedPopulation: 0,
       happiness,
       happinessGrowthModifier,
       foodShortfall,

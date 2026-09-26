@@ -954,7 +954,6 @@ export class Renderer {
       ctx.strokeStyle = '#ccfbf1';
       ctx.lineWidth = 2;
       ctx.stroke();
-
     } else {
       ctx.fillStyle = PRODUCER_CONFIG[prod.type]?.color || '#64748b';
       ctx.fillRect(px + 2, py + 2, 28, 28);

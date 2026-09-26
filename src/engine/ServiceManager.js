@@ -57,16 +57,18 @@ export class ServiceManager {
           : maxJobs;
         const budgetedJobs = Math.round(staffedBase * budgetRatio);
         prod.totalJobs = budgetedJobs;
-        // Fully funded essential services receive workers before commercial and industrial jobs.
-        prod.filledJobs = Math.min(budgetedJobs, availableWorkers);
-        availableWorkers -= prod.filledJobs;
 
         if (!prod.operational) {
+          prod.filledJobs = 0;
           prod.effectiveRadius = 0;
           prod.runningCost = 0;
           producerStateSignature += `${prod.id}:${prod.x},${prod.y}:0:0:0:${prod.budget};`;
           return;
         }
+
+        // Fully funded essential services receive workers before commercial and industrial jobs.
+        prod.filledJobs = Math.min(budgetedJobs, availableWorkers);
+        availableWorkers -= prod.filledJobs;
         const maxRadius = config.radius[density] || SERVICE_GLOBAL_CONFIG.DEFAULT_SERVICE_RADIUS;
         // Emergency coverage is calculated by CoverageManager from staffed jobs.
         prod.effectiveRadius = maxRadius;

@@ -264,12 +264,29 @@ export class ResourceManager {
       fuel: this.capacity.fuel,
       ironBar: this.capacity.bar,
       bauxiteBar: this.capacity.bar,
-      food: this.capacity.goods,
-      consumerGoods: this.capacity.goods,
-      arms: this.capacity.goods,
-      tanks: this.capacity.goods,
     };
     for (const [key, limit] of Object.entries(limits)) this.stockpile[key] = Math.min(this.stockpile[key], limit);
+
+    const goodsKeys = ['food', 'consumerGoods', 'arms', 'tanks'];
+    const goodsLimit = this.capacity.goods || 0;
+    const goodsTotal = goodsKeys.reduce((sum, key) => sum + (this.stockpile[key] || 0), 0);
+    if (goodsTotal <= goodsLimit) return;
+    if (goodsLimit <= 0) {
+      for (const key of goodsKeys) this.stockpile[key] = 0;
+      return;
+    }
+    const scale = goodsLimit / goodsTotal;
+    let assigned = 0;
+    for (let i = 0; i < goodsKeys.length; i++) {
+      const key = goodsKeys[i];
+      if (i === goodsKeys.length - 1) {
+        this.stockpile[key] = Math.max(0, goodsLimit - assigned);
+      } else {
+        const next = Math.floor((this.stockpile[key] || 0) * scale);
+        this.stockpile[key] = next;
+        assigned += next;
+      }
+    }
   }
 
   snapshot() {
