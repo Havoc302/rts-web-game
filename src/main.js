@@ -220,6 +220,20 @@ class GameApp {
         panel?.classList.remove('visible');
       }
     });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable)) {
+        return;
+      }
+      if (e.code === 'Space' || e.key === ' ') {
+        e.preventDefault();
+        if (this.simulation.isPaused || this.simulation.speed === 0) {
+          this.setSpeed(1);
+        } else {
+          this.setSpeed(0);
+        }
+      }
+    });
   }
 
   resetMapWithSeed(seed) {
@@ -307,6 +321,7 @@ class GameApp {
     if (speed === 0) {
       document.getElementById('btn-pause').classList.add('active');
       this.simulation.isPaused = true;
+      this.simulation.speed = 0;
       if (this.simInterval) clearInterval(this.simInterval);
       this.simInterval = null;
     } else {
