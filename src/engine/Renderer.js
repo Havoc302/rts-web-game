@@ -1,6 +1,7 @@
 import { TERRAIN, ZONE, DENSITY, PRODUCER_TYPE, PRODUCER_CONFIG, TILE_SIZE, ORE_CONFIG, NIGHT_TINT_ALPHA, RENDERER_CONFIG, POLLUTION_CONFIG } from '../config.js';
 import { UtilityManager } from './UtilityManager.js';
 import { TrafficManager } from './TrafficManager.js';
+import { WeatherOverlay } from './WeatherOverlay.js';
 
 export class Renderer {
   constructor(canvas, grid) {
@@ -28,6 +29,7 @@ export class Renderer {
     this.lastTerrainRebuild = { kind: 'none', chunksRebuilt: 0 };
     this.lastOverlayDraws = 0;
     this.trafficManager = new TrafficManager({ grid: this.grid });
+    this.weatherOverlay = new WeatherOverlay();
   }
 
   setCamera(x, y, zoom = this.zoom) {
@@ -194,6 +196,10 @@ export class Renderer {
     }
 
     ctx.restore();
+
+    if (this.weatherOverlay && simulation?.weatherManager && this.canvas) {
+      this.weatherOverlay.draw(ctx, this.canvas.width, this.canvas.height, simulation.weatherManager);
+    }
 
     if (this.enableTiming) {
       const ms = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - now;

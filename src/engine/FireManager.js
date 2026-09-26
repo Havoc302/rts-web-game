@@ -1,4 +1,4 @@
-import { FIRE_CONFIG, PRODUCER_TYPE, ZONE, TERRAIN, TERRAIN_TYPE } from '../config.js';
+import { FIRE_CONFIG, PRODUCER_TYPE, ZONE, TERRAIN, TERRAIN_TYPE, TEMPERATURE_CONFIG } from '../config.js';
 import { RoadNetwork } from './RoadNetwork.js';
 import { CoverageManager } from './CoverageManager.js';
 
@@ -18,7 +18,7 @@ export class FireManager {
     return false;
   }
 
-  static updateFires(grid, stats) {
+  static updateFires(grid, stats, weatherManager = null) {
     stats.fireInjuries = 0;
     stats.displacedPopulation = 0;
 
@@ -29,7 +29,10 @@ export class FireManager {
 
     for (const tile of grid.getFireCandidateTiles()) {
       if (tile.destroyed || tile.onFire || !this.isFlammable(tile)) continue;
-      const chance = this.getIgnitionChance(tile);
+      let chance = this.getIgnitionChance(tile);
+      if (weatherManager && weatherManager.temperature > TEMPERATURE_CONFIG.FIRE_RISK_THRESHOLD) {
+        chance *= TEMPERATURE_CONFIG.FIRE_RISK_MULTIPLIER;
+      }
       if (chance > 0 && Math.random() < chance) {
         tile.onFire = true;
         tile.fireDamage = 0;

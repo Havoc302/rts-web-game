@@ -1,10 +1,11 @@
-import { GROWTH_CONFIG, DENSITY, ZONE, TERRAIN, USAGE_RATES, POLLUTION_CONFIG, JOBS_PROVIDED, RESIDENTIAL_CAPACITY, LABOR_TAX_GROWTH_CONFIG, FOREST_DESIRABILITY_RADIUS, PRODUCER_TYPE, PRODUCER_CONFIG, POWER_PRODUCER_TYPES, ROAD_MAINTENANCE_COST, TAX_REVENUE_CONFIG, CRIME_CONFIG, MEDICAL_CONFIG, HAPPINESS_CONFIG, SERVICE_GLOBAL_CONFIG, TICKS_PER_HOUR, HOURS_PER_DAY, DAY_START_HOUR, NIGHT_START_HOUR, DEMOGRAPHICS_CONFIG, FUEL_CONFIG, SURVEY_COST_PER_TICK, POPULATION_STABILIZATION_CONFIG, splitDemographics } from '../config.js';
+import { GROWTH_CONFIG, DENSITY, ZONE, TERRAIN, USAGE_RATES, POLLUTION_CONFIG, JOBS_PROVIDED, RESIDENTIAL_CAPACITY, LABOR_TAX_GROWTH_CONFIG, FOREST_DESIRABILITY_RADIUS, PRODUCER_TYPE, PRODUCER_CONFIG, POWER_PRODUCER_TYPES, ROAD_MAINTENANCE_COST, TAX_REVENUE_CONFIG, CRIME_CONFIG, MEDICAL_CONFIG, HAPPINESS_CONFIG, SERVICE_GLOBAL_CONFIG, TICKS_PER_HOUR, HOURS_PER_DAY, DAY_START_HOUR, NIGHT_START_HOUR, DEMOGRAPHICS_CONFIG, FUEL_CONFIG, SURVEY_COST_PER_TICK, POPULATION_STABILIZATION_CONFIG, TEMPERATURE_CONFIG, splitDemographics } from '../config.js';
 import { UtilityManager } from './UtilityManager.js';
 import { PollutionManager } from './PollutionManager.js';
 import { ServiceManager } from './ServiceManager.js';
 import { CrimeManager } from './CrimeManager.js';
 import { FireManager } from './FireManager.js';
 import { ResourceManager } from './ResourceManager.js';
+import { WeatherManager } from './WeatherManager.js';
 
 const now = typeof performance !== 'undefined' ? () => performance.now() : () => Date.now();
 
@@ -17,6 +18,7 @@ export class Simulation {
     this.taxRate = 0;
     this.pensionBudget = SERVICE_GLOBAL_CONFIG.BUDGET_MAX_VALUE;
     this.resourceManager = new ResourceManager();
+    this.weatherManager = new WeatherManager();
     this.enableTiming = false;
     this.lastStageTimings = null;
     this.accumulatedStageTimings = null;
@@ -123,7 +125,8 @@ export class Simulation {
     }
 
     if (advanceWorld) {
-      FireManager.updateFires(this.grid, this.stats);
+      this.weatherManager?.update();
+      FireManager.updateFires(this.grid, this.stats, this.weatherManager);
     }
     if (timing) {
       t1 = now();
@@ -534,6 +537,12 @@ export class Simulation {
           const nonRetirees = Math.max(0, (tile.population || 0) - tileDemo.retirees);
           totalPatientDemand += nonRetirees * MEDICAL_CONFIG.PATIENTS_PER_RESIDENT;
           totalPatientDemand += tileDemo.retirees * MEDICAL_CONFIG.PATIENTS_PER_RESIDENT * retireeHealthMultiplier;
+          if (this.weatherManager && (tile.population || 0) > 0) {
+            const temp = this.weatherManager.temperature;
+            if (temp < TEMPERATURE_CONFIG.HEALTH_RISK_LOW || temp > TEMPERATURE_CONFIG.HEALTH_RISK_HIGH) {
+              totalPatientDemand += (tile.population || 0) * TEMPERATURE_CONFIG.PATIENT_PER_RESIDENT_EXTREME;
+            }
+          }
         } else {
           tileBaseTax = (tile.filledJobs || 0) / TAX_REVENUE_CONFIG.EMPLOYED_PER_TAX_UNIT * TAX_REVENUE_CONFIG.MONEY_PER_TAX_UNIT * (this.taxRate / 100);
           if (tile.zone === ZONE.COMMERCIAL) {

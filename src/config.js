@@ -810,6 +810,24 @@ export const POPULATION_STABILIZATION_CONFIG = {
   MIN_POPULATION_SHIFT_FLOOR: 1,        // Prevents early-game stall when population is low
 };
 
+export const WEATHER_CONFIG = {
+  MAX_TICK_DELTA: 0.20,             // Maximum metric shift per tick
+  MEAN_REVERSION_STRENGTH: 0.15,    // Pull toward 0.5 to maintain central distribution
+  WIND_HAZARD_THRESHOLD: 0.98,      // Wind speed trigger for windmill structural damage
+  WIND_IGNITION_CHANCE: 0.25,       // Ignition chance during extreme over-speeding
+};
+
+export const TEMPERATURE_CONFIG = {
+  BASE_TEMP: 20,                    // Neutral baseline temperature in °C
+  MIN_TEMP: 0,                      // Cold floor in °C
+  MAX_TEMP: 40,                     // Heat ceiling in °C
+  FIRE_RISK_THRESHOLD: 30,          // Temp in °C above which fire ignition risk scales up
+  FIRE_RISK_MULTIPLIER: 1.5,        // Extra ignition chance multiplier when hot
+  HEALTH_RISK_LOW: 5,               // Cold exposure threshold in °C
+  HEALTH_RISK_HIGH: 35,             // Heatwave exposure threshold in °C
+  PATIENT_PER_RESIDENT_EXTREME: 0.005, // Extra patient demand per resident during temp extremes
+};
+
 
 
 
