@@ -476,46 +476,46 @@ export class Renderer {
 
     // Structural base (concrete/steel frame)
     ctx.fillStyle = '#1e293b';
+    ctx.fillRect(px + 6, py + 6, 20, 20);
+    if (n) ctx.fillRect(px + 6, py, 20, 6);
+    if (e) ctx.fillRect(px + 26, py + 6, 6, 20);
+    if (s) ctx.fillRect(px + 6, py + 26, 20, 6);
+    if (w) ctx.fillRect(px, py + 6, 6, 20);
+
+    // Asphalt deck
+    ctx.fillStyle = '#475569';
     ctx.fillRect(px + 8, py + 8, 16, 16);
     if (n) ctx.fillRect(px + 8, py, 16, 8);
     if (e) ctx.fillRect(px + 24, py + 8, 8, 16);
     if (s) ctx.fillRect(px + 8, py + 24, 16, 8);
     if (w) ctx.fillRect(px, py + 8, 8, 16);
 
-    // Asphalt deck
-    ctx.fillStyle = '#475569';
-    ctx.fillRect(px + 10, py + 10, 12, 12);
-    if (n) ctx.fillRect(px + 10, py, 12, 10);
-    if (e) ctx.fillRect(px + 22, py + 10, 10, 12);
-    if (s) ctx.fillRect(px + 10, py + 22, 12, 10);
-    if (w) ctx.fillRect(px, py + 10, 10, 12);
-
     // Guardrails / Metal caps
     ctx.fillStyle = '#cbd5e1';
     if ((n || s) && !e && !w) {
       // N-S Vertical Bridge Railings
-      ctx.fillRect(px + 7, py, 3, TILE_SIZE);
-      ctx.fillRect(px + 22, py, 3, TILE_SIZE);
+      ctx.fillRect(px + 5, py, 3, TILE_SIZE);
+      ctx.fillRect(px + 24, py, 3, TILE_SIZE);
     } else if ((e || w) && !n && !s) {
       // E-W Horizontal Bridge Railings
-      ctx.fillRect(px, py + 7, TILE_SIZE, 3);
-      ctx.fillRect(px, py + 22, TILE_SIZE, 3);
+      ctx.fillRect(px, py + 5, TILE_SIZE, 3);
+      ctx.fillRect(px, py + 24, TILE_SIZE, 3);
     } else {
       // Corner/Junction Railing Pillars
-      if (!n) ctx.fillRect(px + 7, py + 7, 18, 3);
-      if (!s) ctx.fillRect(px + 7, py + 22, 18, 3);
-      if (!w) ctx.fillRect(px + 7, py + 7, 3, 18);
-      if (!e) ctx.fillRect(px + 22, py + 7, 3, 18);
+      if (!n) ctx.fillRect(px + 5, py + 5, 22, 3);
+      if (!s) ctx.fillRect(px + 5, py + 24, 22, 3);
+      if (!w) ctx.fillRect(px + 5, py + 5, 3, 22);
+      if (!e) ctx.fillRect(px + 24, py + 5, 3, 22);
     }
 
     // Yellow centerline
     ctx.fillStyle = '#fef08a';
     if ((n || s) && !e && !w) {
-      ctx.fillRect(px + 15, py + 4, 2, 6);
-      ctx.fillRect(px + 15, py + 22, 2, 6);
+      ctx.fillRect(px + 15, py + 3, 2, 6);
+      ctx.fillRect(px + 15, py + 23, 2, 6);
     } else if ((e || w) && !n && !s) {
-      ctx.fillRect(px + 4, py + 15, 6, 2);
-      ctx.fillRect(px + 22, py + 15, 6, 2);
+      ctx.fillRect(px + 3, py + 15, 6, 2);
+      ctx.fillRect(px + 23, py + 15, 6, 2);
     } else {
       ctx.fillRect(px + 15, py + 15, 2, 2);
     }
@@ -539,20 +539,20 @@ export class Renderer {
     const w = this.grid.getTile(tile.x - 1, tile.y)?.hasRoad;
 
     ctx.fillStyle = '#475569';
-    ctx.fillRect(px + 10, py + 10, 12, 12);
+    ctx.fillRect(px + 8, py + 8, 16, 16);
 
-    if (n) ctx.fillRect(px + 10, py, 12, 10);
-    if (e) ctx.fillRect(px + 22, py + 10, 10, 12);
-    if (s) ctx.fillRect(px + 10, py + 22, 12, 10);
-    if (w) ctx.fillRect(px, py + 10, 10, 12);
+    if (n) ctx.fillRect(px + 8, py, 16, 8);
+    if (e) ctx.fillRect(px + 24, py + 8, 8, 16);
+    if (s) ctx.fillRect(px + 8, py + 24, 16, 8);
+    if (w) ctx.fillRect(px, py + 8, 8, 16);
 
     ctx.fillStyle = '#fef08a';
     if ((n || s) && !e && !w) {
-      ctx.fillRect(px + 15, py + 4, 2, 6);
-      ctx.fillRect(px + 15, py + 22, 2, 6);
+      ctx.fillRect(px + 15, py + 3, 2, 6);
+      ctx.fillRect(px + 15, py + 23, 2, 6);
     } else if ((e || w) && !n && !s) {
-      ctx.fillRect(px + 4, py + 15, 6, 2);
-      ctx.fillRect(px + 22, py + 15, 6, 2);
+      ctx.fillRect(px + 3, py + 15, 6, 2);
+      ctx.fillRect(px + 23, py + 15, 6, 2);
     } else {
       ctx.fillRect(px + 15, py + 15, 2, 2);
     }
