@@ -51,6 +51,7 @@ export class ServiceManager {
           SERVICE_TYPE.FIRE_STATION,
           SERVICE_TYPE.HOSPITAL,
           SERVICE_TYPE.CLINIC,
+          SERVICE_TYPE.SCHOOL,
         ];
         const staffedBase = populationStaffedTypes.includes(type)
           ? Math.min(maxJobs, populationOfficers)
