@@ -798,6 +798,12 @@ export const TRAFFIC_CONFIG = {
   SPEED_MIN: 0.02,
   SPEED_MAX: 0.04,
   CAR_SIZE: 3,
+  LANE_OFFSET: 0.2,
+};
+
+export const POPULATION_STABILIZATION_CONFIG = {
+  MAX_POPULATION_SHIFT_PER_TICK: 0.015, // Max 1.5% shift per tick
+  MIN_POPULATION_SHIFT_FLOOR: 1,        // Prevents early-game stall when population is low
 };
 
 

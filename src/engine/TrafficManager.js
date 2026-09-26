@@ -14,6 +14,7 @@ export class TrafficManager {
     this.speedMin = options.speedMin ?? TRAFFIC_CONFIG?.SPEED_MIN ?? 0.02;
     this.speedMax = options.speedMax ?? TRAFFIC_CONFIG?.SPEED_MAX ?? 0.04;
     this.carSize = options.carSize ?? TRAFFIC_CONFIG?.CAR_SIZE ?? 3;
+    this.laneOffset = options.laneOffset ?? TRAFFIC_CONFIG?.LANE_OFFSET ?? 0.2;
 
     this.roadAdjacencyMap = new Map();
     this.activeRoadArray = [];
@@ -69,6 +70,8 @@ export class TrafficManager {
         targetY: startTile.y + 0.5,
         prevTileX: startTile.x,
         prevTileY: startTile.y,
+        dirX: 0,
+        dirY: 0,
         speed: this.speedMin + Math.random() * (this.speedMax - this.speedMin),
         color: this.colors[Math.floor(Math.random() * this.colors.length)],
       });
@@ -119,6 +122,11 @@ export class TrafficManager {
       const dist = Math.hypot(dx, dy);
       const moveStep = car.speed * stepFactor;
 
+      if (dist > 0.0001) {
+        car.dirX = dx / dist;
+        car.dirY = dy / dist;
+      }
+
       if (dist <= moveStep) {
         car.x = car.targetX;
         car.y = car.targetY;
@@ -140,6 +148,14 @@ export class TrafficManager {
           car.prevTileY = currentTileY;
           car.targetX = next.x + 0.5;
           car.targetY = next.y + 0.5;
+
+          const nextDx = car.targetX - car.x;
+          const nextDy = car.targetY - car.y;
+          const nextDist = Math.hypot(nextDx, nextDy);
+          if (nextDist > 0.0001) {
+            car.dirX = nextDx / nextDist;
+            car.dirY = nextDy / nextDist;
+          }
         } else if (this.activeRoadArray.length > 0) {
           const respawn = this.activeRoadArray[Math.floor(Math.random() * this.activeRoadArray.length)];
           car.x = respawn.x + 0.5;
@@ -169,8 +185,11 @@ export class TrafficManager {
 
     for (let i = 0; i < this.cars.length; i++) {
       const car = this.cars[i];
-      const screenX = (car.x * tileSize) - offX;
-      const screenY = (car.y * tileSize) - offY;
+      const laneOffsetX = (car.dirY || 0) * this.laneOffset;
+      const laneOffsetY = -(car.dirX || 0) * this.laneOffset;
+
+      const screenX = ((car.x + laneOffsetX) * tileSize) - offX;
+      const screenY = ((car.y + laneOffsetY) * tileSize) - offY;
 
       if (visibleBounds) {
         if (

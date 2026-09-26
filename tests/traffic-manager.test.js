@@ -181,4 +181,50 @@ console.log('=== traffic-manager.test.js ===');
   assert.strictEqual(tm.cars.length, 0, 'Zero population city has 0 traffic cars');
 }
 
+// 7. Left-Side Lane Driving Offsets
+{
+  const tm = new TrafficManager({ laneOffset: 0.2 });
+  const drawnPositions = [];
+  const mockCtx = {
+    get fillStyle() { return ''; },
+    set fillStyle(v) {},
+    save() {},
+    restore() {},
+    fillRect(x, y, w, h) { drawnPositions.push({ x, y }); },
+  };
+
+  // 4 cars on tile (5, 5) heading in 4 cardinal directions
+  // Center is at 5.5 in tile units = 176px at TILE_SIZE = 32
+  // Offset of 0.2 tiles = 6.4px
+  tm.cars = [
+    { x: 5.5, y: 5.5, targetX: 6.5, targetY: 5.5, dirX: 1, dirY: 0, color: '#ff4d4d' },   // East -> lane offset North (-Y)
+    { x: 5.5, y: 5.5, targetX: 4.5, targetY: 5.5, dirX: -1, dirY: 0, color: '#ff4d4d' },  // West -> lane offset South (+Y)
+    { x: 5.5, y: 5.5, targetX: 5.5, targetY: 6.5, dirX: 0, dirY: 1, color: '#ff4d4d' },   // South -> lane offset East (+X)
+    { x: 5.5, y: 5.5, targetX: 5.5, targetY: 4.5, dirX: 0, dirY: -1, color: '#ff4d4d' },  // North -> lane offset West (-X)
+  ];
+
+  tm.draw(mockCtx, TILE_SIZE, { x: 0, y: 0 });
+  assert.strictEqual(drawnPositions.length, 4, 'All 4 directional cars drawn');
+
+  const halfCar = tm.carSize / 2; // 1.5
+  const centerPx = 5.5 * TILE_SIZE - halfCar; // 174.5
+  const offsetPx = 0.2 * TILE_SIZE; // 6.4
+
+  // East: Y shifted up by offsetPx (-6.4)
+  assert.strictEqual(drawnPositions[0].x, centerPx, 'Eastbound car maintains X center');
+  assert.strictEqual(drawnPositions[0].y, centerPx - offsetPx, 'Eastbound car shifts left (North / -Y)');
+
+  // West: Y shifted down by offsetPx (+6.4)
+  assert.strictEqual(drawnPositions[1].x, centerPx, 'Westbound car maintains X center');
+  assert.strictEqual(drawnPositions[1].y, centerPx + offsetPx, 'Westbound car shifts left (South / +Y)');
+
+  // South: X shifted right by offsetPx (+6.4)
+  assert.strictEqual(drawnPositions[2].x, centerPx + offsetPx, 'Southbound car shifts left (East / +X)');
+  assert.strictEqual(drawnPositions[2].y, centerPx, 'Southbound car maintains Y center');
+
+  // North: X shifted left by offsetPx (-6.4)
+  assert.strictEqual(drawnPositions[3].x, centerPx - offsetPx, 'Northbound car shifts left (West / -X)');
+  assert.strictEqual(drawnPositions[3].y, centerPx, 'Northbound car maintains Y center');
+}
+
 console.log('TrafficManager tests passed.');
