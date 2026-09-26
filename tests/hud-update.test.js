@@ -114,4 +114,22 @@ function fakeDocument() {
   assert.notStrictEqual(buildInspectorSignature(grid, tile), first, 'Population changes should refresh the inspector signature');
 }
 
+{
+  const grid = new Grid(8, 8, 1);
+  const simulation = new Simulation(grid);
+  simulation.computeStats();
+
+  simulation.tickCount = 0;
+  assert.strictEqual(buildHudSnapshot(simulation, 25000)['stat-day'], 'Day 1', 'Tick 0 should be Day 1');
+
+  simulation.tickCount = 23;
+  assert.strictEqual(buildHudSnapshot(simulation, 25000)['stat-day'], 'Day 1', 'Tick 23 (hour 23) should still be Day 1');
+
+  simulation.tickCount = 24;
+  assert.strictEqual(buildHudSnapshot(simulation, 25000)['stat-day'], 'Day 2', 'Tick 24 (hour 24 / after 24 hrs) should be Day 2');
+
+  simulation.tickCount = 48;
+  assert.strictEqual(buildHudSnapshot(simulation, 25000)['stat-day'], 'Day 3', 'Tick 48 (after 48 hrs) should be Day 3');
+}
+
 console.log('HUD update tests passed.');
