@@ -97,9 +97,15 @@
       </div>
       
       <div class="stats-counter">
-        <div class="stat-item" title="Population">
+        <div class="stat-item has-tooltip" title="Population" tabindex="0">
           <svg class="stat-icon"><use href="#hud-population"/></svg>
           <span class="value" id="stat-pop">0</span>
+          <div class="stat-tooltip">
+            <div class="tooltip-header">Population Mix</div>
+            <div class="tooltip-row"><span class="label">Workers:</span><span class="val" id="stat-workforce">0</span></div>
+            <div class="tooltip-row"><span class="label">School-age:</span><span class="val" id="stat-school-age">0</span></div>
+            <div class="tooltip-row"><span class="label">Retirees:</span><span class="val" id="stat-retirees">0</span></div>
+          </div>
         </div>
         <div class="stat-item" title="Treasury">
           <svg class="stat-icon"><use href="#hud-treasury"/></svg>
@@ -240,12 +246,6 @@
             <span id="meter-fuel-text">0 / 0</span>
           </div>
           <div class="progress-bar"><div class="fill power" id="meter-fuel-fill"></div></div>
-        </div>
-        <div class="demographics-hud">
-          <h3>Population Mix</h3>
-          <div class="info-row"><span class="label">Workers:</span><span class="val" id="stat-workforce">0</span></div>
-          <div class="info-row"><span class="label">School-age:</span><span class="val" id="stat-school-age">0</span></div>
-          <div class="info-row"><span class="label">Retirees:</span><span class="val" id="stat-retirees">0</span></div>
         </div>
         </section>
         <section class="utility-hud-tab" data-hud-panel="storage">
