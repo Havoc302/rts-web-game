@@ -823,3 +823,75 @@ h4 {
   background: #475569;
 }
 
+#welcome-modal .modal-box {
+  max-width: 540px;
+  max-height: calc(100% - 32px);
+  overflow-y: auto;
+  text-align: left;
+}
+
+.modal-box h2 {
+  margin: 0 0 12px 0;
+  font-size: 1.4rem;
+  color: #f8fafc;
+  text-align: center;
+}
+
+.modal-body h4 {
+  margin: 0 0 6px 0;
+  color: #e2e8f0;
+}
+
+.modal-body p {
+  margin: 0 0 12px 0;
+}
+
+.modal-body ul {
+  margin: 0 0 18px 0;
+  padding-left: 18px;
+  color: #cbd5e1;
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.modal-body li {
+  margin-bottom: 4px;
+}
+
+.modal-footer-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 14px;
+  color: #94a3b8;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.tutorial-banner {
+  position: fixed;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  z-index: 900;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: min(560px, calc(100% - 32px));
+  padding: 10px 14px;
+  border-radius: 10px;
+  color: #e2e8f0;
+}
+
+.tutorial-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.85rem;
+}
+
+.tutorial-banner .btn-secondary {
+  padding: 4px 10px;
+}
+

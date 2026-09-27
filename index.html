@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <title>Build &amp; Conquer 2000</title>
+  <title>SimConquer 2000</title>
   <link rel="stylesheet" href="style.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -93,7 +93,7 @@
     <header class="header-bar glass">
       <div class="brand">
         <span class="icon">🏙️</span>
-        <h1>B&amp;C2000 <span class="badge" id="app-version"></span></h1>
+        <h1>SimConquer 2000 <span class="badge" id="app-version"></span></h1>
       </div>
       
       <div class="stats-counter">
@@ -482,6 +482,43 @@
         <button id="btn-audio-yes" class="btn-primary">Enable Audio</button>
         <button id="btn-audio-no" class="btn-secondary">Keep Muted</button>
       </div>
+    </div>
+  </div>
+
+  <div id="tutorial-banner" class="tutorial-banner glass" style="display: none;">
+    <div class="tutorial-text">
+      <strong id="tutorial-step-title"></strong>
+      <span id="tutorial-step-desc"></span>
+    </div>
+    <button id="btn-dismiss-tutorial" class="btn-secondary" title="Hide tutorial">&times;</button>
+  </div>
+
+  <!-- Welcome Modal Overlay -->
+  <div id="welcome-modal" class="modal-overlay" style="display: none;">
+    <div class="modal-box">
+      <h2>Welcome to SimConquer 2000</h2>
+      <div class="modal-body">
+        <p>Build and conquer a thriving metropolis. Balance utility networks, food production, employment, civic services, and taxes to keep your citizens happy and treasury afloat.</p>
+
+        <h4>Essential Starting Foundation:</h4>
+        <p>Every functional town requires a core grid containing these six connected fundamentals:</p>
+        <ul>
+          <li><strong>1. Power Generation:</strong> Build Power Plants or Windmills/Solar (renewables require adjacent Battery Storage).</li>
+          <li><strong>2. Water Pump:</strong> Supply clean water to zoned structures.</li>
+          <li><strong>3. Sewage Plant:</strong> Process wastewater to prevent environmental pollution backups.</li>
+          <li><strong>4. Agricultural Zone:</strong> Produce food locally to prevent starvation and rapid population outflow.</li>
+          <li><strong>5. Residential Zone:</strong> House citizens to build your local workforce.</li>
+          <li><strong>6. Road Network:</strong> Connect all utilities, farms, and homes into a single transport grid.</li>
+        </ul>
+      </div>
+      <div class="modal-actions">
+        <button id="btn-start-tutorial" class="btn-primary">Start Guided Tutorial</button>
+        <button id="btn-skip-welcome" class="btn-secondary">Skip &amp; Play</button>
+      </div>
+      <label class="modal-footer-toggle">
+        <input type="checkbox" id="chk-welcome-dont-show">
+        <span>Don't show this welcome screen again</span>
+      </label>
     </div>
   </div>
 

@@ -7,8 +7,9 @@ export const GRID_HEIGHT = MAP_HEIGHT;
 export const TILE_SIZE = 32;
 export const STARTING_TREASURY = 25000;
 
-export const MAP_SEED_STORAGE_KEY = 'bc2000_map_seed';
-export const MAP_SEED_STORAGE_KEY_LEGACY = 'metropolis_map_seed';
+export const MAP_SEED_STORAGE_KEY = 'simconquer_map_seed';
+// Read once so existing players keep their map seed after the rename.
+export const MAP_SEED_STORAGE_KEY_LEGACY = 'bc2000_map_seed';
 
 export const PRODUCER_CATEGORY = {
   POWER: 'power',

@@ -16,6 +16,7 @@ import {
 } from './engine/UiRefresh.js';
 import { deserializeGameFromJson, serializeGameToJson } from './engine/SaveGame.js';
 import { AudioManager } from './engine/AudioManager.js';
+import { TutorialManager } from './engine/TutorialManager.js';
 import { APP_VERSION, ZONE, TERRAIN, PRODUCER_TYPE, PRODUCER_CONFIG, FACTORY_RECIPES, COSTS, TILE_SIZE, STARTING_TREASURY, RESIDENTIAL_CAPACITY, JOBS_PROVIDED, FOREST_POLLUTION_ABSORPTION, FOREST_DESIRABILITY_RADIUS, CRIME_CONFIG, MEDICAL_CONFIG, POWER_PRODUCER_TYPES, POLLUTION_CONFIG, COAL_CONFIG, WIND_CONFIG, SOLAR_CONFIG, BATTERY_CONFIG, DENSITY, RENDERER_CONFIG, TERRAIN_GENERATION_CONFIG, MAP_SEED_STORAGE_KEY, splitDemographics } from './config.js';
 
 const nowMs = typeof performance !== 'undefined' ? () => performance.now() : () => Date.now();
@@ -70,6 +71,7 @@ class GameApp {
 
     this.audioManager = new AudioManager();
     this.initAudioUI();
+    this.tutorialManager = new TutorialManager(this);
 
     this.setSpeed(0);
     this.startRenderLoop();
@@ -306,7 +308,7 @@ class GameApp {
     const now = new Date();
     const pad = (n) => String(n).padStart(2, '0');
     const stamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-    link.download = `bc2000-save-${stamp}-seed-${seed}.json`;
+    link.download = `simconquer2000-save-${stamp}-seed-${seed}.json`;
     link.click();
     URL.revokeObjectURL(url);
   }
@@ -398,6 +400,7 @@ class GameApp {
   }
 
   updateHUD({ force = false } = {}) {
+    this.tutorialManager?.update(this.grid, this.simulation.stats);
     const started = this.enableUiTiming ? nowMs() : 0;
     const snapshot = buildHudSnapshot(this.simulation, this.treasury);
     const changed = changedHudFields(this._hudSnapshot, snapshot);
