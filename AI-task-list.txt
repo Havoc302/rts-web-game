@@ -791,6 +791,22 @@ Validation:
 - `npm test` passes.
 - Patch version `0.1.21`.
 
+Current task: Fix weather, save, audio, and UI sync bugs (Bugs 1-6).
+
+- [done] Bug 1: Sync tax, pension, and service-budget DOM controls in `importGameFile()` after restoring a save.
+- [done] Bug 2: Pass `weatherManager` into `UtilityManager.allocateAll()`; windmills scale with wind intensity and solar with weather efficiency.
+- [done] Bug 3: Windmill overspeed ignition when `extremeWindTicks > 1` using `WEATHER_CONFIG.WIND_IGNITION_CHANCE`.
+- [done] Bug 4: Serialize and restore weather state (wind, cloud cover, temperature, extreme wind ticks) in saves.
+- [done] Bug 5: Replace procedural Web Audio synthesis in `AudioManager.js` with an HTML5 `<audio>` track.
+- [done] Bug 6: Windmill build-info tooltip shows wind-intensity-scaled output.
+- [done] Validation: run `npm test`, diagnostics, `git diff --check`; bump patch version.
+
+Validation:
+- `npm test` passes all 36 test files (fixed stale `weather-manager.test.js` heatwave threshold to derive from `FIRE_CONFIG.FOREST_IGNITION_CHANCE`).
+- Diagnostics clean; `git diff --check` clean.
+- Patch version `0.1.35`.
+- Note: `assets/audio/bgm.mp3` does not exist yet; music is silent until that file is added.
+
 Current task: Add stacked global education tax bonuses from Schools and Universities.
 
 Design rule:

@@ -106,8 +106,7 @@ export const NIGHT_TINT_ALPHA = 0.35;
 
 export const WIND_CONFIG = {
   BASE_CAPACITY: 40,
-  FLUCTUATION: 25,
-  MIN_CAPACITY: 10,
+  MAX_CAPACITY: 65, // output at windIntensity 1.0
 };
 
 export const SOLAR_CONFIG = {
@@ -815,6 +814,11 @@ export const WEATHER_CONFIG = {
   MEAN_REVERSION_STRENGTH: 0.15,    // Pull toward 0.5 to maintain central distribution
   WIND_HAZARD_THRESHOLD: 0.98,      // Wind speed trigger for windmill structural damage
   WIND_IGNITION_CHANCE: 0.25,       // Ignition chance during extreme over-speeding
+};
+
+export const AUDIO_CONFIG = {
+  MUSIC_FILE_PATH: './assets/audio/bgm.mp3',
+  DEFAULT_VOLUME: 0.20,
 };
 
 export const TEMPERATURE_CONFIG = {

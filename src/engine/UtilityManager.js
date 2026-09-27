@@ -1,12 +1,12 @@
-import { PRODUCER_TYPE, PRODUCER_CONFIG, SERVICE_GLOBAL_CONFIG, USAGE_RATES, POWER_PRODUCER_TYPES, WIND_CONFIG, SOLAR_CONFIG, BATTERY_CONFIG, DAY_START_HOUR, NIGHT_START_HOUR } from '../config.js';
+import { PRODUCER_TYPE, PRODUCER_CONFIG, SERVICE_GLOBAL_CONFIG, USAGE_RATES, POWER_PRODUCER_TYPES, WIND_CONFIG, SOLAR_CONFIG, BATTERY_CONFIG, DAY_START_HOUR, NIGHT_START_HOUR, WEATHER_CONFIG } from '../config.js';
 import { RoadNetwork } from './RoadNetwork.js';
 
 export class UtilityManager {
   // preview=true: HUD-only. Recompute usedCapacity against persisted generation;
   // do not reroll wind, discharge/charge batteries, or write storedEnergy.
-  static allocateAll(grid, hourOfDay = 12, { preview = false } = {}) {
+  static allocateAll(grid, hourOfDay = 12, weatherManager = null, { preview = false } = {}) {
     if (!preview) {
-      this.updatePowerGeneration(grid, hourOfDay);
+      this.updatePowerGeneration(grid, hourOfDay, weatherManager);
     }
     for (const producer of grid.producers) {
       if (POWER_PRODUCER_TYPES.includes(producer.type)) producer.usedCapacity = 0;
@@ -39,12 +39,23 @@ export class UtilityManager {
     return grid.isRoadAdjacent(producer.x, producer.y);
   }
 
-  // Windmill output swings randomly each tick, solar follows a sunrise-to-sunset
-  // bell curve, and batteries can only discharge what they currently hold in storage.
+  // Windmill output scales with wind intensity, solar with the day curve and cloud
+  // cover, and batteries can only discharge what they currently hold in storage.
   // Windmills/solar panels also need a Battery Storage building adjacent (including
   // diagonals) to actually transmit their power to the grid.
-  static updatePowerGeneration(grid, hourOfDay) {
+  static updatePowerGeneration(grid, hourOfDay, weatherManager = null) {
+    const windIntensity = weatherManager?.windIntensity ?? 0.5;
+    const solarEfficiency = weatherManager?.getSolarEfficiency?.() ?? 1.0;
+    const overspeed = (weatherManager?.extremeWindTicks ?? 0) > 1;
     for (const p of grid.producers) {
+      if (p.type === PRODUCER_TYPE.WINDMILL && overspeed && p.operational && !p.destroyed) {
+        const tile = grid.getTile(p.x, p.y);
+        if (tile && !tile.onFire && Math.random() < (WEATHER_CONFIG.WIND_IGNITION_CHANCE ?? 0.25)) {
+          tile.onFire = true;
+          tile.fireDamage = 10;
+          grid.activeFireTiles.add(tile);
+        }
+      }
       if (p.type === PRODUCER_TYPE.WINDMILL || p.type === PRODUCER_TYPE.SOLAR_PANEL) {
         const battery = this.getAdjacentBattery(grid, p.x, p.y);
         p.hasBatteryConnection = Boolean(battery);
@@ -57,10 +68,9 @@ export class UtilityManager {
         p.gridConnectionX = battery.x;
         p.gridConnectionY = battery.y;
         if (p.type === PRODUCER_TYPE.WINDMILL) {
-          const swing = (Math.random() * 2 - 1) * WIND_CONFIG.FLUCTUATION;
-          p.capacity = Math.max(WIND_CONFIG.MIN_CAPACITY, Math.round(WIND_CONFIG.BASE_CAPACITY + swing));
+          p.capacity = Math.round((WIND_CONFIG.MAX_CAPACITY || 65) * windIntensity);
         } else {
-          p.capacity = Math.round(SOLAR_CONFIG.PEAK_CAPACITY * this.solarOutputFactor(hourOfDay));
+          p.capacity = Math.round(SOLAR_CONFIG.PEAK_CAPACITY * this.solarOutputFactor(hourOfDay) * solarEfficiency);
         }
       } else if (p.type === PRODUCER_TYPE.BATTERY) {
         p.capacity = Math.min(BATTERY_CONFIG.DISCHARGE_RATE, Math.floor(p.storedEnergy || 0));

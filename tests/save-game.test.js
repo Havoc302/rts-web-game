@@ -40,6 +40,7 @@ function flatten(grid) {
   simulation.taxRate = 35;
   simulation.pensionBudget = 80;
   simulation.resourceManager.stockpile.food = 42;
+  Object.assign(simulation.weatherManager, { windIntensity: 0.99, cloudCover: 0.75, temperature: 33, extremeWindTicks: 3 });
 
   const app = makeApp(grid, simulation);
   const document = serializeGame(app);
@@ -59,6 +60,7 @@ function flatten(grid) {
   assert.strictEqual(restored.simulation.tickCount, 17);
   assert.strictEqual(restored.simulation.taxRate, 35);
   assert.strictEqual(restored.simulation.stockpile.food, 42);
+  assert.deepStrictEqual(restored.simulation.weather, { windIntensity: 0.99, cloudCover: 0.75, temperature: 33, extremeWindTicks: 3 }, 'Weather state should round-trip');
   assert.strictEqual(restored.treasury, 9876);
   assert.deepStrictEqual(restored.camera, { x: 12, y: -8, zoom: 1.4 });
   assert.strictEqual(restored.ui.overlayMode, 'survey');

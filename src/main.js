@@ -321,6 +321,9 @@ class GameApp {
       this.simulation.pensionBudget = imported.simulation.pensionBudget;
       this.simulation.resourceManager.stockpile = imported.simulation.stockpile;
       this.simulation.resourceManager.capacity = imported.simulation.capacity;
+      if (imported.simulation.weather && this.simulation.weatherManager) {
+        Object.assign(this.simulation.weatherManager, imported.simulation.weather);
+      }
       this.treasury = imported.treasury;
       this.renderer.grid = this.grid;
       this.renderer.terrainChunks = [];
@@ -334,11 +337,33 @@ class GameApp {
       this.simulation.tick(false);
       this.simulation.isPaused = true;
       this.simulation.speed = 0;
+      this.syncBudgetControls();
       this.updateHUD({ force: true });
       this.renderer.render(this.simulation);
     } catch (error) {
       window.alert(`Unable to load save: ${error.message}`);
     }
+  }
+
+  syncBudgetControls() {
+    const taxSlider = document.getElementById('tax-slider');
+    const taxVal = document.getElementById('tax-rate-val');
+    if (taxSlider) taxSlider.value = this.simulation.taxRate;
+    if (taxVal) taxVal.textContent = this.simulation.taxRate;
+
+    const pensionSlider = document.getElementById('pension-budget-slider');
+    const pensionVal = document.getElementById('pension-budget-value');
+    if (pensionSlider) pensionSlider.value = this.simulation.pensionBudget;
+    if (pensionVal) pensionVal.textContent = `${this.simulation.pensionBudget}%`;
+
+    document.querySelectorAll('[data-service-budget]').forEach((slider) => {
+      const type = slider.dataset.serviceBudget;
+      const producer = this.grid.producers.find((p) => p.type === type || (type === 'hospital' && p.type === 'clinic'));
+      const budget = producer?.budget ?? 100;
+      slider.value = budget;
+      const valueEl = document.getElementById(`${type}-budget-value`);
+      if (valueEl) valueEl.textContent = `${budget}%`;
+    });
   }
 
   setSpeed(speed) {
@@ -668,10 +693,10 @@ class GameApp {
 
       if (config.utility === 'power') {
         if (pType === PRODUCER_TYPE.WINDMILL) {
-          rows.push(row('Power Output', `${WIND_CONFIG.MIN_CAPACITY}-${WIND_CONFIG.BASE_CAPACITY + WIND_CONFIG.FLUCTUATION} (fluctuates each tick)`));
+          rows.push(row('Power Output', `0-${WIND_CONFIG.MAX_CAPACITY || 65} MW (scales with wind intensity)`));
           rows.push(row('Requires', 'Adjacent (incl. diagonals) to Battery Storage to transmit power'));
         } else if (pType === PRODUCER_TYPE.SOLAR_PANEL) {
-          rows.push(row('Power Output', `0-${SOLAR_CONFIG.PEAK_CAPACITY} (day only, peaks at noon)`));
+          rows.push(row('Power Output', `0-${SOLAR_CONFIG.PEAK_CAPACITY} (day only, peaks at noon, reduced by cloud cover)`));
           rows.push(row('Requires', 'Adjacent (incl. diagonals) to Battery Storage to transmit power'));
         } else if (pType === PRODUCER_TYPE.BATTERY) {
           rows.push(row('Storage Capacity', `${BATTERY_CONFIG.MAX_STORAGE}`));

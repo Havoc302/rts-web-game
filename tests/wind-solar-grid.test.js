@@ -115,17 +115,40 @@ function flatten(grid) {
   const home = grid.getTile(5, 3);
   home.population = 25;
   home.maxPopulation = 25;
-  const previousRandom = Math.random;
-  Math.random = () => 0.5;
-  try {
-    UtilityManager.allocateAll(grid, 12);
-  } finally {
-    Math.random = previousRandom;
-  }
+  const weather = { windIntensity: 0.5, extremeWindTicks: 0, getSolarEfficiency: () => 1 };
+  UtilityManager.allocateAll(grid, 12, weather);
 
   assert.strictEqual(home.shortfall.power, false, 'All windmills connected through a battery should pass live power to the grid');
   assert.strictEqual(battery.usedCapacity, 0, 'Battery discharge cap should not limit renewable pass-through');
-  assert.strictEqual(battery.storedEnergy, 119, 'Only unused combined wind generation should charge the battery');
+  assert.strictEqual(battery.storedEnergy, 98, 'Only unused combined wind generation should charge the battery');
+}
+
+{
+  const grid = new Grid(8, 8, 1);
+  flatten(grid);
+  grid.placeProducer(3, 2, PRODUCER_TYPE.BATTERY, BATTERY_CONFIG.MAX_STORAGE);
+  const windmill = grid.placeProducer(2, 2, PRODUCER_TYPE.WINDMILL, 40);
+  const solar = grid.placeProducer(3, 1, PRODUCER_TYPE.SOLAR_PANEL, 60);
+  grid.placeRoad(3, 3);
+
+  UtilityManager.allocateAll(grid, 12, { windIntensity: 1, extremeWindTicks: 0, getSolarEfficiency: () => 0.5 });
+  assert.strictEqual(windmill.capacity, 65, 'Windmill output should reach MAX_CAPACITY at full wind');
+  assert.strictEqual(solar.capacity, Math.round(60 * UtilityManager.solarOutputFactor(12) * 0.5), 'Solar output should scale with weather efficiency');
+
+  UtilityManager.allocateAll(grid, 12, { windIntensity: 0, extremeWindTicks: 0, getSolarEfficiency: () => 1 });
+  assert.strictEqual(windmill.capacity, 0, 'Windmill output should be zero in calm wind');
+
+  const previousRandom = Math.random;
+  Math.random = () => 0;
+  try {
+    UtilityManager.allocateAll(grid, 12, { windIntensity: 1, extremeWindTicks: 2, getSolarEfficiency: () => 1 });
+  } finally {
+    Math.random = previousRandom;
+  }
+  const millTile = grid.getTile(2, 2);
+  assert.strictEqual(millTile.onFire, true, 'Sustained overspeed wind should ignite an operational windmill');
+  assert.ok(grid.activeFireTiles.has(millTile), 'Ignited windmill should be tracked as an active fire');
+  assert.strictEqual(grid.getTile(3, 1).onFire, false, 'Overspeed should not ignite solar panels');
 }
 
 console.log('Wind/solar grid connectivity tests passed.');

@@ -179,7 +179,19 @@ function restoredSimulation(simulation) {
     stockpile: clone(simulation.stockpile),
     capacity: clone(simulation.capacity || { ore: 0, bar: 0, goods: 0, oil: 0, fuel: 0 }),
     stats: clone(simulation.stats || {}),
+    weather: restoredWeather(simulation.weather),
   };
+}
+
+const WEATHER_KEYS = ['windIntensity', 'cloudCover', 'temperature', 'extremeWindTicks'];
+
+function restoredWeather(weather) {
+  if (!weather || typeof weather !== 'object') return null;
+  const restored = {};
+  for (const key of WEATHER_KEYS) {
+    if (typeof weather[key] === 'number' && Number.isFinite(weather[key])) restored[key] = weather[key];
+  }
+  return restored;
 }
 
 function restoredUi(ui) {
@@ -232,6 +244,12 @@ export function serializeGame(app) {
       stockpile: clone(app.simulation.resourceManager.stockpile),
       capacity: clone(app.simulation.resourceManager.capacity),
       stats: clone(app.simulation.stats),
+      weather: app.simulation.weatherManager ? {
+        windIntensity: app.simulation.weatherManager.windIntensity,
+        cloudCover: app.simulation.weatherManager.cloudCover,
+        temperature: app.simulation.weatherManager.temperature,
+        extremeWindTicks: app.simulation.weatherManager.extremeWindTicks,
+      } : null,
     },
     treasury: app.treasury,
     camera: {

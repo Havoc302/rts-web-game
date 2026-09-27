@@ -145,11 +145,8 @@ console.log('=== weather-manager.test.js ===');
 
   const origRandom = Math.random;
   try {
-    // Normal ignition threshold is FOREST_IGNITION_CHANCE (0.001)
-    // Under hot weather, chance is 0.001 * 1.5 = 0.0015
-    // Test with a random value between 0.0011 and 0.0014:
-    // would NOT ignite at baseline, but DOES ignite during heatwave!
-    Math.random = () => 0.0012;
+    // Between the baseline chance and the heatwave-boosted chance.
+    Math.random = () => FIRE_CONFIG.FOREST_IGNITION_CHANCE * 1.2;
     FireManager.updateFires(grid, stats, wmHot);
     assert.strictEqual(forest.onFire, true, 'Forest should ignite under heatwave fire multiplier');
   } finally {

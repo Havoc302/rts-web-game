@@ -94,7 +94,7 @@ export class Simulation {
       t0 = t1;
     }
 
-    UtilityManager.allocateAll(this.grid, this.getHourOfDay(), { preview: !advanceWorld });
+    UtilityManager.allocateAll(this.grid, this.getHourOfDay(), this.weatherManager, { preview: !advanceWorld });
     if (timing) {
       t1 = now();
       timings['utilities'] = t1 - t0;
