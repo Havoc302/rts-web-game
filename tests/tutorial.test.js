@@ -77,4 +77,12 @@ const returning = new TutorialManager({});
 assert.strictEqual(returning.isEnabled, false);
 assert.notStrictEqual(element('welcome-modal').style.display, 'flex', 'Dismissed welcome modal should stay hidden');
 
+// Start Guided Tutorial after a finished run must show Step 1 again.
+returning.currentStep = TUTORIAL_STEPS.length;
+element('btn-start-tutorial').listeners.click();
+assert.strictEqual(returning.currentStep, 0);
+assert.strictEqual(returning.isEnabled, true);
+assert.strictEqual(element('tutorial-banner').style.display, 'flex', 'Start should show the banner');
+assert.strictEqual(element('tutorial-step-title').textContent, TUTORIAL_STEPS[0].title);
+
 console.log('Tutorial tests passed.');

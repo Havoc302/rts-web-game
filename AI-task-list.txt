@@ -840,6 +840,13 @@ Current task: Show current weather icons next to the HUD clock.
 - [done] Add icon cases to `tests/hud-update.test.js`.
 - [done] Bump the patch version to 0.1.39.
 
+Current task: Fix Start Guided Tutorial showing no banner.
+
+- [done] Cause: stored `simconquer_tutorial_step` from a finished run survived a page refresh (fresh map), so the banner stayed hidden.
+- [done] "Start Guided Tutorial" now resets to Step 1 via `TutorialManager.restart()`.
+- [done] Add restart case to `tests/tutorial.test.js`.
+- [done] Bump the patch version to 0.1.40.
+
 Current task: Add stacked global education tax bonuses from Schools and Universities.
 
 Design rule:

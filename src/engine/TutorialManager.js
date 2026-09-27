@@ -74,12 +74,19 @@ export class TutorialManager {
     const handleWelcomeClose = (startSteps) => {
       if (dontShowChk?.checked) localStorage.setItem(this.welcomeKey, 'true');
       if (welcomeModal) welcomeModal.style.display = 'none';
-      this.setTutorialEnabled(startSteps);
+      if (startSteps) this.restart();
+      else this.setTutorialEnabled(false);
     };
 
     document.getElementById('btn-start-tutorial')?.addEventListener('click', () => handleWelcomeClose(true));
     document.getElementById('btn-skip-welcome')?.addEventListener('click', () => handleWelcomeClose(false));
     document.getElementById('btn-dismiss-tutorial')?.addEventListener('click', () => this.setTutorialEnabled(false));
+  }
+
+  restart() {
+    this.currentStep = 0;
+    localStorage.setItem(this.stepKey, '0');
+    this.setTutorialEnabled(true);
   }
 
   setTutorialEnabled(enabled) {
