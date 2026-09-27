@@ -807,6 +807,11 @@ Validation:
 - Patch version `0.1.35`.
 - Note: `assets/audio/bgm.mp3` does not exist yet; music is silent until that file is added.
 
+Current task: Add time to save filenames.
+
+- [done] Save filename uses local `YYYY-MM-DD-HHMMSS` stamp: `bc2000-save-<stamp>-seed-<seed>.json`.
+- [done] Bump the patch version to 0.1.36.
+
 Current task: Add stacked global education tax bonuses from Schools and Universities.
 
 Design rule:

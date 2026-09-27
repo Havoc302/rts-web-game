@@ -303,7 +303,10 @@ class GameApp {
     const link = document.createElement('a');
     link.href = url;
     const seed = this.grid?.seed ?? '0';
-    link.download = `bc2000-save-${new Date().toISOString().slice(0, 10)}-seed-${seed}.json`;
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    const stamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+    link.download = `bc2000-save-${stamp}-seed-${seed}.json`;
     link.click();
     URL.revokeObjectURL(url);
   }
