@@ -42,8 +42,14 @@ export class FireManager {
     }
 
     const burningTiles = Array.from(grid.getActiveFireTiles());
+    const rainChance = weatherManager?.getRainExtinguishChance?.() ?? 0;
 
     for (const tile of burningTiles) {
+
+        if (rainChance > 0 && Math.random() < rainChance) {
+          this.extinguish(grid, tile);
+          continue;
+        }
 
         if (tile.zone === ZONE.RESIDENTIAL && tile.population > 0) {
           const residentsToRelocate = Math.ceil(
@@ -69,13 +75,8 @@ export class FireManager {
           const damageBefore = tile.fireDamage || 0;
           tile.fireDamage = Math.max(0, damageBefore - suppression);
           if (tile.fireDamage <= 0) {
-            tile.onFire = false;
-            tile.fireDamage = 0;
-            grid.activeFireTiles.delete(tile);
-            if (damageBefore > 0) {
-              tile.fireRepair = 0;
-              grid.repairingTiles.add(tile);
-            }
+            tile.fireDamage = damageBefore;
+            this.extinguish(grid, tile);
             continue;
           }
         }
@@ -110,6 +111,18 @@ export class FireManager {
           grid.activeFireTiles.add(neighbor);
         }
       }
+    }
+  }
+
+  // Damaged tiles start gradual repair; undamaged ones simply stop burning.
+  static extinguish(grid, tile) {
+    const damaged = (tile.fireDamage || 0) > 0;
+    tile.onFire = false;
+    tile.fireDamage = 0;
+    grid.activeFireTiles.delete(tile);
+    if (damaged) {
+      tile.fireRepair = 0;
+      grid.repairingTiles.add(tile);
     }
   }
 

@@ -2,6 +2,7 @@ import assert from 'assert';
 import { Grid } from '../src/engine/Grid.js';
 import { Simulation } from '../src/engine/Simulation.js';
 import { ResourceManager } from '../src/engine/ResourceManager.js';
+import { formatDerrickOutput } from '../src/engine/InspectorStatus.js';
 import { DENSITY, ORE_TYPE, PRODUCER_TYPE, RESOURCE_CONFIG, TERRAIN, ZONE } from '../src/config.js';
 
 {
@@ -21,6 +22,34 @@ import { DENSITY, ORE_TYPE, PRODUCER_TYPE, RESOURCE_CONFIG, TERRAIN, ZONE } from
     Math.abs(manager.stockpile.oil - RESOURCE_CONFIG.OIL_DERRICK_OUTPUT_PER_TICK) < 0.001,
     'A fully staffed derrick should produce about 100 oil per tick',
   );
+}
+
+// Derrick inspector explains output and where the oil goes.
+{
+  const grid = new Grid(10, 10, 1);
+  for (const row of grid.tiles) for (const tile of row) tile.terrain = TERRAIN.FLAT;
+  const derrickTile = grid.getTile(2, 2);
+  derrickTile.oreDiscovered = true;
+  derrickTile.discoveredOre = ORE_TYPE.OIL;
+  const derrick = grid.placeProducer(2, 2, PRODUCER_TYPE.OIL_DERRICK, 0);
+  derrick.operational = true;
+  derrick.totalJobs = 10;
+  derrick.filledJobs = 10;
+  const manager = new ResourceManager();
+
+  manager.update(grid, { population: 0, employmentRate: 1, untreatedPatients: 0, fireInjuries: 0 });
+  assert.strictEqual(manager.stockpile.oil, 0, 'Without a silo, extracted oil has nowhere to go');
+  assert.ok(formatDerrickOutput(derrick, manager.stockpile, manager.capacity).includes('No powered oil Silo'), 'Inspector warns when oil is being discarded');
+
+  grid.placeProducer(3, 3, PRODUCER_TYPE.SILO, 0);
+  manager.update(grid, { population: 0, employmentRate: 1, untreatedPatients: 0, fireInjuries: 0 });
+  assert.strictEqual(formatDerrickOutput(derrick, manager.stockpile, manager.capacity), '100 oil/tick (10/10 staff) → oil stored 100 / 1000');
+
+  manager.stockpile.oil = RESOURCE_CONFIG.SILO_CAPACITY;
+  assert.ok(formatDerrickOutput(derrick, manager.stockpile, manager.capacity).includes('storage full'), 'Inspector warns when the silo is full');
+
+  derrick.operational = false;
+  assert.ok(formatDerrickOutput(derrick, manager.stockpile, manager.capacity).startsWith('⚠️ Offline'), 'Inspector flags an offline derrick');
 }
 
 {

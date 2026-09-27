@@ -141,7 +141,8 @@ body {
 #stat-utility-expenses { min-width: 5ch; }
 #stat-emp-rate { min-width: 4ch; }
 #stat-day { min-width: 7ch; }
-#stat-time { min-width: 12ch; }
+#stat-time { min-width: 10ch; }
+#stat-weather { min-width: 4ch; text-align: center; }
 
 span.stat-icon {
   font-size: 13px;
@@ -155,9 +156,9 @@ span.stat-icon {
 }
 
 .stat-tooltip {
-  position: absolute;
-  top: calc(100% + 8px);
-  left: 50%;
+  position: fixed;
+  top: 0;
+  left: 0;
   transform: translateX(-50%) translateY(4px);
   background: #1e293b;
   border: 1px solid rgba(255, 255, 255, 0.15);
@@ -169,7 +170,7 @@ span.stat-icon {
   visibility: hidden;
   pointer-events: none;
   transition: opacity 0.18s ease, transform 0.18s ease, visibility 0.18s;
-  z-index: 100;
+  z-index: 1100;
 }
 
 .stat-tooltip::before {
@@ -185,8 +186,7 @@ span.stat-icon {
   border-top: 1px solid rgba(255, 255, 255, 0.15);
 }
 
-.stat-item.has-tooltip:hover .stat-tooltip,
-.stat-item.has-tooltip:focus-within .stat-tooltip {
+.stat-tooltip.visible {
   opacity: 1;
   visibility: visible;
   transform: translateX(-50%) translateY(0);

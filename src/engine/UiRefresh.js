@@ -1,5 +1,5 @@
 import { MEDICAL_CONFIG, PRODUCER_CONFIG, PRODUCER_TYPE, RENDERER_CONFIG, ZONE } from '../config.js';
-import { formatProducerCapacity, formatSiloStorage, getProducerConnectionStatus, getTileUtilityStatus } from './InspectorStatus.js';
+import { formatDerrickOutput, formatProducerCapacity, formatSiloStorage, getProducerConnectionStatus, getTileUtilityStatus } from './InspectorStatus.js';
 
 function meterView(demand, capacity, formatDecimals) {
   const displayDemand = formatDecimals ? Number(demand).toFixed(2) : demand;
@@ -26,10 +26,22 @@ export function weatherIcons(weather, isDay) {
   return `${sky}${windIcon}`;
 }
 
-export function formatHudTime(hour, isDay, weather = null) {
+export function formatHudTime(hour, isDay) {
   const displayHour = hour % 12 === 0 ? 12 : hour % 12;
   const ampm = hour < 12 ? 'AM' : 'PM';
-  return `${weatherIcons(weather, isDay)} ${displayHour}:00 ${ampm}`;
+  return `${isDay ? '☀️' : '🌙'} ${displayHour}:00 ${ampm}`;
+}
+
+export function weatherSnapshot(weather, isDay) {
+  const pct = (value) => `${Math.round((value ?? 0) * 100)}%`;
+  return {
+    'stat-weather': weatherIcons(weather, isDay),
+    'stat-weather-label': weather?.getWeatherLabel?.() ?? '-',
+    'stat-weather-wind': weather ? `${pct(weather.windIntensity)}${weather.extremeWindTicks > 0 ? ' ⚠️ overspeed' : ''}` : '-',
+    'stat-weather-cloud': weather ? pct(weather.cloudCover) : '-',
+    'stat-weather-temp': weather ? `${Math.round(weather.temperature)}°C` : '-',
+    'stat-weather-solar': weather?.getSolarEfficiency ? pct(weather.getSolarEfficiency()) : '-',
+  };
 }
 
 export function getHudCadenceMs(isMobile) {
@@ -55,7 +67,8 @@ export function buildHudSnapshot(simulation, treasury) {
     'stat-uni-seats': `${(stats.universityCapacity || 0).toLocaleString()} / ${(stats.universityDemand || 0).toLocaleString()}`,
     'stat-education-multiplier': `×${(stats.educationTaxMultiplier ?? 1).toFixed(2)}`,
     'stat-tick': String(simulation.tickCount),
-    'stat-time': formatHudTime(simulation.getHourOfDay(), simulation.isDaytime(), simulation.weatherManager),
+    'stat-time': formatHudTime(simulation.getHourOfDay(), simulation.isDaytime()),
+    ...weatherSnapshot(simulation.weatherManager, simulation.isDaytime()),
     'stat-day': `Day ${Math.floor(simulation.tickCount / 24) + 1}`,
     'stat-jobs-avail': stats.jobsAvailable.toLocaleString(),
     'stat-emp-rate': `${Math.round(stats.employmentRate * 100)}%`,
@@ -139,6 +152,8 @@ export function buildInspectorSignature(grid, tile, resources = null) {
       producerCap = 'offline-battery';
     } else if (producer.type === PRODUCER_TYPE.SILO) {
       producerCap = formatSiloStorage(producer, resources?.stockpile, resources?.capacity);
+    } else if (producer.type === PRODUCER_TYPE.OIL_DERRICK) {
+      producerCap = formatDerrickOutput(producer, resources?.stockpile, resources?.capacity);
     } else if (producer.type === PRODUCER_TYPE.HOSPITAL || producer.type === PRODUCER_TYPE.CLINIC) {
       const staff = producer.filledJobs || 0;
       producerCap = `patients:${staff * MEDICAL_CONFIG.HOSPITAL_PATIENT_CAPACITY_PER_JOB}:${staff}`;

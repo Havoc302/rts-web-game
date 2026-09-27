@@ -846,6 +846,9 @@ export const WEATHER_CONFIG = {
   MEAN_REVERSION_STRENGTH: 0.15,    // Pull toward 0.5 to maintain central distribution
   WIND_HAZARD_THRESHOLD: 0.98,      // Wind speed trigger for windmill structural damage
   WIND_IGNITION_CHANCE: 0.25,       // Ignition chance during extreme over-speeding
+  RAIN_CLOUD_THRESHOLD: 0.7,        // Cloud cover above which it is raining
+  RAIN_EXTINGUISH_MIN_CHANCE: 0.10, // Per-tick chance a burning tile goes out in light rain
+  RAIN_EXTINGUISH_MAX_CHANCE: 0.40, // Per-tick chance a burning tile goes out in a downpour
 };
 
 export const AUDIO_CONFIG = {

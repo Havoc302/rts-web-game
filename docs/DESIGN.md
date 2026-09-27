@@ -6,7 +6,7 @@
 | Author | TBD |
 | Date | 2026-09-25 |
 | Status | Living draft (rev 8) |
-| Version covered | `APP_VERSION` `0.1.43` (`src/version.js`); current working tree |
+| Version covered | `APP_VERSION` `0.1.47` (`src/version.js`); current working tree |
 | Intended in-repo path | `docs/DESIGN.md` |
 | Repo | `g:\Repos\rts-web-game` (`origin`: `https://github.com/Havoc302/rts-web-game.git`) |
 | Working tree at inventory | Documentation is checked against the current implementation; uncommitted changes may exist. |
@@ -316,7 +316,7 @@ Zone utility demand is `USAGE_RATES[zone][density] * occupancyRatio`. Occupancy 
 
 Windmills and Solar Panels are passive generators. They require an adjacent Battery Storage tile at placement and that battery must be road-connected to contribute to the grid; neither the renewable nor the battery's own utility status gates renewable generation. Connected renewable output passes through the battery to live grid demand without the battery's stored-energy discharge cap; the cap applies only when stored energy covers a deficit. Renewables produce no direct utility demand, staffing, water, or sewage usage. The Tile Inspector reports this as a battery-mediated connection rather than a missing local road.
 
-Renewable output is weather-driven: `UtilityManager.allocateAll(grid, hour, weatherManager, { preview })` sets Windmill capacity to `round(WIND_CONFIG.MAX_CAPACITY (65) * windIntensity)` and Solar capacity to `round(PEAK_CAPACITY * solarOutputFactor(hour) * getSolarEfficiency())`. Without a weather manager, wind defaults to 0.5 and solar efficiency to 1.0. When `extremeWindTicks > 1`, each operational Windmill ignites with `WEATHER_CONFIG.WIND_IGNITION_CHANCE` (tile `onFire`, `fireDamage` 10, added to `activeFireTiles`). Saves store weather (`windIntensity`, `cloudCover`, `temperature`, `extremeWindTicks`) under `simulation.weather`; import restores only those finite numeric fields.
+Renewable output is weather-driven: `UtilityManager.allocateAll(grid, hour, weatherManager, { preview })` sets Windmill capacity to `round(WIND_CONFIG.MAX_CAPACITY (65) * windIntensity)` and Solar capacity to `round(PEAK_CAPACITY * solarOutputFactor(hour) * getSolarEfficiency())`. Without a weather manager, wind defaults to 0.5 and solar efficiency to 1.0. When `extremeWindTicks > 1`, each operational Windmill ignites with `WEATHER_CONFIG.WIND_IGNITION_CHANCE` (tile `onFire`, `fireDamage` 10, added to `activeFireTiles`). Saves store weather (`windIntensity`, `cloudCover`, `temperature`, `extremeWindTicks`) under `simulation.weather`; import restores only those finite numeric fields. **Rain puts out fires:** while `cloudCover > WEATHER_CONFIG.RAIN_CLOUD_THRESHOLD` (0.7), each burning tile has a per-tick chance to go out, scaling linearly from `RAIN_EXTINGUISH_MIN_CHANCE` (10%) in light rain to `RAIN_EXTINGUISH_MAX_CHANCE` (40%) at full cloud cover (`WeatherManager.getRainExtinguishChance()`). This is checked before fire-station suppression; rain-extinguished damaged tiles start the normal gradual repair.
 
 Background music is a single looping HTML5 `<audio>` track (`AUDIO_CONFIG.MUSIC_FILE_PATH`, default volume `AUDIO_CONFIG.DEFAULT_VOLUME`); playback rejections (autoplay policy, missing file) are ignored.
 
@@ -326,7 +326,7 @@ Background music is a single looping HTML5 `<audio>` track (`AUDIO_CONFIG.MUSIC_
 
 **Waterfront:** `Grid.getWaterfrontStatus()` returns `clean`, `polluted` (any adjacent water with `riverPollution` or `isPolluted`), or none. Residential growth gets +1 beside clean water and −2 beside polluted water; city happiness adds `5 × clean-resident share − 10 × polluted-resident share`.
 
-**Storage:** each operational Silo adds `SILO_CAPACITY = 1000` for its storage type (oil or fuel). The Tile Inspector shows city stored/capacity for that type.
+**Storage:** each operational Silo adds `SILO_CAPACITY = 1000` for its storage type (oil or fuel). The Tile Inspector shows city stored/capacity for that type. Oil beyond operational oil-silo capacity is discarded each tick (`clampToCapacity`), so the Oil Derrick inspector shows its live output (`100 × staff fill` oil/tick) and warns when it is offline, has no powered oil Silo, or storage is full (`formatDerrickOutput`).
 
 **Weather rendering:** cloud shadows are world-space blobs drawn under the camera transform (fixed to the map while panning); rain is a screen-space effect. Touch devices support two-finger pinch zoom around the pinch midpoint.
 
@@ -334,7 +334,7 @@ Background music is a single looping HTML5 `<audio>` track (`AUDIO_CONFIG.MUSIC_
 
 **Education tax bonus:** `Simulation.computeEducation()` sets `schoolDemand = round(pop × 0.15)`, `universityDemand = round(pop × 0.05)`, and capacities of operational School / University `filledJobs × STUDENT_CAPACITY_PER_JOB (20)`. Libraries give no seats (happiness/coverage only). `educationTaxMultiplier = 1 + min(1, schoolCap/schoolDemand) × 0.15 + min(1, uniCap/uniDemand) × 0.20` (1.0 with zero population). It multiplies every zone's base tax before fire-repair, fuel, and crime-loss modifiers, so crime loss is computed on the boosted tax. It never creates residents or jobs. University: $12,000, 10/40/100 jobs, staffed 1 per 400 residents (one University covers 5% demand), own budget slider. The Service Budgets tab shows school seats, university seats, and the multiplier.
 
-The HUD clock (`#stat-time`) prefixes two weather icons from `weatherIcons()` in `UiRefresh.js`, using the `getWeatherLabel()` thresholds. Sky: ☀️/🌙 clear (cloud ≤ 0.4), ⛅/☁️ cloudy (≤ 0.7, day/night), 🌧️ rain. Wind: 🍃 calm (≤ 0.2), 💨 breezy (≤ 0.7), 🌪️ gale.
+The HUD clock (`#stat-time`) shows only the day/night icon and time. A separate weather chip (`#stat-weather`) shows two icons from `weatherIcons()` in `UiRefresh.js`, using the `getWeatherLabel()` thresholds, and its hover/tap tooltip lists conditions, wind %, cloud cover %, temperature, and solar efficiency (`weatherSnapshot()`). Header tooltips (Population mix, Weather) are moved to `<body>` at startup by `GameApp.initHeaderTooltips()` and shown with `position: fixed` under their chip on hover, focus, or tap, because the scrolling, backdrop-filtered header clips descendants; they close on outside tap, header scroll, or resize. Sky: ☀️/🌙 clear (cloud ≤ 0.4), ⛅/☁️ cloudy (≤ 0.7, day/night), 🌧️ rain. Wind: 🍃 calm (≤ 0.2), 💨 breezy (≤ 0.7), 🌪️ gale.
 
 Leftover **generic `power_plant`**: still in `PRODUCER_TYPE` / `PRODUCER_CONFIG` / renderer art / tests (`simulation.test.js` Test 1). Removed from the toolbar. Capacity 100, cost `$5,000`. Tests use it as a stand-in. **Decision: quarantine as test scaffolding** (helper that places coal/nuclear/wind, or a `TEST_ONLY` export). Do not restore it to the toolbar.
 
@@ -1009,7 +1009,7 @@ Phase 1 stays paused-by-default sandbox (0% tax, $25,000) for solo city-building
 
 28. **Overworld Biome Generation.** `BIOME_TYPES` (`PLAINS`, `HILLY`, `MOUNTAINOUS`, `SWAMP`) modify procedural terrain generation: Hilly/Mountainous scale rock clusters (+25% / +50%); Plains reduce rock clusters (-50%); Swamp reduces forest (-50%), increases lakes (4-6), and forces fork/merge rivers. `generateProceduralTerrain(biome)` accepts the biome directly.
 
-29. **Single-source versioning.** `src/version.js` (`APP_VERSION = '0.1.43'`) is the single source of truth for version strings. `package.json` version and cache-busting consumers derive from it. Verified by `tests/version-sync.test.js`.
+29. **Single-source versioning.** `src/version.js` (`APP_VERSION = '0.1.47'`) is the single source of truth for version strings. `package.json` version and cache-busting consumers derive from it. Verified by `tests/version-sync.test.js`.
 
 30. **Desktop Pan and Drag Painting.** Desktop left-drag with the Pan tool pans the camera; clicking without dragging selects the tile without opening the inspector. Inspect Tile opens the inspector. Left-drag painting is restricted to repeatable tools (roads, bridges, tunnels, zones, bulldoze); single-placement buildings and surveys do not drag-paint.
 

@@ -921,3 +921,31 @@ Current task: Tax slider 1% increments.
 
 - [done] `#tax-slider` step changed from 5 to 1.
 - [done] Bump the patch version to 0.1.43.
+
+Current task: Separate weather from the clock with a hover tooltip.
+
+- [done] `#stat-time` shows only the day/night icon and time.
+- [done] New `#stat-weather` chip (sky + wind icons) with a hover/tap tooltip: conditions, wind %, overspeed warning, cloud cover %, temperature, solar efficiency (`weatherSnapshot()` in `UiRefresh.js`).
+- [done] Update `tests/hud-update.test.js`.
+- [done] Bump the patch version to 0.1.44.
+
+Current task: Restore clipped header tooltips (Population mix, Weather).
+
+- [done] Cause: `.stats-counter` `overflow-x: auto` (and the mobile `.header-bar` overflow clip) hid the absolutely-positioned tooltips below the bar.
+- [done] `GameApp.initHeaderTooltips()` moves each `.stat-tooltip` to `<body>` (IDs kept so HUD updates still land) and positions it `fixed` under its chip on hover/focus/tap; closes on outside tap, header scroll, and resize.
+- [done] Removed the duplicate native `title` on the Population chip.
+- [done] Bump the patch version to 0.1.45.
+
+Current task: Rain increases the chance for fires to go out.
+
+- [done] `WeatherManager.getRainExtinguishChance()`: 0 unless raining (cloud > 0.7); 10% light rain up to 40% downpour per burning tile per tick (`WEATHER_CONFIG.RAIN_*`).
+- [done] `FireManager.updateFires` rolls rain extinguish before station suppression; shared `FireManager.extinguish()` starts repair on damaged tiles.
+- [done] Add rain cases to `tests/fire-repair.test.js`.
+- [done] Bump the patch version to 0.1.46.
+
+Current task: Show whether an Oil Derrick is extracting into a Silo.
+
+- [done] Verified pipeline with a reproduction: a staffed, utility-connected derrick adds 100 oil/tick and an oil Silo stores it (30 → 130 → 230 … up to 1000). No logic bug; the derrick inspector only showed staff.
+- [done] Derrick Tile Inspector `Output:` row shows oil/tick, staff, and `oil stored X / cap`; warns when offline, no powered oil Silo (output discarded), or storage full (`formatDerrickOutput`, included in the inspector signature).
+- [done] Add derrick inspector cases to `tests/fuel-refinery.test.js`.
+- [done] Bump the patch version to 0.1.47.

@@ -46,6 +46,19 @@ export class WeatherManager {
     return 0.40 - ((c - 0.7) / 0.3) * 0.30;
   }
 
+  // 0 when not raining, 0..1 from light rain to a downpour.
+  getRainIntensity() {
+    const threshold = WEATHER_CONFIG.RAIN_CLOUD_THRESHOLD;
+    if (this.cloudCover <= threshold) return 0;
+    return Math.min(1, (this.cloudCover - threshold) / (1 - threshold));
+  }
+
+  getRainExtinguishChance() {
+    if (this.cloudCover <= WEATHER_CONFIG.RAIN_CLOUD_THRESHOLD) return 0;
+    const { RAIN_EXTINGUISH_MIN_CHANCE: min, RAIN_EXTINGUISH_MAX_CHANCE: max } = WEATHER_CONFIG;
+    return min + (max - min) * this.getRainIntensity();
+  }
+
   getWeatherLabel() {
     const cloud = this.cloudCover <= 0.4 ? 'Sunny' : this.cloudCover <= 0.7 ? 'Cloudy' : 'Raining';
     const wind = this.windIntensity <= 0.2 ? 'Calm' : this.windIntensity <= 0.7 ? 'Breezy' : 'Gale Force';

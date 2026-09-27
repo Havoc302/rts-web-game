@@ -51,8 +51,13 @@ function fakeDocument() {
   simulation.weatherManager.cloudCover = 0.9;
   simulation.weatherManager.windIntensity = 0.95;
   const stormy = buildHudSnapshot(simulation, 24000);
-  assert.ok(changedHudFields(cashChanged, stormy).includes('stat-time'), 'Weather changes should dirty the clock icon');
-  assert.ok(stormy['stat-time'].startsWith('🌧️🌪️'), 'Rain and gale should show rain and tornado icons');
+  assert.ok(changedHudFields(cashChanged, stormy).includes('stat-weather'), 'Weather changes should dirty the weather icon');
+  assert.ok(!changedHudFields(cashChanged, stormy).includes('stat-time'), 'Weather changes should not dirty the clock');
+  assert.strictEqual(stormy['stat-weather'], '🌧️🌪️', 'Rain and gale should show rain and tornado icons');
+  assert.strictEqual(stormy['stat-weather-wind'], '95%');
+  assert.strictEqual(stormy['stat-weather-cloud'], '90%');
+  assert.strictEqual(stormy['stat-weather-temp'], `${simulation.weatherManager.temperature}°C`);
+  assert.strictEqual(stormy['stat-weather-label'], simulation.weatherManager.getWeatherLabel());
 }
 
 {

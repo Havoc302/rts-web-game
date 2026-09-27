@@ -58,6 +58,20 @@ export function getTileUtilityStatus(grid, tile, key) {
   return tile.shortfall?.[key] ? `Dist ${d} (Plant Full!)` : `Dist ${d} (Serviced)`;
 }
 
+export function formatDerrickOutput(producer, stockpile = {}, capacity = {}) {
+  const jobs = producer.totalJobs || PRODUCER_CONFIG[PRODUCER_TYPE.OIL_DERRICK].jobs.light;
+  const staff = producer.filledJobs || 0;
+  const fill = jobs > 0 ? Math.min(1, staff / jobs) : 0;
+  const rate = producer.operational ? Math.round(RESOURCE_CONFIG.OIL_DERRICK_OUTPUT_PER_TICK * fill) : 0;
+  const stored = Math.round(stockpile.oil || 0);
+  const cap = Math.round(capacity.oil || 0);
+  const head = `${rate} oil/tick (${staff}/${jobs} staff)`;
+  if (!producer.operational) return `⚠️ Offline (needs utilities) — ${head}`;
+  if (cap <= 0) return `${head} — ⚠️ No powered oil Silo, output is discarded`;
+  if (stored >= cap) return `${head} — ⚠️ Oil storage full (${stored} / ${cap})`;
+  return `${head} → oil stored ${stored} / ${cap}`;
+}
+
 export function formatSiloStorage(producer, stockpile = {}, capacity = {}) {
   const type = producer.storageType || 'oil';
   if (!producer.operational) return `⚠️ Offline (needs power) — holds ${RESOURCE_CONFIG.SILO_CAPACITY} ${type}`;

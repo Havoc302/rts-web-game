@@ -1,7 +1,8 @@
 import assert from 'assert';
 import { Grid } from '../src/engine/Grid.js';
 import { FireManager } from '../src/engine/FireManager.js';
-import { FIRE_CONFIG, PRODUCER_TYPE, TERRAIN, ZONE } from '../src/config.js';
+import { WeatherManager } from '../src/engine/WeatherManager.js';
+import { FIRE_CONFIG, PRODUCER_TYPE, TERRAIN, WEATHER_CONFIG, ZONE } from '../src/config.js';
 
 {
   const emptyZone = { zone: ZONE.RESIDENTIAL, population: 0, maxPopulation: 25, terrain: TERRAIN.FLAT };
@@ -65,6 +66,49 @@ import { FIRE_CONFIG, PRODUCER_TYPE, TERRAIN, ZONE } from '../src/config.js';
   FireManager.updateFires(grid, { fireInjuries: 0, displacedPopulation: 0 });
   assert.ok(tile.fireRepair > 0, 'Repair progress should increase each tick after the fire is out');
   assert.ok(tile.fireRepair <= FIRE_CONFIG.REPAIR_PER_TICK + 0.0001, 'Repair should be gradual');
+}
+
+// Rain gives burning tiles an intensity-scaled chance to go out each tick.
+{
+  const weather = new WeatherManager();
+  weather.cloudCover = 0.5;
+  assert.strictEqual(weather.getRainExtinguishChance(), 0, 'No rain means no rain extinguish chance');
+  weather.cloudCover = WEATHER_CONFIG.RAIN_CLOUD_THRESHOLD + 0.0001;
+  assert.ok(Math.abs(weather.getRainExtinguishChance() - WEATHER_CONFIG.RAIN_EXTINGUISH_MIN_CHANCE) < 0.001, 'Light rain uses the minimum chance');
+  weather.cloudCover = 1;
+  assert.strictEqual(weather.getRainExtinguishChance(), WEATHER_CONFIG.RAIN_EXTINGUISH_MAX_CHANCE, 'A downpour uses the maximum chance');
+
+  const makeFire = () => {
+    const grid = new Grid(8, 8, 1);
+    for (const row of grid.tiles) for (const tile of row) tile.terrain = TERRAIN.FLAT;
+    const forest = grid.getTile(3, 3);
+    forest.terrain = TERRAIN.FOREST;
+    forest.onFire = true;
+    forest.fireDamage = 20;
+    grid.rebuildActiveTileSets();
+    return { grid, forest };
+  };
+
+  const previousRandom = Math.random;
+  try {
+    // Roll just under the downpour chance: rain puts the fire out and starts repair.
+    Math.random = () => WEATHER_CONFIG.RAIN_EXTINGUISH_MAX_CHANCE - 0.01;
+    const wet = makeFire();
+    FireManager.updateFires(wet.grid, { fireInjuries: 0, displacedPopulation: 0 }, weather);
+    assert.strictEqual(wet.forest.onFire, false, 'Heavy rain should be able to extinguish a fire');
+    assert.strictEqual(wet.grid.activeFireTiles.has(wet.forest), false);
+    assert.strictEqual(wet.forest.fireRepair, 0, 'A rain-extinguished damaged tile should start repair');
+
+    // Same roll in dry weather: the fire keeps burning.
+    const dry = makeFire();
+    const dryWeather = new WeatherManager();
+    dryWeather.cloudCover = 0.1;
+    dryWeather.temperature = 20;
+    FireManager.updateFires(dry.grid, { fireInjuries: 0, displacedPopulation: 0 }, dryWeather);
+    assert.strictEqual(dry.forest.onFire, true, 'Without rain the same roll should not extinguish the fire');
+  } finally {
+    Math.random = previousRandom;
+  }
 }
 
 console.log('Fire flammability and repair tests passed.');

@@ -2,7 +2,7 @@ import { Grid, producerTypeForTool } from './engine/Grid.js';
 import { Simulation } from './engine/Simulation.js';
 import { Renderer } from './engine/Renderer.js';
 import { UtilityManager } from './engine/UtilityManager.js';
-import { getProducerConnectionStatus, getTileUtilityStatus, formatProducerCapacity, formatSiloStorage } from './engine/InspectorStatus.js';
+import { getProducerConnectionStatus, getTileUtilityStatus, formatProducerCapacity, formatSiloStorage, formatDerrickOutput } from './engine/InspectorStatus.js';
 import {
   applyHudSnapshot,
   buildHudSnapshot,
@@ -87,6 +87,7 @@ class GameApp {
   }
 
   bindUIEvents() {
+    this.initHeaderTooltips();
     const autoPanToggle = document.getElementById('auto-pan-toggle');
     if (autoPanToggle) {
       this.autoSwitchToPan = this.isMobileLayout() && autoPanToggle.checked;
@@ -419,6 +420,38 @@ class GameApp {
     this._pendingHud = false;
     recordUiTiming(this.hudTiming, this.enableUiTiming ? nowMs() - started : 0, true);
     return true;
+  }
+
+  // Tooltips live on <body> because the scrolling, backdrop-filtered header clips anything below it.
+  initHeaderTooltips() {
+    const tips = [];
+    document.querySelectorAll('.stat-item.has-tooltip').forEach((item) => {
+      const tip = item.querySelector('.stat-tooltip');
+      if (!tip) return;
+      tips.push({ item, tip });
+      document.body.appendChild(tip);
+      const show = () => {
+        const rect = item.getBoundingClientRect();
+        const half = tip.offsetWidth / 2;
+        const x = Math.min(window.innerWidth - half - 8, Math.max(half + 8, rect.left + rect.width / 2));
+        tip.style.left = `${x}px`;
+        tip.style.top = `${rect.bottom + 8}px`;
+        tip.classList.add('visible');
+      };
+      const hide = () => tip.classList.remove('visible');
+      item.addEventListener('mouseenter', show);
+      item.addEventListener('mouseleave', hide);
+      item.addEventListener('focus', show);
+      item.addEventListener('blur', hide);
+      item.addEventListener('click', () => (tip.classList.contains('visible') ? hide() : show()));
+    });
+    const hideAll = () => tips.forEach(({ tip }) => tip.classList.remove('visible'));
+    document.querySelector('.header-bar')?.addEventListener('scroll', hideAll, { passive: true });
+    document.querySelector('.stats-counter')?.addEventListener('scroll', hideAll, { passive: true });
+    window.addEventListener('resize', hideAll);
+    document.addEventListener('pointerdown', (e) => {
+      if (!tips.some(({ item, tip }) => item.contains(e.target) || tip.contains(e.target))) hideAll();
+    });
   }
 
   setActiveTool(tool) {
@@ -973,6 +1006,10 @@ class GameApp {
         capLabel.textContent = 'Stored / Capacity:';
         const resources = this.simulation.resourceManager;
         capVal.textContent = formatSiloStorage(tile.producer, resources.stockpile, resources.capacity);
+      } else if (tile.producer.type === PRODUCER_TYPE.OIL_DERRICK) {
+        capLabel.textContent = 'Output:';
+        const resources = this.simulation.resourceManager;
+        capVal.textContent = formatDerrickOutput(tile.producer, resources.stockpile, resources.capacity);
       } else if (tile.producer.type === PRODUCER_TYPE.HOSPITAL || tile.producer.type === PRODUCER_TYPE.CLINIC) {
         const staff = tile.producer.filledJobs || 0;
         const patientCap = staff * MEDICAL_CONFIG.HOSPITAL_PATIENT_CAPACITY_PER_JOB;
