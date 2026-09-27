@@ -1,8 +1,8 @@
-import { Grid } from './engine/Grid.js';
+import { Grid, producerTypeForTool } from './engine/Grid.js';
 import { Simulation } from './engine/Simulation.js';
 import { Renderer } from './engine/Renderer.js';
 import { UtilityManager } from './engine/UtilityManager.js';
-import { getProducerConnectionStatus, getTileUtilityStatus, formatProducerCapacity } from './engine/InspectorStatus.js';
+import { getProducerConnectionStatus, getTileUtilityStatus, formatProducerCapacity, formatSiloStorage } from './engine/InspectorStatus.js';
 import {
   applyHudSnapshot,
   buildHudSnapshot,
@@ -17,7 +17,7 @@ import {
 import { deserializeGameFromJson, serializeGameToJson } from './engine/SaveGame.js';
 import { AudioManager } from './engine/AudioManager.js';
 import { TutorialManager } from './engine/TutorialManager.js';
-import { APP_VERSION, ZONE, TERRAIN, PRODUCER_TYPE, PRODUCER_CONFIG, FACTORY_RECIPES, COSTS, TILE_SIZE, STARTING_TREASURY, RESIDENTIAL_CAPACITY, JOBS_PROVIDED, FOREST_POLLUTION_ABSORPTION, FOREST_DESIRABILITY_RADIUS, CRIME_CONFIG, MEDICAL_CONFIG, POWER_PRODUCER_TYPES, POLLUTION_CONFIG, COAL_CONFIG, WIND_CONFIG, SOLAR_CONFIG, BATTERY_CONFIG, DENSITY, RENDERER_CONFIG, TERRAIN_GENERATION_CONFIG, MAP_SEED_STORAGE_KEY, splitDemographics } from './config.js';
+import { APP_VERSION, ZONE, TERRAIN, PRODUCER_TYPE, PRODUCER_CONFIG, FACTORY_RECIPES, COSTS, TILE_SIZE, STARTING_TREASURY, RESIDENTIAL_CAPACITY, JOBS_PROVIDED, FOREST_POLLUTION_ABSORPTION, FOREST_DESIRABILITY_RADIUS, CRIME_CONFIG, MEDICAL_CONFIG, POWER_PRODUCER_TYPES, POLLUTION_CONFIG, COAL_CONFIG, WIND_CONFIG, SOLAR_CONFIG, BATTERY_CONFIG, DENSITY, RENDERER_CONFIG, TERRAIN_GENERATION_CONFIG, MAP_SEED_STORAGE_KEY, EDUCATION_CONFIG, splitDemographics } from './config.js';
 
 const nowMs = typeof performance !== 'undefined' ? () => performance.now() : () => Date.now();
 
@@ -189,6 +189,7 @@ class GameApp {
     const resetBtn = document.getElementById('btn-reset-map');
     if (resetBtn) {
       resetBtn.addEventListener('click', () => {
+        if (!window.confirm('Reset the map? All unsaved progress will be lost.')) return;
         const inputEl = document.getElementById('seed-input');
         let val = parseInt(inputEl?.value, 10);
         if (isNaN(val) || val <= 0) val = this.grid.seed;
@@ -199,6 +200,7 @@ class GameApp {
     const regenBtn = document.getElementById('btn-regen-map');
     if (regenBtn) {
       regenBtn.addEventListener('click', () => {
+        if (!window.confirm('Generate a new random map? All unsaved progress will be lost.')) return;
         const newSeed = Math.floor(Math.random() * TERRAIN_GENERATION_CONFIG.RANDOM_SEED_MAX) + TERRAIN_GENERATION_CONFIG.RANDOM_SEED_MIN;
         this.resetMapWithSeed(newSeed);
       });
@@ -391,7 +393,7 @@ class GameApp {
   simTick() {
     if (this.simulation.isPaused) return;
     const income = this.simulation.tick(true, this.treasury);
-    this.treasury += income - this.simulation.stats.serviceExpenses - this.simulation.stats.roadExpenses - (this.simulation.surveyExpenses || 0);
+    this.treasury += income - this.simulation.stats.serviceExpenses - this.simulation.stats.roadExpenses - (this.simulation.stats.utilityExpenses || 0) - (this.simulation.surveyExpenses || 0);
     this.audioManager?.updatePopulation(this.simulation.stats.population);
     this.updateHUD();
     if (this.renderer.selectedTile) {
@@ -427,8 +429,7 @@ class GameApp {
     const overlayMode = tool === 'survey' ? 'survey' : 'normal';
     document.querySelectorAll('.overlay-btn').forEach((b) => b.classList.toggle('active', b.dataset.mode === overlayMode));
     this.renderer.setOverlayMode(overlayMode);
-    this.renderer.highlightWaterAdjacent =
-      this.activeTool === 'producer_water' || this.activeTool === 'producer_sewage';
+    this.renderer.placementTool = ['pan', 'inspect', 'bulldoze'].includes(this.activeTool) ? null : this.activeTool;
     if (this.activeTool !== 'inspect' && this.activeTool !== 'pan') {
       document.getElementById('inspector-panel').classList.remove('visible');
       this.renderer.selectedTile = null;
@@ -499,28 +500,29 @@ class GameApp {
 
     this.canvas.addEventListener('wheel', (e) => {
       e.preventDefault();
-      const rect = this.canvas.getBoundingClientRect();
-      const mouseX = e.clientX - rect.left;
-      const mouseY = e.clientY - rect.top;
-
-      const oldZoom = this.renderer.zoom;
-      const worldX = (mouseX - this.canvas.width / 2 - this.renderer.cameraX) / oldZoom;
-      const worldY = (mouseY - this.canvas.height / 2 - this.renderer.cameraY) / oldZoom;
-
       const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
-      const newZoom = Math.min(RENDERER_CONFIG.ZOOM_MAX, Math.max(RENDERER_CONFIG.ZOOM_MIN, oldZoom * zoomFactor));
-
-      const newCameraX = mouseX - this.canvas.width / 2 - worldX * newZoom;
-      const newCameraY = mouseY - this.canvas.height / 2 - worldY * newZoom;
-
-      this.renderer.setCamera(newCameraX, newCameraY, newZoom);
+      this.zoomAt(e.clientX, e.clientY, this.renderer.zoom * zoomFactor);
     });
 
     // Touch support: single-finger drag always pans the camera (never builds),
-    // and a tap that didn't move performs the active tool's action.
+    // two-finger pinch zooms around the pinch midpoint, and a tap that didn't
+    // move performs the active tool's action.
+    const pinchState = (touches) => {
+      const [a, b] = [touches[0], touches[1]];
+      return {
+        dist: Math.hypot(b.clientX - a.clientX, b.clientY - a.clientY) || 1,
+        midX: (a.clientX + b.clientX) / 2,
+        midY: (a.clientY + b.clientY) / 2,
+      };
+    };
+
     this.canvas.addEventListener('touchstart', (e) => {
-      if (e.touches.length !== 1) return;
       e.preventDefault();
+      if (e.touches.length >= 2) {
+        this.pinch = { ...pinchState(e.touches), zoom: this.renderer.zoom };
+        this.touchMoved = true;
+        return;
+      }
       const touch = e.touches[0];
       this.touchStartX = touch.clientX;
       this.touchStartY = touch.clientY;
@@ -530,8 +532,16 @@ class GameApp {
     }, { passive: false });
 
     this.canvas.addEventListener('touchmove', (e) => {
-      if (e.touches.length !== 1) return;
       e.preventDefault();
+      if (e.touches.length >= 2 && this.pinch) {
+        const now = pinchState(e.touches);
+        this.renderer.setCamera(this.renderer.cameraX + now.midX - this.pinch.midX, this.renderer.cameraY + now.midY - this.pinch.midY);
+        this.zoomAt(now.midX, now.midY, this.pinch.zoom * (now.dist / this.pinch.dist));
+        this.pinch.midX = now.midX;
+        this.pinch.midY = now.midY;
+        return;
+      }
+      if (e.touches.length !== 1) return;
       const touch = e.touches[0];
       const dx = touch.clientX - this.lastTouchX;
       const dy = touch.clientY - this.lastTouchY;
@@ -549,12 +559,34 @@ class GameApp {
 
     this.canvas.addEventListener('touchend', (e) => {
       e.preventDefault();
+      if (e.touches.length < 2) this.pinch = null;
+      if (e.touches.length === 1) {
+        // Continue panning with the remaining finger without a jump.
+        this.lastTouchX = e.touches[0].clientX;
+        this.lastTouchY = e.touches[0].clientY;
+        return;
+      }
       if (!this.touchMoved && e.changedTouches.length === 1) {
         const touch = e.changedTouches[0];
         this.handleCanvasClick({ clientX: touch.clientX, clientY: touch.clientY });
       }
       this.touchMoved = false;
     }, { passive: false });
+  }
+
+  zoomAt(clientX, clientY, targetZoom) {
+    const rect = this.canvas.getBoundingClientRect();
+    const screenX = clientX - rect.left;
+    const screenY = clientY - rect.top;
+    const oldZoom = this.renderer.zoom;
+    const worldX = (screenX - this.canvas.width / 2 - this.renderer.cameraX) / oldZoom;
+    const worldY = (screenY - this.canvas.height / 2 - this.renderer.cameraY) / oldZoom;
+    const newZoom = Math.min(RENDERER_CONFIG.ZOOM_MAX, Math.max(RENDERER_CONFIG.ZOOM_MIN, targetZoom));
+    this.renderer.setCamera(
+      screenX - this.canvas.width / 2 - worldX * newZoom,
+      screenY - this.canvas.height / 2 - worldY * newZoom,
+      newZoom,
+    );
   }
 
   screenToTile(screenX, screenY) {
@@ -641,11 +673,10 @@ class GameApp {
         success = true;
       }
     } else if (this.activeTool.startsWith('producer_')) {
-      const typeKey = this.activeTool.replace('producer_', '').toUpperCase();
-      const pType = PRODUCER_TYPE[typeKey] || PRODUCER_TYPE[`${typeKey}_PLANT`] || PRODUCER_TYPE[`${typeKey}_TOWER` ];
+      const pType = producerTypeForTool(this.activeTool);
       const config = PRODUCER_CONFIG[pType];
       const buildCost = config?.cost;
-      if (config && this.treasury >= buildCost) {
+      if (config && this.treasury >= buildCost && this.grid.canBuildProducer(tile.x, tile.y, pType)) {
         if (this.grid.placeProducer(tile.x, tile.y, pType, config.capacity)) {
           cost = buildCost;
           success = true;
@@ -685,8 +716,7 @@ class GameApp {
     const row = (label, val) => `<div class="info-row"><span class="label">${label}:</span><span class="val">${val}</span></div>`;
 
     if (tool.startsWith('producer_')) {
-      const typeKey = tool.replace('producer_', '').toUpperCase();
-      const pType = PRODUCER_TYPE[typeKey] || PRODUCER_TYPE[`${typeKey}_PLANT`] || PRODUCER_TYPE[`${typeKey}_TOWER`];
+      const pType = producerTypeForTool(tool);
       const config = PRODUCER_CONFIG[pType];
       if (!config) {
         panel.classList.remove('visible');
@@ -728,6 +758,12 @@ class GameApp {
           } else {
             rows.push(row('Patient Capacity (L/M/H)', `${cap(config.jobs.light)} / ${cap(config.jobs.medium)} / ${cap(config.jobs.high)}`));
           }
+        } else if (pType === PRODUCER_TYPE.SCHOOL || pType === PRODUCER_TYPE.UNIVERSITY) {
+          const seats = (jobs) => jobs * EDUCATION_CONFIG.STUDENT_CAPACITY_PER_JOB;
+          rows.push(row('Student Seats (L/M/H)', `${seats(config.jobs.light)} / ${seats(config.jobs.medium)} / ${seats(config.jobs.high)} at full staff`));
+          rows.push(pType === PRODUCER_TYPE.SCHOOL
+            ? row('Tax Bonus', `Up to +${EDUCATION_CONFIG.MAX_SCHOOL_TAX_BONUS * 100}% city tax when seats cover 15% of population`)
+            : row('Tax Bonus', `Up to +${EDUCATION_CONFIG.MAX_UNI_TAX_BONUS * 100}% city tax when seats cover 5% of population (stacks with schools)`));
         } else if (pType === PRODUCER_TYPE.OIL_DERRICK) {
           rows.push(row('Output', 'Extracts up to 100 oil per tick'));
         } else if (pType === PRODUCER_TYPE.REFINERY) {
@@ -786,7 +822,7 @@ class GameApp {
   updateInspector(tile, { force = false } = {}) {
     if (!tile) return false;
     const started = this.enableUiTiming ? nowMs() : 0;
-    const signature = buildInspectorSignature(this.grid, tile);
+    const signature = buildInspectorSignature(this.grid, tile, this.simulation.resourceManager);
     const differentTile = this._inspectorTile !== tile;
     const changed = signature !== this._inspectorSignature;
     const cadenceMs = getHudCadenceMs(this.isMobileLayout());
@@ -933,6 +969,10 @@ class GameApp {
       } else if (tile.producer.type === PRODUCER_TYPE.BATTERY) {
         capLabel.textContent = 'Load / Capacity:';
         capVal.textContent = formatProducerCapacity(tile.producer, this.grid);
+      } else if (tile.producer.type === PRODUCER_TYPE.SILO) {
+        capLabel.textContent = 'Stored / Capacity:';
+        const resources = this.simulation.resourceManager;
+        capVal.textContent = formatSiloStorage(tile.producer, resources.stockpile, resources.capacity);
       } else if (tile.producer.type === PRODUCER_TYPE.HOSPITAL || tile.producer.type === PRODUCER_TYPE.CLINIC) {
         const staff = tile.producer.filledJobs || 0;
         const patientCap = staff * MEDICAL_CONFIG.HOSPITAL_PATIENT_CAPACITY_PER_JOB;
@@ -941,6 +981,10 @@ class GameApp {
       } else if (config?.utility === 'power' || config?.utility === 'water' || config?.utility === 'sewage') {
         capLabel.textContent = 'Load / Capacity:';
         capVal.textContent = formatProducerCapacity(tile.producer, this.grid);
+      } else if (tile.producer.type === PRODUCER_TYPE.SCHOOL || tile.producer.type === PRODUCER_TYPE.UNIVERSITY) {
+        const staff = tile.producer.filledJobs || 0;
+        capLabel.textContent = 'Staff / Seats:';
+        capVal.textContent = `${staff} / ${tile.producer.totalJobs || 0} staff — ${(staff * EDUCATION_CONFIG.STUDENT_CAPACITY_PER_JOB).toLocaleString()} seats`;
       } else if (config?.jobs) {
         capLabel.textContent = 'Staff:';
         capVal.textContent = `${(tile.producer.filledJobs || 0).toLocaleString()} / ${(tile.producer.totalJobs || 0).toLocaleString()}`;

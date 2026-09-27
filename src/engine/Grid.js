@@ -1,5 +1,11 @@
 import { TERRAIN, TERRAIN_TYPE, ZONE, DENSITY, MAP_WIDTH, MAP_HEIGHT, PRODUCER_CONFIG, PRODUCER_TYPE, ORE_CONFIG, ORE_GENERATION, SERVICE_GLOBAL_CONFIG, TERRAIN_GENERATION_CONFIG, MAP_SEED_STORAGE_KEY, MAP_SEED_STORAGE_KEY_LEGACY, BIOME_CONFIG } from '../config.js';
 
+export function producerTypeForTool(tool) {
+  if (!tool?.startsWith('producer_')) return null;
+  const typeKey = tool.replace('producer_', '').toUpperCase();
+  return PRODUCER_TYPE[typeKey] || PRODUCER_TYPE[`${typeKey}_PLANT`] || PRODUCER_TYPE[`${typeKey}_TOWER`] || null;
+}
+
 export function createPRNG(seed) {
   let h = Math.imul((parseInt(seed, 10) || TERRAIN_GENERATION_CONFIG.DEFAULT_RANDOM_SEED) ^ 0x6d2b79f5, 0x15a4e35d);
   h = Math.imul(h ^ (h >>> 15), 0x61243495);
@@ -548,6 +554,17 @@ export class Grid {
     return neighbors.some((tile) => tile.terrain === TERRAIN_TYPE.RIVER);
   }
 
+  // 'polluted' if any adjacent water is polluted, 'clean' if water is adjacent, otherwise null.
+  getWaterfrontStatus(x, y) {
+    let status = null;
+    for (const neighbor of this.getNeighbors(x, y)) {
+      if (neighbor.terrain !== TERRAIN_TYPE.RIVER) continue;
+      if (neighbor.isPolluted || neighbor.riverPollution > 0) return 'polluted';
+      status = 'clean';
+    }
+    return status;
+  }
+
   canPlaceRoad(x, y) {
     const tile = this.getTile(x, y);
     if (!tile) return false;
@@ -594,6 +611,24 @@ export class Grid {
     return this.getNeighbors8(x, y).some((neighbor) => (
       neighbor.producer?.type === PRODUCER_TYPE.BATTERY
     ));
+  }
+
+  // Player-facing rule: buildings need road access; renewables connect through their battery instead.
+  canBuildProducer(x, y, producerType) {
+    if (!this.canPlaceProducer(x, y, producerType)) return false;
+    if (producerType === PRODUCER_TYPE.WINDMILL || producerType === PRODUCER_TYPE.SOLAR_PANEL) return true;
+    return this.isRoadAdjacent(x, y);
+  }
+
+  canBuildTool(x, y, tool) {
+    if (!tool) return false;
+    if (tool === 'road') return this.canPlaceRoad(x, y);
+    if (tool === 'bridge') return this.canPlaceBridge(x, y);
+    if (tool === 'tunnel') return this.canPlaceTunnel(x, y);
+    if (tool === 'survey') return this.canSurvey(x, y);
+    if (tool.startsWith('zone_')) return this.canZone(x, y);
+    const producerType = producerTypeForTool(tool);
+    return producerType ? this.canBuildProducer(x, y, producerType) : false;
   }
 
   placeRoad(x, y) {
@@ -676,6 +711,7 @@ export class Grid {
   canSurvey(x, y) {
     const tile = this.getTile(x, y);
     if (!tile || tile.producer || tile.hasRoad || tile.oreDiscovered || tile.surveyingBy) return false;
+    if (tile.terrain === TERRAIN.WATER) return false;
     return tile.terrain !== TERRAIN.MOUNTAIN || !this.isMountainSurveyEnclosed(x, y);
   }
 

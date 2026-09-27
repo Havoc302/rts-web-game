@@ -2,7 +2,8 @@ import assert from 'assert';
 import { Grid } from '../src/engine/Grid.js';
 import { ResourceManager } from '../src/engine/ResourceManager.js';
 import { UtilityManager } from '../src/engine/UtilityManager.js';
-import { PRODUCER_TYPE, TERRAIN, ORE_TYPE, RESOURCE_CONFIG, USAGE_RATES, ZONE, DENSITY } from '../src/config.js';
+import { formatSiloStorage } from '../src/engine/InspectorStatus.js';
+import { PRODUCER_TYPE, TERRAIN, ORE_TYPE, RESOURCE_CONFIG, USAGE_RATES, ZONE, DENSITY, HAPPINESS_CONFIG } from '../src/config.js';
 
 const grid = new Grid(10, 10, 7);
 for (const row of grid.tiles) for (const tile of row) tile.terrain = TERRAIN.FLAT;
@@ -49,6 +50,12 @@ manager.stockpile.coal = 5;
 manager.update(grid, { population: 0, employmentRate: 1, untreatedPatients: 0, fireInjuries: 0 });
 assert.ok(manager.stockpile.ironBar > 0, 'Smelter should convert ore and coal into iron bars');
 assert.ok(barWarehouse, 'Bar warehouse should be accepted as a storage producer');
+assert.strictEqual(RESOURCE_CONFIG.SILO_CAPACITY, 1000, 'Each silo should hold 1000');
+assert.strictEqual(manager.capacity.oil, silo.operational ? 1000 : 0, 'An operational silo adds 1000 oil capacity');
+silo.operational = true;
+manager.stockpile.oil = 250;
+manager.capacity.oil = 1000;
+assert.strictEqual(formatSiloStorage(silo, manager.stockpile, manager.capacity), '250 / 1000 oil (city) — this silo: 1000', 'Inspector should show silo storage instead of N/A');
 
 const industrialTile = grid.getTile(8, 8);
 industrialTile.zone = 'industrial';
@@ -70,5 +77,27 @@ assert.strictEqual(residentialTile.populationLoss, firstFamineLoss, 'Food outflo
 manager.stockpile.food = 100;
 manager.update(grid, { population: 20, employmentRate: 1, untreatedPatients: 0, fireInjuries: 0 });
 assert.strictEqual(residentialTile.populationLoss, 0, 'Restored food should clear famine populationLoss');
+
+{
+  const famineGrid = new Grid(6, 6, 3);
+  for (const row of famineGrid.tiles) for (const tile of row) tile.terrain = TERRAIN.FLAT;
+  famineGrid.placeRoad(1, 1);
+  famineGrid.placeRoad(2, 1);
+  famineGrid.placeZone(1, 2, ZONE.RESIDENTIAL);
+  famineGrid.placeZone(2, 2, ZONE.RESIDENTIAL);
+  famineGrid.getTile(1, 2).population = 40;
+  famineGrid.getTile(2, 2).population = 60;
+  const famine = new ResourceManager();
+  const stats = { population: 0, employmentRate: 1, untreatedPatients: 0, fireInjuries: 0, taxRate: 40 };
+  famine.update(famineGrid, stats);
+  assert.strictEqual(stats.foodDemand, 100 * RESOURCE_CONFIG.FOOD_PER_RESIDENT, 'Food demand should be summed from each residential tile population');
+  const earlyHappiness = stats.happiness;
+  for (let i = 1; i < HAPPINESS_CONFIG.FAMINE_TICKS; i++) famine.update(famineGrid, stats);
+  assert.strictEqual(stats.foodShortfallTicks, HAPPINESS_CONFIG.FAMINE_TICKS);
+  assert.strictEqual(stats.happiness, Math.max(HAPPINESS_CONFIG.MIN_SCORE, earlyHappiness - HAPPINESS_CONFIG.FAMINE_PENALTY), 'Sustained famine should add a severe happiness penalty');
+  famine.stockpile.food = 1000;
+  famine.update(famineGrid, stats);
+  assert.strictEqual(stats.foodShortfallTicks, 0, 'Feeding the city should reset the famine counter');
+}
 
 console.log('Resource management tests passed.');

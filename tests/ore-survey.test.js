@@ -91,4 +91,12 @@ function clearTerrain(grid) {
   assert.strictEqual(grid.canSurvey(4, 4), true, 'An exposed mountain should not require a tunnel to survey');
 }
 
+{
+  const grid = new Grid(8, 8, 1);
+  clearTerrain(grid);
+  grid.getTile(2, 2).terrain = TERRAIN.WATER;
+  assert.strictEqual(grid.canSurvey(2, 2), false, 'Water tiles cannot be mined, so they cannot be surveyed');
+  assert.strictEqual(grid.startSurvey(2, 2), false);
+}
+
 console.log('Ore and survey tests passed.');

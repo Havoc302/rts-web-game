@@ -1,4 +1,4 @@
-import { PRODUCER_TYPE, PRODUCER_CONFIG, POWER_PRODUCER_TYPES } from '../config.js';
+import { PRODUCER_TYPE, PRODUCER_CONFIG, POWER_PRODUCER_TYPES, RESOURCE_CONFIG } from '../config.js';
 import { UtilityManager } from './UtilityManager.js';
 
 export function getProducerConnectionStatus(grid, producer) {
@@ -56,6 +56,14 @@ export function getTileUtilityStatus(grid, tile, key) {
     return 'Unconnected Road Network!';
   }
   return tile.shortfall?.[key] ? `Dist ${d} (Plant Full!)` : `Dist ${d} (Serviced)`;
+}
+
+export function formatSiloStorage(producer, stockpile = {}, capacity = {}) {
+  const type = producer.storageType || 'oil';
+  if (!producer.operational) return `⚠️ Offline (needs power) — holds ${RESOURCE_CONFIG.SILO_CAPACITY} ${type}`;
+  const stored = Math.round(stockpile[type] || 0);
+  const cap = Math.round(capacity[type] || 0);
+  return `${stored} / ${cap} ${type} (city) — this silo: ${RESOURCE_CONFIG.SILO_CAPACITY}`;
 }
 
 export function formatProducerCapacity(producer, grid = null) {

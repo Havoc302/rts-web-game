@@ -63,6 +63,7 @@ export const SERVICE_TYPE = {
   CLINIC: 'clinic',
   SCHOOL: 'school',
   LIBRARY: 'library',
+  UNIVERSITY: 'university',
   CITY_HALL: 'city_hall',
 };
 
@@ -158,7 +159,7 @@ export const RESOURCE_CONFIG = {
   SMELTER_COAL_PER_BAR: 0.5,            // Coal consumed to produce one metal bar
   SMELTER_BARS_PER_JOB: 0.2,            // Metal bars produced by one filled smelter job per tick
   COAL_PLANT_FUEL_PER_MW: 0.02,         // Coal consumed per megawatt supplied by a coal plant
-  SILO_CAPACITY: 500,                   // Storage capacity provided by one silo
+  SILO_CAPACITY: 1000,                  // Storage capacity provided by one silo
   FOOD_PER_AGRICULTURAL_JOB: 0.1,        // Legacy per-job food rate; farm tiles now use AGRICULTURAL_FOOD_YIELD * fill ratio
   OIL_DERRICK_OUTPUT_PER_TICK: 100,     // Oil produced by one fully staffed derrick per tick
   REFINERY_OIL_PER_TICK: 100,           // Oil a staffed operational refinery processes per tick
@@ -244,10 +245,22 @@ export const HAPPINESS_CONFIG = {
   POLLUTION_PENALTY_PER_POINT: 1,         // Happiness points lost per pollution point
   CRIME_PENALTY_PER_POINT: 2,             // Happiness points lost per crime point
   FOOD_SHORTFALL_PENALTY: 25,             // Happiness penalty when food demand is unmet
+  FAMINE_TICKS: 10,                       // Consecutive food-shortfall ticks before famine
+  FAMINE_PENALTY: 40,                     // Extra happiness penalty during sustained famine
+  CLEAN_WATERFRONT_MAX_BONUS: 5,          // Happiness bonus when every resident lives beside clean water
+  POLLUTED_WATERFRONT_MAX_PENALTY: 10,    // Happiness penalty when every resident lives beside polluted water
   GROWTH_DELTA_PER_POINT: 0.1,            // Residential demand delta per happiness point away from BASE_SCORE (50 is neutral)
   UNTREATED_PATIENT_PENALTY: 0.5,         // Happiness penalty per untreated patient
   CRIME_POINT_PENALTY: 0.5,               // Happiness penalty per crime point
   FIRE_INJURY_PENALTY: 0.1,               // Happiness penalty per fire injury
+};
+
+export const EDUCATION_CONFIG = {
+  SCHOOL_DEMAND_RATIO: 0.15,              // School seats needed per resident
+  UNI_DEMAND_RATIO: 0.05,                 // University seats needed per resident
+  STUDENT_CAPACITY_PER_JOB: 20,           // Seats provided by one staffed education job
+  MAX_SCHOOL_TAX_BONUS: 0.15,             // Tax bonus at full school coverage
+  MAX_UNI_TAX_BONUS: 0.20,                // Tax bonus at full university coverage
 };
 
 export const ORE_GENERATION = {
@@ -340,6 +353,21 @@ export const SERVICE_CONFIG = {
     utilityUsage: { power: 1, water: 1, sewage: 1 },
     runningCost: { light: 10, medium: 50, high: 140 },
     runningCostPerJob: 1,
+    unique: false,
+  },
+  [SERVICE_TYPE.UNIVERSITY]: {
+    name: 'University',
+    category: 'service',
+    cost: 12000,
+    color: '#0ea5e9',
+    radius: { light: 15, medium: 25, high: 40 },
+    jobs: { light: 10, medium: 40, high: 100 },
+    popThresholds: { medium: 3000, high: 10000 },
+    // One staffed job per 400 residents x 20 seats covers the 5% university demand.
+    officersPerPopulation: 400,
+    utilityUsage: { power: 2, water: 2, sewage: 2 },
+    runningCost: { light: 40, medium: 120, high: 300 },
+    runningCostPerJob: 3,
     unique: false,
   },
   [SERVICE_TYPE.CITY_HALL]: {
@@ -558,6 +586,7 @@ export const COSTS = {
 };
 
 export const ROAD_MAINTENANCE_COST = 1; // Maintenance cost per road or bridge tile per tick
+export const UTILITY_OPERATING_COST = 2; // Per power generator, battery, water pump, or sewage plant per tick
 
 export const TAX_REVENUE_CONFIG = {
   RESIDENTS_PER_TAX_UNIT: 100,
@@ -740,6 +769,8 @@ export const SERVICE_GLOBAL_CONFIG = {
   COVERAGE_MAX_FACTOR: 0.7,               // Additional coverage factor at full staffing
   UTILITY_DEMAND_COST_MULTIPLIER: 0.15,   // Running-cost increase per utility demand unit
   FOREST_DESIRABILITY_BONUS: 1,           // Residential growth bonus near forest
+  CLEAN_WATERFRONT_GROWTH_BONUS: 1,       // Residential growth bonus beside clean water
+  POLLUTED_WATERFRONT_GROWTH_PENALTY: -2, // Residential growth penalty beside polluted water
   POLICE_DESIRABILITY_BONUS: 1,           // Residential growth bonus for police coverage
   FIRE_DESIRABILITY_BONUS: 1,             // Residential growth bonus for fire coverage
   HOSPITAL_DESIRABILITY_BONUS: 1,         // Residential growth bonus for hospital coverage

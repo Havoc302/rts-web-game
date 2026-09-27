@@ -1,4 +1,5 @@
 import { PRODUCER_TYPE, POWER_PRODUCER_TYPES, ZONE } from '../config.js';
+import { UtilityManager } from './UtilityManager.js';
 
 const GENERATOR_TYPES = POWER_PRODUCER_TYPES.filter((type) => type !== PRODUCER_TYPE.BATTERY);
 
@@ -10,11 +11,12 @@ export const TUTORIAL_STEPS = [
   },
   {
     title: 'Step 2: Core Utilities (Power, Water, Sewage)',
-    desc: 'Beside your roads, place 1 Power Producer, 1 Water Pump, and 1 Sewage Plant. Pumps and sewage plants must also touch water; renewables need an adjacent Battery Storage.',
+    desc: 'Beside your roads, place 1 Power Producer, 1 Water Pump, and 1 Sewage Plant, each touching a road. Pumps and sewage plants must also touch water; renewables need an adjacent road-connected Battery Storage.',
     check: (grid) => {
-      const hasPower = grid.producers.some((p) => GENERATOR_TYPES.includes(p.type));
-      const hasWater = grid.producers.some((p) => p.type === PRODUCER_TYPE.WATER_TOWER);
-      const hasSewage = grid.producers.some((p) => p.type === PRODUCER_TYPE.SEWAGE_PLANT);
+      const connected = (p) => UtilityManager.contributesPowerToGrid(grid, p);
+      const hasPower = grid.producers.some((p) => GENERATOR_TYPES.includes(p.type) && connected(p));
+      const hasWater = grid.producers.some((p) => p.type === PRODUCER_TYPE.WATER_TOWER && connected(p));
+      const hasSewage = grid.producers.some((p) => p.type === PRODUCER_TYPE.SEWAGE_PLANT && connected(p));
       return hasPower && hasWater && hasSewage;
     },
   },

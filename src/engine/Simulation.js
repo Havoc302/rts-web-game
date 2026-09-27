@@ -1,4 +1,4 @@
-import { GROWTH_CONFIG, DENSITY, ZONE, TERRAIN, USAGE_RATES, POLLUTION_CONFIG, JOBS_PROVIDED, RESIDENTIAL_CAPACITY, LABOR_TAX_GROWTH_CONFIG, FOREST_DESIRABILITY_RADIUS, PRODUCER_TYPE, PRODUCER_CONFIG, POWER_PRODUCER_TYPES, ROAD_MAINTENANCE_COST, TAX_REVENUE_CONFIG, CRIME_CONFIG, MEDICAL_CONFIG, HAPPINESS_CONFIG, SERVICE_GLOBAL_CONFIG, TICKS_PER_HOUR, HOURS_PER_DAY, DAY_START_HOUR, NIGHT_START_HOUR, DEMOGRAPHICS_CONFIG, FUEL_CONFIG, SURVEY_COST_PER_TICK, POPULATION_STABILIZATION_CONFIG, TEMPERATURE_CONFIG, splitDemographics } from '../config.js';
+import { GROWTH_CONFIG, DENSITY, ZONE, TERRAIN, USAGE_RATES, POLLUTION_CONFIG, JOBS_PROVIDED, RESIDENTIAL_CAPACITY, LABOR_TAX_GROWTH_CONFIG, FOREST_DESIRABILITY_RADIUS, PRODUCER_TYPE, PRODUCER_CONFIG, POWER_PRODUCER_TYPES, ROAD_MAINTENANCE_COST, UTILITY_OPERATING_COST, TAX_REVENUE_CONFIG, CRIME_CONFIG, MEDICAL_CONFIG, HAPPINESS_CONFIG, SERVICE_GLOBAL_CONFIG, TICKS_PER_HOUR, HOURS_PER_DAY, DAY_START_HOUR, NIGHT_START_HOUR, DEMOGRAPHICS_CONFIG, FUEL_CONFIG, SURVEY_COST_PER_TICK, POPULATION_STABILIZATION_CONFIG, TEMPERATURE_CONFIG, EDUCATION_CONFIG, splitDemographics } from '../config.js';
 import { UtilityManager } from './UtilityManager.js';
 import { PollutionManager } from './PollutionManager.js';
 import { ServiceManager } from './ServiceManager.js';
@@ -36,6 +36,12 @@ export class Simulation {
       serviceExpenses: 0,
       pensionExpenses: 0,
       roadExpenses: 0,
+      utilityExpenses: 0,
+      schoolDemand: 0,
+      universityDemand: 0,
+      schoolCapacity: 0,
+      universityCapacity: 0,
+      educationTaxMultiplier: 1,
       avgPollution: 0,
       maxPollution: 0,
       totalJobsProvided: 0,
@@ -328,6 +334,9 @@ export class Simulation {
           if (this.hasNearbyForest(tile.x, tile.y)) {
             delta += SERVICE_GLOBAL_CONFIG.FOREST_DESIRABILITY_BONUS;
           }
+          const waterfront = this.grid.getWaterfrontStatus(tile.x, tile.y);
+          if (waterfront === 'clean') delta += SERVICE_GLOBAL_CONFIG.CLEAN_WATERFRONT_GROWTH_BONUS;
+          else if (waterfront === 'polluted') delta += SERVICE_GLOBAL_CONFIG.POLLUTED_WATERFRONT_GROWTH_PENALTY;
           // Essential services desirability bonuses
           if (tile.services) {
             if (tile.services.police) delta += SERVICE_GLOBAL_CONFIG.POLICE_DESIRABILITY_BONUS;
@@ -406,6 +415,12 @@ export class Simulation {
       sewageCapacity: 0,
       serviceExpenses: 0,
       pensionExpenses: 0,
+      utilityExpenses: 0,
+      schoolDemand: 0,
+      universityDemand: 0,
+      schoolCapacity: 0,
+      universityCapacity: 0,
+      educationTaxMultiplier: 1,
       avgPollution: 0,
       maxPollution: 0,
       totalJobsProvided: 0,
@@ -440,6 +455,9 @@ export class Simulation {
     };
 
     for (const p of this.grid.producers) {
+      if (POWER_PRODUCER_TYPES.includes(p.type) || p.type === PRODUCER_TYPE.WATER_TOWER || p.type === PRODUCER_TYPE.SEWAGE_PLANT) {
+        stats.utilityExpenses += UTILITY_OPERATING_COST;
+      }
       const countsForCapacity = POWER_PRODUCER_TYPES.includes(p.type)
         ? UtilityManager.contributesPowerToGrid(this.grid, p)
         : this.grid.isRoadAdjacent(p.x, p.y);
@@ -507,6 +525,8 @@ export class Simulation {
     stats.unemployedWorkers = Math.max(0, demographics.workforce - stats.jobsFilled);
     stats.employmentRate = stats.totalJobsProvided > 0 ? (stats.jobsFilled / stats.totalJobsProvided) : 0;
 
+    this.computeEducation(stats);
+
     for (const tile of this.grid.getActiveZonedTiles()) {
       if (tile.zone === ZONE.COMMERCIAL || tile.zone === ZONE.INDUSTRIAL || tile.zone === ZONE.AGRICULTURAL) {
         tile.filledJobs = Math.round((tile.totalJobs || 0) * stats.employmentRate);
@@ -552,6 +572,7 @@ export class Simulation {
             totalPatientDemand += (tile.filledJobs || 0) * MEDICAL_CONFIG.PATIENTS_PER_INDUSTRIAL_JOB;
           }
         }
+        tileBaseTax *= stats.educationTaxMultiplier;
         tileBaseTax *= (tile.fireRepair ?? 1);
         tileBaseTax *= fuelTaxFactor;
         if (tile.onFire) tileBaseTax = 0;
@@ -573,6 +594,25 @@ export class Simulation {
 
     stats.incomePerTick = Math.round(income);
     this.stats = stats;
+  }
+
+  computeEducation(stats) {
+    let schoolJobs = 0;
+    let universityJobs = 0;
+    for (const p of this.grid.producers) {
+      if (!p.operational || p.destroyed) continue;
+      if (p.type === PRODUCER_TYPE.SCHOOL) schoolJobs += p.filledJobs || 0;
+      else if (p.type === PRODUCER_TYPE.UNIVERSITY) universityJobs += p.filledJobs || 0;
+    }
+    stats.schoolDemand = Math.round(stats.population * EDUCATION_CONFIG.SCHOOL_DEMAND_RATIO);
+    stats.universityDemand = Math.round(stats.population * EDUCATION_CONFIG.UNI_DEMAND_RATIO);
+    stats.schoolCapacity = schoolJobs * EDUCATION_CONFIG.STUDENT_CAPACITY_PER_JOB;
+    stats.universityCapacity = universityJobs * EDUCATION_CONFIG.STUDENT_CAPACITY_PER_JOB;
+    const schoolRatio = stats.schoolDemand > 0 ? Math.min(1, stats.schoolCapacity / stats.schoolDemand) : 0;
+    const uniRatio = stats.universityDemand > 0 ? Math.min(1, stats.universityCapacity / stats.universityDemand) : 0;
+    stats.educationTaxMultiplier = 1 +
+      schoolRatio * EDUCATION_CONFIG.MAX_SCHOOL_TAX_BONUS +
+      uniRatio * EDUCATION_CONFIG.MAX_UNI_TAX_BONUS;
   }
 
   computeTilePopulation(tile, capacity) {

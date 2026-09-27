@@ -128,6 +128,25 @@ body {
   font-family: var(--font-mono);
   white-space: nowrap;
   line-height: 1.2;
+  display: inline-block;
+  min-width: 3ch;
+  text-align: right;
+}
+
+/* Reserve 3 digits plus any sign/$ prefix so the header doesn't jitter as values grow. */
+#stat-cash { min-width: 4ch; }
+#stat-income,
+#stat-service-expenses,
+#stat-road-expenses,
+#stat-utility-expenses { min-width: 5ch; }
+#stat-emp-rate { min-width: 4ch; }
+#stat-day { min-width: 7ch; }
+#stat-time { min-width: 12ch; }
+
+span.stat-icon {
+  font-size: 13px;
+  line-height: 16px;
+  text-align: center;
 }
 
 .stat-item.has-tooltip {
@@ -821,6 +840,12 @@ h4 {
 
 .btn-secondary:hover {
   background: #475569;
+}
+
+.tool-svg-icon {
+  width: 1.1em;
+  height: 1.1em;
+  vertical-align: middle;
 }
 
 #welcome-modal .modal-box {

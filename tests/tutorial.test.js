@@ -38,9 +38,12 @@ grid.placeProducer(1, 5, PRODUCER_TYPE.SEWAGE_PLANT, 120);
 assert.ok(grid.placeProducer(1, 7, PRODUCER_TYPE.NUCLEAR_PLANT, 500));
 tutorial.update(grid, stats);
 assert.strictEqual(tutorial.currentStep, 0, 'Utilities without roads should not pass the road step');
-for (let y = 1; y <= 5; y++) grid.placeRoad(2, y);
+for (let y = 1; y <= 6; y++) grid.placeRoad(2, y);
 tutorial.update(grid, stats);
-assert.strictEqual(tutorial.currentStep, 2, 'Roads then already-built utilities should advance together');
+assert.strictEqual(tutorial.currentStep, 1, 'A utility not touching a road should block the utility step');
+grid.placeRoad(2, 7);
+tutorial.update(grid, stats);
+assert.strictEqual(tutorial.currentStep, 2, 'Roads then road-connected utilities should advance together');
 
 // Step 2: battery alone does not count as power generation.
 const fresh = new Grid(12, 12, 1);

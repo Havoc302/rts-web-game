@@ -6,7 +6,7 @@
 | Author | TBD |
 | Date | 2026-09-25 |
 | Status | Living draft (rev 8) |
-| Version covered | `APP_VERSION` `0.1.40` (`src/version.js`); current working tree |
+| Version covered | `APP_VERSION` `0.1.42` (`src/version.js`); current working tree |
 | Intended in-repo path | `docs/DESIGN.md` |
 | Repo | `g:\Repos\rts-web-game` (`origin`: `https://github.com/Havoc302/rts-web-game.git`) |
 | Working tree at inventory | Documentation is checked against the current implementation; uncommitted changes may exist. |
@@ -300,7 +300,7 @@ income = ((population/100) + (jobsFilled/100)) * $10 * (taxRate/100) - crimeTaxL
 
 `BASE_INCOME` still exists and is tested by `industrial-economics.test.js`, but **`computeStats` does not use it**. **Decision: delete `BASE_INCOME`** and retarget that test at the live tax formula (industrial tiles still yield more than commercial at equal fill because they provide the same jobs table — assert the live `incomePerTick` relationship, or drop the I>C income assertion if it no longer holds). Growth modifier is continuous: bonus below 40%, negative at 50%, quadratic outflow toward 100%. Residential growth **stalls** (`delta = 0`) if any workers are unemployed or if the city has zero workplaces.
 
-**Treasury** lives on `GameApp`, not `Simulation`. Road maintenance is `$1` per road/bridge/tunnel tile per tick (`ROAD_MAINTENANCE_COST = 1`). Monetary values are pre-scaled constants. Pensions are folded into `serviceExpenses`.
+**Treasury** lives on `GameApp`, not `Simulation`. Road maintenance is `$1` per road/bridge/tunnel tile per tick (`ROAD_MAINTENANCE_COST = 1`). Every power generator, battery, water pump, and sewage plant costs `UTILITY_OPERATING_COST = $2` per tick (`stats.utilityExpenses`, ⚡ HUD chip), whether or not it is connected. Monetary values are pre-scaled constants. Pensions are folded into `serviceExpenses`.
 
 ### Utilities and day/night
 
@@ -319,6 +319,20 @@ Windmills and Solar Panels are passive generators. They require an adjacent Batt
 Renewable output is weather-driven: `UtilityManager.allocateAll(grid, hour, weatherManager, { preview })` sets Windmill capacity to `round(WIND_CONFIG.MAX_CAPACITY (65) * windIntensity)` and Solar capacity to `round(PEAK_CAPACITY * solarOutputFactor(hour) * getSolarEfficiency())`. Without a weather manager, wind defaults to 0.5 and solar efficiency to 1.0. When `extremeWindTicks > 1`, each operational Windmill ignites with `WEATHER_CONFIG.WIND_IGNITION_CHANCE` (tile `onFire`, `fireDamage` 10, added to `activeFireTiles`). Saves store weather (`windIntensity`, `cloudCover`, `temperature`, `extremeWindTicks`) under `simulation.weather`; import restores only those finite numeric fields.
 
 Background music is a single looping HTML5 `<audio>` track (`AUDIO_CONFIG.MUSIC_FILE_PATH`, default volume `AUDIO_CONFIG.DEFAULT_VOLUME`); playback rejections (autoplay policy, missing file) are ignored.
+
+**Player placement rules** (`Grid.canBuildTool` / `canBuildProducer`, shared by click placement and the green valid-tile highlight; hover turns red when invalid): roads/bridges/tunnels follow their terrain rules and do not need a neighbouring road; zones and every non-renewable producer must touch a road; Water Pumps, Sewage Plants, and Nuclear Plants must also touch water; Windmills and Solar Panels need only an adjacent (incl. diagonal) Battery; surveys cannot target water. Engine-level `canPlaceProducer` does not require roads so tests can build fixtures directly.
+
+**Food:** residential food demand is the sum of each residential tile's `population × FOOD_PER_RESIDENT`, drawn from the stockpile filled by farms (`AGRICULTURAL_FOOD_YIELD × fill`). Any shortfall costs 25 happiness and 5% outflow per tile; after `FAMINE_TICKS` (10) consecutive shortfall ticks an extra `FAMINE_PENALTY` (40) applies until the city is fed.
+
+**Waterfront:** `Grid.getWaterfrontStatus()` returns `clean`, `polluted` (any adjacent water with `riverPollution` or `isPolluted`), or none. Residential growth gets +1 beside clean water and −2 beside polluted water; city happiness adds `5 × clean-resident share − 10 × polluted-resident share`.
+
+**Storage:** each operational Silo adds `SILO_CAPACITY = 1000` for its storage type (oil or fuel). The Tile Inspector shows city stored/capacity for that type.
+
+**Weather rendering:** cloud shadows are world-space blobs drawn under the camera transform (fixed to the map while panning); rain is a screen-space effect. Touch devices support two-finger pinch zoom around the pinch midpoint.
+
+**Map reset:** Reset Map and Random Seed ask for confirmation first.
+
+**Education tax bonus:** `Simulation.computeEducation()` sets `schoolDemand = round(pop × 0.15)`, `universityDemand = round(pop × 0.05)`, and capacities of operational School / University `filledJobs × STUDENT_CAPACITY_PER_JOB (20)`. Libraries give no seats (happiness/coverage only). `educationTaxMultiplier = 1 + min(1, schoolCap/schoolDemand) × 0.15 + min(1, uniCap/uniDemand) × 0.20` (1.0 with zero population). It multiplies every zone's base tax before fire-repair, fuel, and crime-loss modifiers, so crime loss is computed on the boosted tax. It never creates residents or jobs. University: $12,000, 10/40/100 jobs, staffed 1 per 400 residents (one University covers 5% demand), own budget slider. The Service Budgets tab shows school seats, university seats, and the multiplier.
 
 The HUD clock (`#stat-time`) prefixes two weather icons from `weatherIcons()` in `UiRefresh.js`, using the `getWeatherLabel()` thresholds. Sky: ☀️/🌙 clear (cloud ≤ 0.4), ⛅/☁️ cloudy (≤ 0.7, day/night), 🌧️ rain. Wind: 🍃 calm (≤ 0.2), 💨 breezy (≤ 0.7), 🌪️ gale.
 
@@ -995,7 +1009,7 @@ Phase 1 stays paused-by-default sandbox (0% tax, $25,000) for solo city-building
 
 28. **Overworld Biome Generation.** `BIOME_TYPES` (`PLAINS`, `HILLY`, `MOUNTAINOUS`, `SWAMP`) modify procedural terrain generation: Hilly/Mountainous scale rock clusters (+25% / +50%); Plains reduce rock clusters (-50%); Swamp reduces forest (-50%), increases lakes (4-6), and forces fork/merge rivers. `generateProceduralTerrain(biome)` accepts the biome directly.
 
-29. **Single-source versioning.** `src/version.js` (`APP_VERSION = '0.1.40'`) is the single source of truth for version strings. `package.json` version and cache-busting consumers derive from it. Verified by `tests/version-sync.test.js`.
+29. **Single-source versioning.** `src/version.js` (`APP_VERSION = '0.1.42'`) is the single source of truth for version strings. `package.json` version and cache-busting consumers derive from it. Verified by `tests/version-sync.test.js`.
 
 30. **Desktop Pan and Drag Painting.** Desktop left-drag with the Pan tool pans the camera; clicking without dragging selects the tile without opening the inspector. Inspect Tile opens the inspector. Left-drag painting is restricted to repeatable tools (roads, bridges, tunnels, zones, bulldoze); single-placement buildings and surveys do not drag-paint.
 

@@ -35,6 +35,7 @@ export class ResourceManager {
   constructor() {
     this.stockpile = { ...EMPTY_STOCKPILE };
     this.capacity = { ore: 0, bar: 0, goods: 0 };
+    this.foodShortfallTicks = 0;
   }
 
   prepareTick(grid) {
@@ -52,14 +53,19 @@ export class ResourceManager {
     this.extractFromMines(grid);
     this.smelt(grid);
     this.refineOil(grid);
+    const foodBefore = this.stockpile.food;
     this.produceFactories(grid);
+    const foodProduced = Math.max(0, this.stockpile.food - foodBefore);
     this.consumeCoalForPower(grid);
-    const foodResult = this.consumeFood(grid, stats.population || 0);
+    const foodResult = this.consumeFood(grid);
     const goodsResult = this.consumeConsumerGoods(stats.population || 0);
     const fuelResult = this.consumeFuel(grid);
     stats.happiness = this.calculateHappiness(grid, stats, goodsResult.goodsRatio, foodResult.shortfall > 0);
     stats.happinessGrowthModifier = happinessDemandModifier(stats.happiness);
     stats.foodShortfall = foodResult.shortfall;
+    stats.foodDemand = foodResult.demand;
+    stats.foodProduced = foodProduced;
+    stats.foodShortfallTicks = this.foodShortfallTicks;
     stats.goodsRatio = goodsResult.goodsRatio;
     stats.fuelDemand = fuelResult.demand;
     stats.fuelConsumed = fuelResult.consumed;
@@ -177,18 +183,25 @@ export class ResourceManager {
     }
   }
 
-  consumeFood(grid, population) {
-    const demand = population * RESOURCE_CONFIG.FOOD_PER_RESIDENT;
+  // Demand is the sum of each residential tile's own population.
+  consumeFood(grid) {
+    const residential = [];
+    let demand = 0;
+    for (const tile of grid.getActiveZonedTiles()) {
+      if (tile.zone !== ZONE.RESIDENTIAL || tile.destroyed) continue;
+      residential.push(tile);
+      demand += (tile.population || 0) * RESOURCE_CONFIG.FOOD_PER_RESIDENT;
+    }
     const consumed = Math.min(this.stockpile.food, demand);
     const shortfall = Math.max(0, demand - consumed);
     this.stockpile.food -= consumed;
-    for (const tile of grid.getActiveZonedTiles()) {
-      if (tile.zone !== ZONE.RESIDENTIAL || tile.destroyed) continue;
+    this.foodShortfallTicks = shortfall > 0 ? this.foodShortfallTicks + 1 : 0;
+    for (const tile of residential) {
       tile.populationLoss = shortfall > 0
         ? Math.ceil((tile.population || 0) * HAPPINESS_CONFIG.UNFED_OUTFLOW_PERCENT)
         : 0;
     }
-    return { shortfall };
+    return { demand, consumed, shortfall };
   }
 
   consumeConsumerGoods(population) {
@@ -216,6 +229,22 @@ export class ResourceManager {
     return Array.from(grid.getActiveZonedTiles()).reduce((sum, tile) => sum + (tile.crime || 0), 0) * HAPPINESS_CONFIG.CRIME_POINT_PENALTY;
   }
 
+  // Population-weighted share of residents living beside clean vs polluted water.
+  getWaterfrontShares(grid, residentialTiles) {
+    let total = 0;
+    let clean = 0;
+    let polluted = 0;
+    for (const tile of residentialTiles) {
+      const pop = tile.population || 0;
+      if (pop <= 0) continue;
+      total += pop;
+      const status = grid.getWaterfrontStatus?.(tile.x, tile.y);
+      if (status === 'clean') clean += pop;
+      else if (status === 'polluted') polluted += pop;
+    }
+    return total > 0 ? { cleanShare: clean / total, pollutedShare: polluted / total } : { cleanShare: 0, pollutedShare: 0 };
+  }
+
   calculateHappiness(grid, stats, goodsRatio, hasFoodShortfall) {
     const taxRate = stats.taxRate ?? 0;
     const taxDelta = taxRate <= HAPPINESS_CONFIG.TAX_NEUTRAL_RATE
@@ -241,16 +270,20 @@ export class ResourceManager {
     const crimePenalty = residentialTiles.reduce((sum, tile) => sum + (tile.crime || 0), 0) * HAPPINESS_CONFIG.CRIME_PENALTY_PER_POINT;
     const medicalPenalty = (stats.untreatedPatients || 0) * HAPPINESS_CONFIG.UNTREATED_PATIENT_PENALTY;
     const firePenalty = (stats.fireInjuries || 0) * HAPPINESS_CONFIG.FIRE_INJURY_PENALTY;
+    const { cleanShare, pollutedShare } = this.getWaterfrontShares(grid, residentialTiles);
+    const waterfrontDelta = cleanShare * HAPPINESS_CONFIG.CLEAN_WATERFRONT_MAX_BONUS -
+      pollutedShare * HAPPINESS_CONFIG.POLLUTED_WATERFRONT_MAX_PENALTY;
     return Math.min(
       HAPPINESS_CONFIG.MAX_SCORE,
       Math.max(
         HAPPINESS_CONFIG.MIN_SCORE,
-        HAPPINESS_CONFIG.BASE_SCORE + taxDelta + employmentBonus + utilityScore +
+        HAPPINESS_CONFIG.BASE_SCORE + taxDelta + employmentBonus + utilityScore + waterfrontDelta +
           serviceCoverage * HAPPINESS_CONFIG.SERVICE_BONUS_PER_COVERAGE +
           goodsRatio * HAPPINESS_CONFIG.CONSUMER_GOODS_MAX_BONUS -
           averagePollution * HAPPINESS_CONFIG.POLLUTION_PENALTY_PER_POINT -
           crimePenalty - medicalPenalty - firePenalty - utilityPenalty -
-          (hasFoodShortfall ? HAPPINESS_CONFIG.FOOD_SHORTFALL_PENALTY : 0),
+          (hasFoodShortfall ? HAPPINESS_CONFIG.FOOD_SHORTFALL_PENALTY : 0) -
+          (this.foodShortfallTicks >= HAPPINESS_CONFIG.FAMINE_TICKS ? HAPPINESS_CONFIG.FAMINE_PENALTY : 0),
       ),
     );
   }

@@ -1,5 +1,5 @@
 import { MEDICAL_CONFIG, PRODUCER_CONFIG, PRODUCER_TYPE, RENDERER_CONFIG, ZONE } from '../config.js';
-import { formatProducerCapacity, getProducerConnectionStatus, getTileUtilityStatus } from './InspectorStatus.js';
+import { formatProducerCapacity, formatSiloStorage, getProducerConnectionStatus, getTileUtilityStatus } from './InspectorStatus.js';
 
 function meterView(demand, capacity, formatDecimals) {
   const displayDemand = formatDecimals ? Number(demand).toFixed(2) : demand;
@@ -50,6 +50,10 @@ export function buildHudSnapshot(simulation, treasury) {
     'stat-income': `+$${stats.incomePerTick.toLocaleString()}`,
     'stat-service-expenses': `-$${stats.serviceExpenses.toLocaleString()}`,
     'stat-road-expenses': `-$${stats.roadExpenses.toLocaleString()}`,
+    'stat-utility-expenses': `-$${(stats.utilityExpenses || 0).toLocaleString()}`,
+    'stat-school-seats': `${(stats.schoolCapacity || 0).toLocaleString()} / ${(stats.schoolDemand || 0).toLocaleString()}`,
+    'stat-uni-seats': `${(stats.universityCapacity || 0).toLocaleString()} / ${(stats.universityDemand || 0).toLocaleString()}`,
+    'stat-education-multiplier': `×${(stats.educationTaxMultiplier ?? 1).toFixed(2)}`,
     'stat-tick': String(simulation.tickCount),
     'stat-time': formatHudTime(simulation.getHourOfDay(), simulation.isDaytime(), simulation.weatherManager),
     'stat-day': `Day ${Math.floor(simulation.tickCount / 24) + 1}`,
@@ -122,7 +126,7 @@ export function applyHudSnapshot(snapshot, changedKeys, documentRef) {
   return wrote;
 }
 
-export function buildInspectorSignature(grid, tile) {
+export function buildInspectorSignature(grid, tile, resources = null) {
   if (!tile) return '';
   const producer = tile.producer;
   const connectionStatus = producer ? getProducerConnectionStatus(grid, producer) : null;
@@ -133,6 +137,8 @@ export function buildInspectorSignature(grid, tile) {
     const isBatteryDependent = producer.type === PRODUCER_TYPE.WINDMILL || producer.type === PRODUCER_TYPE.SOLAR_PANEL;
     if (isBatteryDependent && !producer.hasBatteryConnection) {
       producerCap = 'offline-battery';
+    } else if (producer.type === PRODUCER_TYPE.SILO) {
+      producerCap = formatSiloStorage(producer, resources?.stockpile, resources?.capacity);
     } else if (producer.type === PRODUCER_TYPE.HOSPITAL || producer.type === PRODUCER_TYPE.CLINIC) {
       const staff = producer.filledJobs || 0;
       producerCap = `patients:${staff * MEDICAL_CONFIG.HOSPITAL_PATIENT_CAPACITY_PER_JOB}:${staff}`;

@@ -13,6 +13,7 @@ export class ServiceManager {
       { type: SERVICE_TYPE.CLINIC, key: 'hospital' },
       { type: SERVICE_TYPE.SCHOOL, key: 'school' },
       { type: SERVICE_TYPE.LIBRARY, key: 'library' },
+      { type: SERVICE_TYPE.UNIVERSITY, key: 'university' },
       { type: SERVICE_TYPE.CITY_HALL, key: 'cityHall' },
     ];
     const workerPool = workforce == null
@@ -52,6 +53,7 @@ export class ServiceManager {
           SERVICE_TYPE.HOSPITAL,
           SERVICE_TYPE.CLINIC,
           SERVICE_TYPE.SCHOOL,
+          SERVICE_TYPE.UNIVERSITY,
         ];
         const staffedBase = populationStaffedTypes.includes(type)
           ? Math.min(maxJobs, populationOfficers)
@@ -111,6 +113,7 @@ export class ServiceManager {
         hospital: Infinity,
         school: Infinity,
         library: Infinity,
+        university: Infinity,
         cityHall: Infinity,
       };
       tile.services = {
@@ -119,6 +122,7 @@ export class ServiceManager {
         hospital: false,
         school: false,
         library: false,
+        university: false,
         cityHall: false,
       };
     }

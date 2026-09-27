@@ -123,6 +123,10 @@
           <svg class="stat-icon"><use href="#hud-road"/></svg>
           <span class="value" id="stat-road-expenses">-$0</span>
         </div>
+        <div class="stat-item" title="Utility Operating Cost / Tick">
+          <span class="stat-icon" aria-hidden="true">⚡</span>
+          <span class="value" id="stat-utility-expenses">-$0</span>
+        </div>
         <div class="stat-item" title="Jobs Available">
           <svg class="stat-icon"><use href="#hud-jobs"/></svg>
           <span class="value" id="stat-jobs-avail">0</span>
@@ -272,7 +276,14 @@
           <label>Hospital <input type="range" min="0" max="100" step="5" value="100" data-service-budget="hospital"><span id="hospital-budget-value">100%</span></label>
           <label>School <input type="range" min="0" max="100" step="5" value="100" data-service-budget="school"><span id="school-budget-value">100%</span></label>
           <label>Library <input type="range" min="0" max="100" step="5" value="100" data-service-budget="library"><span id="library-budget-value">100%</span></label>
+          <label>University <input type="range" min="0" max="100" step="5" value="100" data-service-budget="university"><span id="university-budget-value">100%</span></label>
           <label>Pensions <input type="range" min="0" max="100" step="5" value="100" id="pension-budget-slider"><span id="pension-budget-value">100%</span></label>
+        </div>
+        <div class="service-budgets education-stats">
+          <h3>Education</h3>
+          <div class="storage-item" title="Staffed school seats / students needing school (15% of population)"><span>School Seats</span><strong id="stat-school-seats">0 / 0</strong></div>
+          <div class="storage-item" title="Staffed university seats / students needing university (5% of population)"><span>University Seats</span><strong id="stat-uni-seats">0 / 0</strong></div>
+          <div class="storage-item" title="Tax multiplier: +15% at full school coverage, +20% at full university coverage"><span>Tax Multiplier</span><strong id="stat-education-multiplier">×1.00</strong></div>
         </div>
         </section>
       </div>
@@ -377,7 +388,7 @@
           <button class="tool-btn" data-tool="producer_warehouse_ore"><span class="icon">📦</span><span class="name">Ore Warehouse ($4,000)</span></button>
           <button class="tool-btn" data-tool="producer_warehouse_bar"><span class="icon">📦</span><span class="name">Bar Warehouse ($5,000)</span></button>
           <button class="tool-btn" data-tool="producer_warehouse_goods"><span class="icon">📦</span><span class="name">Goods Warehouse ($6,000)</span></button>
-          <button class="tool-btn" data-tool="producer_silo"><span class="icon">🏗️</span><span class="name">Silo ($4,500)</span></button>
+          <button class="tool-btn" data-tool="producer_silo"><span class="icon"><svg class="tool-svg-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9a4 4 0 0 1 8 0v12H4z" fill="#d4d4d8"/><path d="M13 11a3.5 3.5 0 0 1 7 0v10h-7z" fill="#a1a1aa"/><path d="M4 13h8M4 17h8M13 15h7M13 18.5h7" stroke="#52525b" stroke-width="1"/><path d="M2 21h20" stroke="#71717a" stroke-width="1.5"/></svg></span><span class="name">Silo ($4,500)</span></button>
           <button class="tool-btn" data-tool="producer_smelter"><span class="icon">🔥</span><span class="name">Smelter ($9,000)</span></button>
         </div>
 
@@ -406,6 +417,10 @@
           <button class="tool-btn" data-tool="producer_library">
             <span class="icon">📚</span>
             <span class="name">Library ($2,500)</span>
+          </button>
+          <button class="tool-btn" data-tool="producer_university">
+            <span class="icon">🎓</span>
+            <span class="name">University ($12,000)</span>
           </button>
           <button class="tool-btn" data-tool="producer_city_hall">
             <span class="icon">🏛️</span>

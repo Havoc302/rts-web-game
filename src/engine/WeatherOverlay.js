@@ -1,3 +1,6 @@
+const CLOUD_WORLD_AREA_PER_BLOB = 700 * 700;
+const CLOUD_MARGIN = 400;
+
 export class WeatherOverlay {
   constructor() {
     this.rainParticles = Array.from({ length: 60 }, () => ({
@@ -7,59 +10,73 @@ export class WeatherOverlay {
       speed: 0.02 + Math.random() * 0.02,
     }));
     this.cloudOffset = 0;
+    this.cloudBlobs = [];
+    this.cloudWorldKey = '';
   }
 
-  draw(ctx, canvasWidth, canvasHeight, weatherManager) {
-    if (!ctx || !weatherManager) return;
+  ensureCloudBlobs(worldW, worldH) {
+    const key = `${worldW}x${worldH}`;
+    if (this.cloudWorldKey === key) return;
+    this.cloudWorldKey = key;
+    const count = Math.max(5, Math.round((worldW * worldH) / CLOUD_WORLD_AREA_PER_BLOB));
+    this.cloudBlobs = Array.from({ length: count }, () => ({
+      x: Math.random() * (worldW + CLOUD_MARGIN * 2),
+      y: Math.random() * worldH,
+      rx: 160 + Math.random() * 120,
+      ry: 80 + Math.random() * 60,
+      speed: 0.6 + Math.random() * 0.6,
+    }));
+  }
+
+  // Draw in world space (camera transform applied) so shadows stay fixed to the map while panning.
+  drawClouds(ctx, mapLeft, mapTop, worldW, worldH, view, weatherManager) {
+    if (!ctx || !weatherManager || weatherManager.cloudCover < 0.4) return;
+    this.ensureCloudBlobs(worldW, worldH);
+    this.cloudOffset += 0.3;
+    const alpha = Math.min(0.25, (weatherManager.cloudCover - 0.3) * 0.35);
+    const wrapW = worldW + CLOUD_MARGIN * 2;
 
     ctx.save();
-
-    // 1. Moving Cloud Shadow Blotches
-    if (weatherManager.cloudCover >= 0.4) {
-      this.cloudOffset += 0.3;
-      const alpha = Math.min(0.25, (weatherManager.cloudCover - 0.3) * 0.35);
-
-      ctx.fillStyle = `rgba(0, 0, 0, ${alpha})`;
-      const numBlobs = 5;
-      for (let i = 0; i < numBlobs; i++) {
-        const bx = ((this.cloudOffset * (i + 1) * 0.8) + i * (canvasWidth / numBlobs)) % (canvasWidth + 400) - 200;
-        const by = (Math.sin(this.cloudOffset * 0.01 + i) * 80) + (i * 120) % canvasHeight;
-
-        ctx.beginPath();
-        if (typeof ctx.ellipse === 'function') {
-          ctx.ellipse(bx, by, 180 + i * 30, 90 + i * 15, 0.2, 0, Math.PI * 2);
-        } else {
-          ctx.arc(bx, by, 120, 0, Math.PI * 2);
-        }
-        ctx.fill();
+    ctx.fillStyle = `rgba(0, 0, 0, ${alpha})`;
+    for (const blob of this.cloudBlobs) {
+      const bx = mapLeft - CLOUD_MARGIN + ((blob.x + this.cloudOffset * blob.speed) % wrapW);
+      const by = mapTop + blob.y;
+      if (bx + blob.rx < view.left || bx - blob.rx > view.right || by + blob.ry < view.top || by - blob.ry > view.bottom) continue;
+      ctx.beginPath();
+      if (typeof ctx.ellipse === 'function') {
+        ctx.ellipse(bx, by, blob.rx, blob.ry, 0.2, 0, Math.PI * 2);
+      } else {
+        ctx.arc(bx, by, blob.rx, 0, Math.PI * 2);
       }
+      ctx.fill();
     }
+    ctx.restore();
+  }
 
-    // 2. Light Falling Rain Droplets
-    if (weatherManager.cloudCover >= 0.75) {
-      const rainIntensity = (weatherManager.cloudCover - 0.7) / 0.3; // 0.0 -> 1.0
-      ctx.strokeStyle = 'rgba(180, 210, 240, 0.45)';
-      ctx.lineWidth = 1.2;
+  drawRain(ctx, canvasWidth, canvasHeight, weatherManager) {
+    if (!ctx || !weatherManager || weatherManager.cloudCover < 0.75) return;
 
-      const activeCount = Math.floor(this.rainParticles.length * rainIntensity);
-      for (let i = 0; i < activeCount; i++) {
-        const p = this.rainParticles[i];
-        const px = p.x * canvasWidth;
-        const py = p.y * canvasHeight;
+    ctx.save();
+    const rainIntensity = (weatherManager.cloudCover - 0.7) / 0.3; // 0.0 -> 1.0
+    ctx.strokeStyle = 'rgba(180, 210, 240, 0.45)';
+    ctx.lineWidth = 1.2;
 
-        ctx.beginPath();
-        ctx.moveTo(px, py);
-        ctx.lineTo(px - 2, py + p.length);
-        ctx.stroke();
+    const activeCount = Math.floor(this.rainParticles.length * rainIntensity);
+    for (let i = 0; i < activeCount; i++) {
+      const p = this.rainParticles[i];
+      const px = p.x * canvasWidth;
+      const py = p.y * canvasHeight;
 
-        // Advance particles downwards
-        p.y += p.speed;
-        p.x -= p.speed * 0.2;
-        if (p.y > 1.0) p.y = 0;
-        if (p.x < 0) p.x = 1.0;
-      }
+      ctx.beginPath();
+      ctx.moveTo(px, py);
+      ctx.lineTo(px - 2, py + p.length);
+      ctx.stroke();
+
+      p.y += p.speed;
+      p.x -= p.speed * 0.2;
+      if (p.y > 1.0) p.y = 0;
+      if (p.x < 0) p.x = 1.0;
     }
-
     ctx.restore();
   }
 }

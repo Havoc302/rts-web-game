@@ -16,7 +16,7 @@ export class Renderer {
     this.overlayMode = 'normal';
     this.selectedTile = null;
     this.hoverTile = null;
-    this.highlightWaterAdjacent = false;
+    this.placementTool = null;
 
     this.animTime = 0;
     this.lastRenderTime = 0;
@@ -153,8 +153,8 @@ export class Renderer {
           this.renderDestroyedTile(ctx, px, py);
         }
 
-        if (this.highlightWaterAdjacent && tile.terrain === TERRAIN.FLAT && this.grid.isWaterAdjacent(x, y) && !tile.producer && !tile.hasRoad && tile.zone === ZONE.NONE) {
-          ctx.strokeStyle = '#38bdf8';
+        if (this.placementTool && !lowDetail && this.grid.canBuildTool(x, y, this.placementTool)) {
+          ctx.strokeStyle = 'rgba(74, 222, 128, 0.85)';
           ctx.lineWidth = 2;
           ctx.strokeRect(px + 1, py + 1, TILE_SIZE - 2, TILE_SIZE - 2);
         }
@@ -177,7 +177,8 @@ export class Renderer {
     if (this.hoverTile) {
       const hx = startX + this.hoverTile.x * TILE_SIZE;
       const hy = startY + this.hoverTile.y * TILE_SIZE;
-      ctx.strokeStyle = '#38bdf8';
+      const invalid = this.placementTool && !this.grid.canBuildTool(this.hoverTile.x, this.hoverTile.y, this.placementTool);
+      ctx.strokeStyle = invalid ? '#ef4444' : '#38bdf8';
       ctx.lineWidth = 2;
       ctx.strokeRect(hx + 1, hy + 1, TILE_SIZE - 2, TILE_SIZE - 2);
     }
@@ -195,10 +196,15 @@ export class Renderer {
       ctx.fillRect(visibleLeft, visibleTop, visibleRight - visibleLeft, visibleBottom - visibleTop);
     }
 
+    if (this.weatherOverlay && simulation?.weatherManager) {
+      const view = { left: visibleLeft, top: visibleTop, right: visibleRight, bottom: visibleBottom };
+      this.weatherOverlay.drawClouds(ctx, startX, startY, mapPixelWidth, mapPixelHeight, view, simulation.weatherManager);
+    }
+
     ctx.restore();
 
     if (this.weatherOverlay && simulation?.weatherManager && this.canvas) {
-      this.weatherOverlay.draw(ctx, this.canvas.width, this.canvas.height, simulation.weatherManager);
+      this.weatherOverlay.drawRain(ctx, this.canvas.width, this.canvas.height, simulation.weatherManager);
     }
 
     if (this.enableTiming) {
@@ -927,6 +933,18 @@ export class Renderer {
       ctx.fillRect(px + 13, py + 3, 6, 8);
       ctx.fillStyle = '#fef08a';
       ctx.fillRect(px + 15, py + 5, 2, 2);
+    } else if (prod.type === PRODUCER_TYPE.UNIVERSITY) {
+      ctx.fillStyle = '#0c4a6e';
+      ctx.fillRect(px + 2, py + 2, 28, 28);
+      ctx.fillStyle = '#e0f2fe';
+      ctx.beginPath();
+      ctx.moveTo(px + 5, py + 12);
+      ctx.lineTo(px + 16, py + 5);
+      ctx.lineTo(px + 27, py + 12);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillRect(px + 5, py + 25, 22, 3);
+      for (const cx of [7, 12, 18, 23]) ctx.fillRect(px + cx, py + 13, 2, 12);
     } else if (prod.type === PRODUCER_TYPE.LIBRARY) {
       ctx.fillStyle = '#4c1d95';
       ctx.fillRect(px + 2, py + 2, 28, 28);
@@ -974,6 +992,21 @@ export class Renderer {
       ctx.strokeStyle = '#ccfbf1';
       ctx.lineWidth = 2;
       ctx.stroke();
+    } else if (prod.type === PRODUCER_TYPE.SILO) {
+      ctx.fillStyle = '#3f3f46';
+      ctx.fillRect(px + 2, py + 2, 28, 28);
+      // Twin cylindrical silos with domed tops and hoop bands.
+      for (const [cx, top, w] of [[11, 9, 9], [22, 12, 7]]) {
+        ctx.fillStyle = '#d4d4d8';
+        ctx.fillRect(px + cx - w / 2, py + top, w, 28 - top);
+        ctx.beginPath();
+        ctx.arc(px + cx, py + top, w / 2, Math.PI, 0);
+        ctx.fill();
+        ctx.fillStyle = '#a1a1aa';
+        for (let band = top + 4; band < 28; band += 5) ctx.fillRect(px + cx - w / 2, py + band, w, 1);
+      }
+      ctx.fillStyle = prod.storageType === 'fuel' ? '#f97316' : '#a16207';
+      ctx.fillRect(px + 7, py + 24, 8, 3);
     } else {
       ctx.fillStyle = PRODUCER_CONFIG[prod.type]?.color || '#64748b';
       ctx.fillRect(px + 2, py + 2, 28, 28);

@@ -864,39 +864,55 @@ Optimisation and design fixes phase:
 Make sure to update design.md to match
 
 Stage 1 - User checks, fixes and prompts
-- [ ] When pressing the random seed button prompt user for confirmation to allow chance to cancel.
-- [ ] When pressing reset map button prompt user for confirmation to allow chance to cancel.
-- [ ] Silos don't appear to actually hold anything since the Load / Capacity on the producer info panel is N/A. Each silo should hold 1000. They also need a new icon both on the side bar and the map which looks more like an actual silo.
-- [ ] Add ability to pinch zoom out on mobile.
-- [ ] Check food is actually being used up as a consumable on residential tiles based on population count in that tile. If it doesn't match the output of agricultural tiles add a severe hit to happiness.
-- [ ] Check growth rate increase from available jobs. Bonus should be scaled based on inverse of percentage of population employed to create an available jobs rate.
-- [ ] For building placement a highlighted square comes up for where is a valid location to place buildings. Make sure this happens for all building types. Windmills and solar panels can only go adjacent to a battery, all building types next to a road, even roads, water pumps and sewage plants next to water and a road. Make sure the highlighting also matches.
-- [ ] Set minimum text values for the top bar to reduce it moving back and forth and resizing as numbers go from 2 to 3 to 4 digits. Assume all top bar digits are at least 3 values until they go over that, set spacing for 3 characters minimum.
+- [done] When pressing the random seed button prompt user for confirmation to allow chance to cancel.
+- [done] When pressing reset map button prompt user for confirmation to allow chance to cancel.
+- [done] Silos don't appear to actually hold anything since the Load / Capacity on the producer info panel is N/A. Each silo should hold 1000. They also need a new icon both on the side bar and the map which looks more like an actual silo. (`SILO_CAPACITY` 1000; inspector shows `Stored / Capacity` via `formatSiloStorage`; twin-silo canvas art and inline SVG toolbar icon.)
+- [done] Water pumps, batteries, power generators, and sewage plants should cost per tick to operate. I would say 2 per tick per building (`UTILITY_OPERATING_COST = 2`, `stats.utilityExpenses`, ⚡ HUD chip `#stat-utility-expenses`, deducted in `simTick`).
+- [done] Add ability to pinch zoom out on mobile. (Two-finger pinch zooms/pans around the midpoint via shared `GameApp.zoomAt()`; lifting one finger continues panning without a jump; pinches never trigger taps. Needs on-device check.)
+- [done] Check food is actually being used up as a consumable on residential tiles based on population count in that tile. If it doesn't match the output of agricultural tiles add a severe hit to happiness if it's missing consistently for 10 ticks. (Verified: farms add `AGRICULTURAL_FOOD_YIELD * fill` to the stockpile and residents consume it each tick. `consumeFood` now sums each residential tile's population; `stats.foodDemand/foodProduced/foodShortfallTicks` exposed; after `FAMINE_TICKS` (10) consecutive shortfalls an extra `FAMINE_PENALTY` (40) applies on top of the existing 25.)
+- [done] Check growth rate increase from available jobs. Bonus should be scaled based on inverse of percentage of population employed to create an available jobs rate. (Verified, no change: residential delta adds `round(MAX_JOB_ATTRACTION_BONUS * (1 - employmentRate))` where `employmentRate = jobsFilled / totalJobsProvided`, i.e. the available-jobs rate. Gated on full utilities and a non-zero job market; covered by `tests/job-attraction.test.js`. Note: with MAX 3, vacancy under ~17% rounds to 0.)
+- [done] For building placement a highlighted square comes up for where is a valid location to place buildings. Make sure this happens for all building types. Windmills and solar panels can only go adjacent to a battery, all building types next to a road, even roads, water pumps and sewage plants next to water and a road. Make sure the highlighting also matches. (`Grid.canBuildTool()` / `canBuildProducer()` are the player rules used by both placement and the green highlight; hover turns red on invalid tiles. All non-renewable producers now need road adjacency; windmill/solar need only an adjacent battery. Roads themselves are NOT required to touch a road, otherwise the first road can't be built. Highlight skipped at low-detail zoom. `tests/placement-rules.test.js`.)
+- [done] Set minimum text values for the top bar to reduce it moving back and forth and resizing as numbers go from 2 to 3 to 4 digits. Assume all top bar digits are at least 3 values until they go over that, set spacing for 3 characters minimum. (`.stat-item .value` min-width 3ch right-aligned; money/%/day/time fields reserve extra ch for prefixes.)
+- [done] Clouds move with the display when dragging the map but should be fixed to moving over the map. Not the display. (`WeatherOverlay.drawClouds` draws world-space blobs under the camera transform, culled to the viewport; rain stays screen-space via `drawRain`.)
+- [done] Residential tiles next to polluted rivers should have a penalty. Residential tiles next to clean water gets a growth bonus and the population living there gets a happiness bonus. (`Grid.getWaterfrontStatus()`; growth +1 clean / -2 polluted via `SERVICE_GLOBAL_CONFIG`; happiness +5 × clean-resident share, -10 × polluted-resident share via `HAPPINESS_CONFIG`. `tests/waterfront.test.js`.)
+- [done] Scan tile shouldn't be able to scan water tiles as they can't be mined. (`Grid.canSurvey` rejects `TERRAIN.WATER`; test in ore-survey.)
+- [done] Tutorial step needs to check if utilities are connected to road before moving to next step. (Uses `UtilityManager.contributesPowerToGrid`; renewables count via road-connected battery.)
+
+Stage 1 validation:
+- `npm test` passes all 39 test files (new: `placement-rules.test.js`, `waterfront.test.js`).
+- `docs/DESIGN.md` updated; patch version `0.1.41`.
+- Needs on-device check: pinch zoom, cloud panning, top-bar widths, silo icon.
 
 Implementation stages:
 
 Stage 1 - Configuration and service definition:
-- [ ] Add `UNIVERSITY: 'university'` to `SERVICE_TYPE` and `PRODUCER_TYPE` through the existing service spread.
-- [ ] Add `EDUCATION_CONFIG` with `SCHOOL_DEMAND_RATIO: 0.15`, `UNI_DEMAND_RATIO: 0.05`, `STUDENT_CAPACITY_PER_JOB: 20`, `MAX_SCHOOL_TAX_BONUS: 0.15`, and `MAX_UNI_TAX_BONUS: 0.20`.
-- [ ] Add `SERVICE_CONFIG[UNIVERSITY]` using the repo's pre-scaled money convention, explicit cost/running-cost values, utility usage, jobs, radius, population thresholds, and `category: 'service'`. Do not reintroduce `MONEY_MULTIPLIER`.
-- [ ] Add University to any service/building configuration maps that currently enumerate service types.
+- [done] Add `UNIVERSITY: 'university'` to `SERVICE_TYPE` and `PRODUCER_TYPE` through the existing service spread.
+- [done] Add `EDUCATION_CONFIG` with `SCHOOL_DEMAND_RATIO: 0.15`, `UNI_DEMAND_RATIO: 0.05`, `STUDENT_CAPACITY_PER_JOB: 20`, `MAX_SCHOOL_TAX_BONUS: 0.15`, and `MAX_UNI_TAX_BONUS: 0.20`.
+- [done] Add `SERVICE_CONFIG[UNIVERSITY]` using the repo's pre-scaled money convention, explicit cost/running-cost values, utility usage, jobs, radius, population thresholds, and `category: 'service'`. Do not reintroduce `MONEY_MULTIPLIER`. ($12,000; 10/40/100 jobs; staffed 1 per 400 residents so one University covers 5% demand.)
+- [done] Add University to any service/building configuration maps that currently enumerate service types. (ServiceManager service keys, population-staffed types, tile `services`/`serviceDistances` reset.)
 
 Stage 2 - Simulation accounting:
-- [ ] Add `schoolDemand`, `universityDemand`, `schoolCapacity`, `universityCapacity`, and `educationTaxMultiplier` to `Simulation.stats` and reset them in `computeStats()`.
-- [ ] Sum staffed School and Library jobs for school capacity; sum staffed University jobs for university capacity. Count only operational/active service buildings according to existing service staffing rules.
-- [ ] Compute demand and capped fulfillment ratios from current population.
-- [ ] Apply `educationTaxMultiplier` to each zone's base tax before fire-repair, fuel, and crime-loss modifiers are applied; keep crime loss calculated after the education bonus.
-- [ ] Ensure zero population produces zero education demand and a neutral tax multiplier of `1.0`.
+- [done] Add `schoolDemand`, `universityDemand`, `schoolCapacity`, `universityCapacity`, and `educationTaxMultiplier` to `Simulation.stats` and reset them in `computeStats()`.
+- [done] Sum staffed School and Library jobs for school capacity; sum staffed University jobs for university capacity. Count only operational/active service buildings according to existing service staffing rules. (Per the Design rule above, Libraries are decoupled: only operational School `filledJobs` count toward school seats.)
+- [done] Compute demand and capped fulfillment ratios from current population. (`Simulation.computeEducation(stats)`, called after demographics.)
+- [done] Apply `educationTaxMultiplier` to each zone's base tax before fire-repair, fuel, and crime-loss modifiers are applied; keep crime loss calculated after the education bonus.
+- [done] Ensure zero population produces zero education demand and a neutral tax multiplier of `1.0`.
 
 Stage 3 - Service ownership and UI:
-- [ ] Make `ServiceManager` staff University using the existing service worker pool, budget, utility, running-cost, and coverage mechanisms.
-- [ ] Add a University button to the Civic Services toolbar with build info and cost.
-- [ ] Add education demand/capacity and tax multiplier details to the HUD or the Service Budgets/Education tab without re-cluttering the top bar.
-- [ ] Update the Tile Inspector/build info for University where service details are displayed.
+- [done] Make `ServiceManager` staff University using the existing service worker pool, budget, utility, running-cost, and coverage mechanisms.
+- [done] Add a University button to the Civic Services toolbar with build info and cost. (🎓 $12,000; University budget slider in Service Budgets.)
+- [done] Add education demand/capacity and tax multiplier details to the HUD or the Service Budgets/Education tab without re-cluttering the top bar. (Education block under Service Budgets tab: `#stat-school-seats`, `#stat-uni-seats`, `#stat-education-multiplier`.)
+- [done] Update the Tile Inspector/build info for University where service details are displayed. (Build info shows seats L/M/H and tax bonus for School/University; inspector shows `Staff / Seats`; map art for University.)
 
 Stage 4 - Tests and validation:
-- [ ] Add a focused education test for zero population, no education, full School/Library coverage, full University coverage, and partial capacity ratios.
-- [ ] Assert the exact stack: no education `1.0`, school-only full coverage `1.15`, school + university full coverage `1.35`.
-- [ ] Assert tax revenue applies the multiplier before crime loss and does not alter population/jobs directly.
-- [ ] Run service, tax, income, small-town soak, and full `npm test` suites.
-- [ ] Run diagnostics and `git diff --check`; bump the patch/minor version only after all checks pass.
+- [done] Add a focused education test for zero population, no education, full School/Library coverage, full University coverage, and partial capacity ratios. (`tests/education.test.js`; asserts Library jobs give zero seats.)
+- [done] Assert the exact stack: no education `1.0`, school-only full coverage `1.15`, school + university full coverage `1.35`.
+- [done] Assert tax revenue applies the multiplier before crime loss and does not alter population/jobs directly.
+- [done] Run service, tax, income, small-town soak, and full `npm test` suites.
+- [done] Run diagnostics and `git diff --check`; bump the patch/minor version only after all checks pass.
+
+Education validation:
+- `npm test` passes all 40 test files.
+- Diagnostics clean; `git diff --check` clean.
+- `docs/DESIGN.md` updated; patch version `0.1.42`.
+- Balance note: School staffing is 1 job per 187 residents (capped by tier), giving ~0.107 × pop seats per School, so ~2 Schools are needed for full school coverage; one University covers university demand.
