@@ -8,6 +8,7 @@ import {
   changedHudFields,
   getHudCadenceMs,
   shouldRefreshUi,
+  weatherIcons,
 } from '../src/engine/UiRefresh.js';
 import { RENDERER_CONFIG, TERRAIN, ZONE } from '../src/config.js';
 
@@ -46,6 +47,21 @@ function fakeDocument() {
 
   const cashChanged = buildHudSnapshot(simulation, 24000);
   assert.ok(changedHudFields(afterTick, cashChanged).includes('stat-cash'), 'Treasury changes should dirty the cash display');
+
+  simulation.weatherManager.cloudCover = 0.9;
+  simulation.weatherManager.windIntensity = 0.95;
+  const stormy = buildHudSnapshot(simulation, 24000);
+  assert.ok(changedHudFields(cashChanged, stormy).includes('stat-time'), 'Weather changes should dirty the clock icon');
+  assert.ok(stormy['stat-time'].startsWith('🌧️🌪️'), 'Rain and gale should show rain and tornado icons');
+}
+
+{
+  assert.strictEqual(weatherIcons({ cloudCover: 0.1, windIntensity: 0.1 }, true), '☀️🍃');
+  assert.strictEqual(weatherIcons({ cloudCover: 0.1, windIntensity: 0.5 }, false), '🌙💨');
+  assert.strictEqual(weatherIcons({ cloudCover: 0.5, windIntensity: 0.5 }, true), '⛅💨');
+  assert.strictEqual(weatherIcons({ cloudCover: 0.5, windIntensity: 0.9 }, false), '☁️🌪️');
+  assert.strictEqual(weatherIcons({ cloudCover: 0.8, windIntensity: 0.1 }, true), '🌧️🍃');
+  assert.strictEqual(weatherIcons(null, true), '☀️', 'Missing weather falls back to day/night icon');
 }
 
 {

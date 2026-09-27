@@ -6,7 +6,7 @@
 | Author | TBD |
 | Date | 2026-09-25 |
 | Status | Living draft (rev 8) |
-| Version covered | `APP_VERSION` `0.1.38` (`src/version.js`); current working tree |
+| Version covered | `APP_VERSION` `0.1.39` (`src/version.js`); current working tree |
 | Intended in-repo path | `docs/DESIGN.md` |
 | Repo | `g:\Repos\rts-web-game` (`origin`: `https://github.com/Havoc302/rts-web-game.git`) |
 | Working tree at inventory | Documentation is checked against the current implementation; uncommitted changes may exist. |
@@ -319,6 +319,8 @@ Windmills and Solar Panels are passive generators. They require an adjacent Batt
 Renewable output is weather-driven: `UtilityManager.allocateAll(grid, hour, weatherManager, { preview })` sets Windmill capacity to `round(WIND_CONFIG.MAX_CAPACITY (65) * windIntensity)` and Solar capacity to `round(PEAK_CAPACITY * solarOutputFactor(hour) * getSolarEfficiency())`. Without a weather manager, wind defaults to 0.5 and solar efficiency to 1.0. When `extremeWindTicks > 1`, each operational Windmill ignites with `WEATHER_CONFIG.WIND_IGNITION_CHANCE` (tile `onFire`, `fireDamage` 10, added to `activeFireTiles`). Saves store weather (`windIntensity`, `cloudCover`, `temperature`, `extremeWindTicks`) under `simulation.weather`; import restores only those finite numeric fields.
 
 Background music is a single looping HTML5 `<audio>` track (`AUDIO_CONFIG.MUSIC_FILE_PATH`, default volume `AUDIO_CONFIG.DEFAULT_VOLUME`); playback rejections (autoplay policy, missing file) are ignored.
+
+The HUD clock (`#stat-time`) prefixes two weather icons from `weatherIcons()` in `UiRefresh.js`, using the `getWeatherLabel()` thresholds. Sky: ☀️/🌙 clear (cloud ≤ 0.4), ⛅/☁️ cloudy (≤ 0.7, day/night), 🌧️ rain. Wind: 🍃 calm (≤ 0.2), 💨 breezy (≤ 0.7), 🌪️ gale.
 
 Leftover **generic `power_plant`**: still in `PRODUCER_TYPE` / `PRODUCER_CONFIG` / renderer art / tests (`simulation.test.js` Test 1). Removed from the toolbar. Capacity 100, cost `$5,000`. Tests use it as a stand-in. **Decision: quarantine as test scaffolding** (helper that places coal/nuclear/wind, or a `TEST_ONLY` export). Do not restore it to the toolbar.
 
@@ -993,7 +995,7 @@ Phase 1 stays paused-by-default sandbox (0% tax, $25,000) for solo city-building
 
 28. **Overworld Biome Generation.** `BIOME_TYPES` (`PLAINS`, `HILLY`, `MOUNTAINOUS`, `SWAMP`) modify procedural terrain generation: Hilly/Mountainous scale rock clusters (+25% / +50%); Plains reduce rock clusters (-50%); Swamp reduces forest (-50%), increases lakes (4-6), and forces fork/merge rivers. `generateProceduralTerrain(biome)` accepts the biome directly.
 
-29. **Single-source versioning.** `src/version.js` (`APP_VERSION = '0.1.38'`) is the single source of truth for version strings. `package.json` version and cache-busting consumers derive from it. Verified by `tests/version-sync.test.js`.
+29. **Single-source versioning.** `src/version.js` (`APP_VERSION = '0.1.39'`) is the single source of truth for version strings. `package.json` version and cache-busting consumers derive from it. Verified by `tests/version-sync.test.js`.
 
 30. **Desktop Pan and Drag Painting.** Desktop left-drag with the Pan tool pans the camera; clicking without dragging selects the tile without opening the inspector. Inspect Tile opens the inspector. Left-drag painting is restricted to repeatable tools (roads, bridges, tunnels, zones, bulldoze); single-placement buildings and surveys do not drag-paint.
 

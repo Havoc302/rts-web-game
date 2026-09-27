@@ -833,6 +833,13 @@ Current task: Fix tutorial step order (roads must come first).
 - [done] Update `tests/tutorial.test.js` for the new order.
 - [done] Bump the patch version to 0.1.38.
 
+Current task: Show current weather icons next to the HUD clock.
+
+- [done] `weatherIcons()` combines a sky icon (sun/moon, partly cloudy/cloud, rain) with a wind icon (leaf calm, dash breezy, tornado gale).
+- [done] `stat-time` snapshot includes weather so icon changes refresh the HUD.
+- [done] Add icon cases to `tests/hud-update.test.js`.
+- [done] Bump the patch version to 0.1.39.
+
 Current task: Add stacked global education tax bonuses from Schools and Universities.
 
 Design rule:

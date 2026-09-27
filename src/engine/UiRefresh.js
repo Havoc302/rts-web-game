@@ -13,10 +13,23 @@ function meterFill(demand, capacity, overColor = '#ef4444') {
   return `${pct}%|${color}`;
 }
 
-export function formatHudTime(hour, isDay) {
+// Thresholds match WeatherManager.getWeatherLabel().
+export function weatherIcons(weather, isDay) {
+  if (!weather) return isDay ? '☀️' : '🌙';
+  const cloud = weather.cloudCover;
+  const wind = weather.windIntensity;
+  let sky;
+  if (cloud > 0.7) sky = '🌧️';
+  else if (cloud > 0.4) sky = isDay ? '⛅' : '☁️';
+  else sky = isDay ? '☀️' : '🌙';
+  const windIcon = wind > 0.7 ? '🌪️' : wind > 0.2 ? '💨' : '🍃';
+  return `${sky}${windIcon}`;
+}
+
+export function formatHudTime(hour, isDay, weather = null) {
   const displayHour = hour % 12 === 0 ? 12 : hour % 12;
   const ampm = hour < 12 ? 'AM' : 'PM';
-  return `${isDay ? '☀️' : '🌙'} ${displayHour}:00 ${ampm}`;
+  return `${weatherIcons(weather, isDay)} ${displayHour}:00 ${ampm}`;
 }
 
 export function getHudCadenceMs(isMobile) {
@@ -38,7 +51,7 @@ export function buildHudSnapshot(simulation, treasury) {
     'stat-service-expenses': `-$${stats.serviceExpenses.toLocaleString()}`,
     'stat-road-expenses': `-$${stats.roadExpenses.toLocaleString()}`,
     'stat-tick': String(simulation.tickCount),
-    'stat-time': formatHudTime(simulation.getHourOfDay(), simulation.isDaytime()),
+    'stat-time': formatHudTime(simulation.getHourOfDay(), simulation.isDaytime(), simulation.weatherManager),
     'stat-day': `Day ${Math.floor(simulation.tickCount / 24) + 1}`,
     'stat-jobs-avail': stats.jobsAvailable.toLocaleString(),
     'stat-emp-rate': `${Math.round(stats.employmentRate * 100)}%`,
