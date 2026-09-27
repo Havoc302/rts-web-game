@@ -2,7 +2,7 @@ import { Grid, producerTypeForTool } from './engine/Grid.js';
 import { Simulation } from './engine/Simulation.js';
 import { Renderer } from './engine/Renderer.js';
 import { UtilityManager } from './engine/UtilityManager.js';
-import { getProducerConnectionStatus, getTileUtilityStatus, formatProducerCapacity, formatSiloStorage, formatDerrickOutput } from './engine/InspectorStatus.js';
+import { getProducerConnectionStatus, getTileUtilityStatus, formatProducerCapacity, formatSiloStorage, formatDerrickOutput, getTileFoodFlow } from './engine/InspectorStatus.js';
 import {
   applyHudSnapshot,
   buildHudSnapshot,
@@ -918,6 +918,12 @@ class GameApp {
         if (demographicsRow) demographicsRow.style.display = 'none';
         popJobsEl.textContent = 'N/A';
       }
+    }
+    const foodRow = document.getElementById('food-row');
+    const foodFlow = getTileFoodFlow(tile);
+    if (foodRow) {
+      foodRow.style.display = foodFlow ? '' : 'none';
+      document.getElementById('inspect-food').textContent = foodFlow || 'N/A';
     }
     if (recipeRow && recipeSelect) {
       if (tile.zone === ZONE.INDUSTRIAL) {

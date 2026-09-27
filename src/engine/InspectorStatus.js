@@ -1,4 +1,4 @@
-import { PRODUCER_TYPE, PRODUCER_CONFIG, POWER_PRODUCER_TYPES, RESOURCE_CONFIG } from '../config.js';
+import { PRODUCER_TYPE, PRODUCER_CONFIG, POWER_PRODUCER_TYPES, RESOURCE_CONFIG, DEMOGRAPHICS_CONFIG, ZONE } from '../config.js';
 import { UtilityManager } from './UtilityManager.js';
 
 export function getProducerConnectionStatus(grid, producer) {
@@ -56,6 +56,20 @@ export function getTileUtilityStatus(grid, tile, key) {
     return 'Unconnected Road Network!';
   }
   return tile.shortfall?.[key] ? `Dist ${d} (Plant Full!)` : `Dist ${d} (Serviced)`;
+}
+
+// Per-tile food flow for the Tile Inspector; null for tiles that neither grow nor eat food.
+export function getTileFoodFlow(tile) {
+  if (tile.zone === ZONE.RESIDENTIAL) {
+    return `Eats ${((tile.population || 0) * RESOURCE_CONFIG.FOOD_PER_RESIDENT).toFixed(2)} / tick`;
+  }
+  if (tile.zone === ZONE.AGRICULTURAL) {
+    if (tile.destroyed || tile.onFire) return 'Produces 0.00 / tick (burning)';
+    const yieldAtFull = DEMOGRAPHICS_CONFIG.AGRICULTURAL_FOOD_YIELD[tile.density] || 0;
+    const fill = tile.totalJobs > 0 ? Math.min(1, (tile.filledJobs || 0) / tile.totalJobs) : 0;
+    return `Produces ${(fill * yieldAtFull).toFixed(2)} / tick (max ${yieldAtFull})`;
+  }
+  return null;
 }
 
 export function formatDerrickOutput(producer, stockpile = {}, capacity = {}) {

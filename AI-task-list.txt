@@ -949,3 +949,12 @@ Current task: Show whether an Oil Derrick is extracting into a Silo.
 - [done] Derrick Tile Inspector `Output:` row shows oil/tick, staff, and `oil stored X / cap`; warns when offline, no powered oil Silo (output discarded), or storage full (`formatDerrickOutput`, included in the inspector signature).
 - [done] Add derrick inspector cases to `tests/fuel-refinery.test.js`.
 - [done] Bump the patch version to 0.1.47.
+
+Current task: Fix phantom tank and show food flow.
+
+- [done] Cause of the phantom tank: `clampToCapacity()` floored each goods type and dumped the whole rounding remainder into the last key (`tanks`). Replaced with a largest-remainder split that never raises a zero type.
+- [done] Food appeared frozen at 500 because farm output exceeds residential demand, so food sits at the shared Goods Warehouse cap every tick. Consumption was working.
+- [done] Storage tab: `Food / Tick` (+produced / -eaten, ⚠️ on shortfall) and `Goods Storage` used/capacity. `foodProduced/foodDemand/foodConsumed/foodShortfallTicks` now survive the post-resource `computeStats()` rebuild.
+- [done] Tile Inspector `Food:` row: residential `Eats X / tick`, agricultural `Produces X / tick (max Y)` (`getTileFoodFlow`).
+- [done] Tests in `tests/resource-management.test.js`.
+- [done] Bump the patch version to 0.1.48.

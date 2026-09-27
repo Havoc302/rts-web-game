@@ -26,6 +26,11 @@ export function weatherIcons(weather, isDay) {
   return `${sky}${windIcon}`;
 }
 
+function formatFlow(value) {
+  const n = Number(value) || 0;
+  return n >= 10 ? String(Math.round(n)) : n.toFixed(1);
+}
+
 export function formatHudTime(hour, isDay) {
   const displayHour = hour % 12 === 0 ? 12 : hour % 12;
   const ampm = hour < 12 ? 'AM' : 'PM';
@@ -76,6 +81,8 @@ export function buildHudSnapshot(simulation, treasury) {
     'stat-school-age': (stats.schoolAge || 0).toLocaleString(),
     'stat-retirees': (stats.retirees || 0).toLocaleString(),
     'stat-food': roundStock(stockpile.food),
+    'stat-food-flow': `+${formatFlow(stats.foodProduced)} / -${formatFlow(stats.foodConsumed)}${stats.foodShortfall > 0 ? ' ⚠️' : ''}`,
+    'stat-goods-storage': `${Math.round(['food', 'consumerGoods', 'arms', 'tanks'].reduce((sum, key) => sum + (stockpile[key] || 0), 0))} / ${Math.round(stats.resources?.capacity?.goods || 0)}`,
     'stat-coal': roundStock(stockpile.coal),
     'stat-iron': roundStock(stockpile.ironOre),
     'stat-bauxite': roundStock(stockpile.bauxiteOre),

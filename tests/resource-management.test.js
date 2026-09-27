@@ -2,8 +2,8 @@ import assert from 'assert';
 import { Grid } from '../src/engine/Grid.js';
 import { ResourceManager } from '../src/engine/ResourceManager.js';
 import { UtilityManager } from '../src/engine/UtilityManager.js';
-import { formatSiloStorage } from '../src/engine/InspectorStatus.js';
-import { PRODUCER_TYPE, TERRAIN, ORE_TYPE, RESOURCE_CONFIG, USAGE_RATES, ZONE, DENSITY, HAPPINESS_CONFIG } from '../src/config.js';
+import { formatSiloStorage, getTileFoodFlow } from '../src/engine/InspectorStatus.js';
+import { PRODUCER_TYPE, TERRAIN, ORE_TYPE, RESOURCE_CONFIG, USAGE_RATES, ZONE, DENSITY, HAPPINESS_CONFIG, DEMOGRAPHICS_CONFIG } from '../src/config.js';
 
 const grid = new Grid(10, 10, 7);
 for (const row of grid.tiles) for (const tile of row) tile.terrain = TERRAIN.FLAT;
@@ -98,6 +98,38 @@ assert.strictEqual(residentialTile.populationLoss, 0, 'Restored food should clea
   famine.stockpile.food = 1000;
   famine.update(famineGrid, stats);
   assert.strictEqual(stats.foodShortfallTicks, 0, 'Feeding the city should reset the famine counter');
+}
+
+// Goods storage clamp never invents stock for empty types (the "phantom tank").
+{
+  const clamp = new ResourceManager();
+  clamp.capacity = { ore: 0, bar: 0, goods: 500, oil: 0, fuel: 0 };
+  clamp.stockpile.food = 700.4;
+  clamp.stockpile.consumerGoods = 0;
+  clamp.stockpile.arms = 0;
+  clamp.stockpile.tanks = 0;
+  clamp.clampToCapacity();
+  assert.strictEqual(clamp.stockpile.food, 500, 'Food alone should fill the whole goods capacity');
+  assert.strictEqual(clamp.stockpile.tanks, 0, 'Tanks must not appear from rounding');
+  assert.strictEqual(clamp.stockpile.arms, 0);
+
+  clamp.stockpile.food = 333.3;
+  clamp.stockpile.consumerGoods = 333.3;
+  clamp.stockpile.tanks = 0;
+  clamp.clampToCapacity();
+  const total = clamp.stockpile.food + clamp.stockpile.consumerGoods + clamp.stockpile.arms + clamp.stockpile.tanks;
+  assert.strictEqual(total, 500, 'Clamped goods should sum to capacity');
+  assert.strictEqual(clamp.stockpile.tanks, 0, 'Tanks stay at zero when none were produced');
+}
+
+// Tile Inspector food readouts.
+{
+  const home = { zone: ZONE.RESIDENTIAL, population: 40 };
+  assert.strictEqual(getTileFoodFlow(home), `Eats ${(40 * RESOURCE_CONFIG.FOOD_PER_RESIDENT).toFixed(2)} / tick`);
+  const farm = { zone: ZONE.AGRICULTURAL, density: DENSITY.LIGHT, totalJobs: 10, filledJobs: 5 };
+  const yieldAtFull = DEMOGRAPHICS_CONFIG.AGRICULTURAL_FOOD_YIELD[DENSITY.LIGHT];
+  assert.strictEqual(getTileFoodFlow(farm), `Produces ${(0.5 * yieldAtFull).toFixed(2)} / tick (max ${yieldAtFull})`);
+  assert.strictEqual(getTileFoodFlow({ zone: ZONE.COMMERCIAL }), null);
 }
 
 console.log('Resource management tests passed.');

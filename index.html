@@ -267,6 +267,8 @@
           <h3>Storage</h3>
           <div class="storage-grid">
             <div class="storage-item"><span>Food</span><strong id="stat-food">0</strong></div>
+            <div class="storage-item" title="Food produced by farms / eaten by residents per tick. Surplus above goods storage is discarded."><span>Food / Tick</span><strong id="stat-food-flow">+0 / -0</strong></div>
+            <div class="storage-item" title="Food, consumer goods, arms, and tanks share Goods Warehouse space (500 each)"><span>Goods Storage</span><strong id="stat-goods-storage">0 / 0</strong></div>
             <div class="storage-item"><span>Coal</span><strong id="stat-coal">0</strong></div>
             <div class="storage-item"><span>Iron Ore</span><strong id="stat-iron">0</strong></div>
             <div class="storage-item"><span>Bauxite</span><strong id="stat-bauxite">0</strong></div>
@@ -476,6 +478,7 @@
           <div class="info-row"><span class="label">Density:</span><span class="val" id="inspect-density">N/A</span></div>
           <div class="info-row"><span class="label">Block Pop / Jobs:</span><span class="val" id="inspect-pop-jobs">N/A</span></div>
           <div class="info-row" id="demographics-row" style="display:none;"><span class="label">Workers / School / Retired:</span><span class="val" id="inspect-demographics">N/A</span></div>
+          <div class="info-row" id="food-row" style="display:none;"><span class="label">Food:</span><span class="val" id="inspect-food">N/A</span></div>
           <div class="info-row" id="industrial-recipe-row" style="display:none;"><span class="label">Recipe:</span><select class="val" id="industrial-recipe-select"></select></div>
           <div class="info-row" id="storage-type-row" style="display:none;"><span class="label">Storage:</span><select class="val" id="storage-type-select"></select></div>
           <div class="info-row"><span class="label">Growth Score:</span><span class="val" id="inspect-growth">0</span></div>

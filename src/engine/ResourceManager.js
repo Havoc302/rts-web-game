@@ -64,6 +64,7 @@ export class ResourceManager {
     stats.happinessGrowthModifier = happinessDemandModifier(stats.happiness);
     stats.foodShortfall = foodResult.shortfall;
     stats.foodDemand = foodResult.demand;
+    stats.foodConsumed = foodResult.consumed;
     stats.foodProduced = foodProduced;
     stats.foodShortfallTicks = this.foodShortfallTicks;
     stats.goodsRatio = goodsResult.goodsRatio;
@@ -309,17 +310,19 @@ export class ResourceManager {
       return;
     }
     const scale = goodsLimit / goodsTotal;
-    let assigned = 0;
-    for (let i = 0; i < goodsKeys.length; i++) {
-      const key = goodsKeys[i];
-      if (i === goodsKeys.length - 1) {
-        this.stockpile[key] = Math.max(0, goodsLimit - assigned);
-      } else {
-        const next = Math.floor((this.stockpile[key] || 0) * scale);
-        this.stockpile[key] = next;
-        assigned += next;
-      }
+    // Largest-remainder split: floors each share, then hands leftover units to the biggest fractions so an empty type never gains stock.
+    const shares = goodsKeys.map((key) => {
+      const exact = (this.stockpile[key] || 0) * scale;
+      return { key, whole: Math.floor(exact), frac: exact - Math.floor(exact) };
+    });
+    let leftover = Math.floor(goodsLimit) - shares.reduce((sum, s) => sum + s.whole, 0);
+    for (const share of [...shares].sort((a, b) => b.frac - a.frac)) {
+      if (leftover <= 0) break;
+      if (share.frac <= 0) continue;
+      share.whole += 1;
+      leftover -= 1;
     }
+    for (const { key, whole } of shares) this.stockpile[key] = whole;
   }
 
   snapshot() {

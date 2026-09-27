@@ -6,7 +6,7 @@
 | Author | TBD |
 | Date | 2026-09-25 |
 | Status | Living draft (rev 8) |
-| Version covered | `APP_VERSION` `0.1.47` (`src/version.js`); current working tree |
+| Version covered | `APP_VERSION` `0.1.48` (`src/version.js`); current working tree |
 | Intended in-repo path | `docs/DESIGN.md` |
 | Repo | `g:\Repos\rts-web-game` (`origin`: `https://github.com/Havoc302/rts-web-game.git`) |
 | Working tree at inventory | Documentation is checked against the current implementation; uncommitted changes may exist. |
@@ -322,7 +322,7 @@ Background music is a single looping HTML5 `<audio>` track (`AUDIO_CONFIG.MUSIC_
 
 **Player placement rules** (`Grid.canBuildTool` / `canBuildProducer`, shared by click placement and the green valid-tile highlight; hover turns red when invalid): roads/bridges/tunnels follow their terrain rules and do not need a neighbouring road; zones and every non-renewable producer must touch a road; Water Pumps, Sewage Plants, and Nuclear Plants must also touch water; Windmills and Solar Panels need only an adjacent (incl. diagonal) Battery; surveys cannot target water. Engine-level `canPlaceProducer` does not require roads so tests can build fixtures directly.
 
-**Food:** residential food demand is the sum of each residential tile's `population × FOOD_PER_RESIDENT`, drawn from the stockpile filled by farms (`AGRICULTURAL_FOOD_YIELD × fill`). Any shortfall costs 25 happiness and 5% outflow per tile; after `FAMINE_TICKS` (10) consecutive shortfall ticks an extra `FAMINE_PENALTY` (40) applies until the city is fed.
+**Food:** residential food demand is the sum of each residential tile's `population × FOOD_PER_RESIDENT`, drawn from the stockpile filled by farms (`AGRICULTURAL_FOOD_YIELD × fill`). Food, consumer goods, arms, and tanks share Goods Warehouse space (500 each); anything above that is discarded at the end of each tick using a largest-remainder split, so a type at zero never gains stock. Without a warehouse, each tick's harvest can still be eaten that tick but none is stored. The Storage tab shows `Food / Tick` (+produced / −eaten) and `Goods Storage` used/capacity; the Tile Inspector shows each residential tile's food use and each farm's output. Any shortfall costs 25 happiness and 5% outflow per tile; after `FAMINE_TICKS` (10) consecutive shortfall ticks an extra `FAMINE_PENALTY` (40) applies until the city is fed.
 
 **Waterfront:** `Grid.getWaterfrontStatus()` returns `clean`, `polluted` (any adjacent water with `riverPollution` or `isPolluted`), or none. Residential growth gets +1 beside clean water and −2 beside polluted water; city happiness adds `5 × clean-resident share − 10 × polluted-resident share`.
 
@@ -1009,7 +1009,7 @@ Phase 1 stays paused-by-default sandbox (0% tax, $25,000) for solo city-building
 
 28. **Overworld Biome Generation.** `BIOME_TYPES` (`PLAINS`, `HILLY`, `MOUNTAINOUS`, `SWAMP`) modify procedural terrain generation: Hilly/Mountainous scale rock clusters (+25% / +50%); Plains reduce rock clusters (-50%); Swamp reduces forest (-50%), increases lakes (4-6), and forces fork/merge rivers. `generateProceduralTerrain(biome)` accepts the biome directly.
 
-29. **Single-source versioning.** `src/version.js` (`APP_VERSION = '0.1.47'`) is the single source of truth for version strings. `package.json` version and cache-busting consumers derive from it. Verified by `tests/version-sync.test.js`.
+29. **Single-source versioning.** `src/version.js` (`APP_VERSION = '0.1.48'`) is the single source of truth for version strings. `package.json` version and cache-busting consumers derive from it. Verified by `tests/version-sync.test.js`.
 
 30. **Desktop Pan and Drag Painting.** Desktop left-drag with the Pan tool pans the camera; clicking without dragging selects the tile without opening the inspector. Inspect Tile opens the inspector. Left-drag painting is restricted to repeatable tools (roads, bridges, tunnels, zones, bulldoze); single-placement buildings and surveys do not drag-paint.
 
