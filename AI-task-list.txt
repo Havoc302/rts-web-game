@@ -826,6 +826,13 @@ Validation:
 - `npm test` passes all 37 test files.
 - Known flake: `simulation.test.js` Test 17 ("should scatter rock clusters") failed once and passed on rerun; likely random-seed dependent. Not caused by this change.
 
+Current task: Fix tutorial step order (roads must come first).
+
+- [done] Step 1 is now "Lay a Road Network"; utilities move to Step 2 because every building must be road-adjacent.
+- [done] Welcome modal foundation list puts Road Network first.
+- [done] Update `tests/tutorial.test.js` for the new order.
+- [done] Bump the patch version to 0.1.38.
+
 Current task: Add stacked global education tax bonuses from Schools and Universities.
 
 Design rule:

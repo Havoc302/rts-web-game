@@ -4,19 +4,19 @@ const GENERATOR_TYPES = POWER_PRODUCER_TYPES.filter((type) => type !== PRODUCER_
 
 export const TUTORIAL_STEPS = [
   {
-    title: 'Step 1: Core Utilities (Power, Water, Sewage)',
-    desc: 'Place 1 Power Producer, 1 Water Pump, and 1 Sewage Plant.',
+    title: 'Step 1: Lay a Road Network',
+    desc: 'Everything must be built next to a road. Place at least 5 road tiles, running beside a river so water and sewage buildings can touch both.',
+    check: (grid) => grid.activeRoadTiles.size >= 5,
+  },
+  {
+    title: 'Step 2: Core Utilities (Power, Water, Sewage)',
+    desc: 'Beside your roads, place 1 Power Producer, 1 Water Pump, and 1 Sewage Plant. Pumps and sewage plants must also touch water; renewables need an adjacent Battery Storage.',
     check: (grid) => {
       const hasPower = grid.producers.some((p) => GENERATOR_TYPES.includes(p.type));
       const hasWater = grid.producers.some((p) => p.type === PRODUCER_TYPE.WATER_TOWER);
       const hasSewage = grid.producers.some((p) => p.type === PRODUCER_TYPE.SEWAGE_PLANT);
       return hasPower && hasWater && hasSewage;
     },
-  },
-  {
-    title: 'Step 2: Connect Road Network',
-    desc: 'Build roads adjacent to all utility producers to route power, water, and sewage through your grid.',
-    check: (grid) => grid.activeRoadTiles.size >= 5,
   },
   {
     title: 'Step 3: Residential & Agriculture',

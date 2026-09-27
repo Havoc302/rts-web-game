@@ -29,20 +29,30 @@ assert.strictEqual(element('welcome-modal').style.display, 'flex', 'Welcome moda
 assert.strictEqual(element('tutorial-banner').style.display, 'flex');
 assert.strictEqual(element('tutorial-step-title').textContent, TUTORIAL_STEPS[0].title);
 
-// Step 1: nuclear counts as a power producer; battery alone does not.
-grid.placeProducer(1, 1, PRODUCER_TYPE.BATTERY, 400);
+// Step 1: roads come first because every building must be road-adjacent.
 grid.getTile(0, 3).terrain = TERRAIN.WATER;
 grid.getTile(0, 5).terrain = TERRAIN.WATER;
+grid.getTile(0, 7).terrain = TERRAIN.WATER;
 grid.placeProducer(1, 3, PRODUCER_TYPE.WATER_TOWER, 120);
 grid.placeProducer(1, 5, PRODUCER_TYPE.SEWAGE_PLANT, 120);
-tutorial.update(grid, stats);
-assert.strictEqual(tutorial.currentStep, 0, 'Battery alone should not satisfy power generation');
-grid.getTile(0, 7).terrain = TERRAIN.WATER;
 assert.ok(grid.placeProducer(1, 7, PRODUCER_TYPE.NUCLEAR_PLANT, 500));
 tutorial.update(grid, stats);
-assert.strictEqual(tutorial.currentStep, 1);
-
+assert.strictEqual(tutorial.currentStep, 0, 'Utilities without roads should not pass the road step');
 for (let y = 1; y <= 5; y++) grid.placeRoad(2, y);
+tutorial.update(grid, stats);
+assert.strictEqual(tutorial.currentStep, 2, 'Roads then already-built utilities should advance together');
+
+// Step 2: battery alone does not count as power generation.
+const fresh = new Grid(12, 12, 1);
+for (const row of fresh.tiles) for (const tile of row) tile.terrain = TERRAIN.FLAT;
+for (let y = 1; y <= 5; y++) fresh.placeRoad(2, y);
+fresh.getTile(0, 3).terrain = TERRAIN.WATER;
+fresh.getTile(0, 5).terrain = TERRAIN.WATER;
+fresh.placeProducer(1, 1, PRODUCER_TYPE.BATTERY, 400);
+fresh.placeProducer(1, 3, PRODUCER_TYPE.WATER_TOWER, 120);
+fresh.placeProducer(1, 5, PRODUCER_TYPE.SEWAGE_PLANT, 120);
+assert.strictEqual(TUTORIAL_STEPS[1].check(fresh, stats), false, 'Battery alone should not satisfy power generation');
+
 grid.placeZone(3, 2, ZONE.RESIDENTIAL);
 grid.placeZone(3, 3, ZONE.AGRICULTURAL);
 grid.placeZone(3, 4, ZONE.COMMERCIAL);
