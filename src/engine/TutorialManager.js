@@ -33,7 +33,7 @@ export const TUTORIAL_STEPS = [
   },
   {
     title: 'Step 5: Unpause & Grow',
-    desc: 'Unpause the simulation (1x speed or higher) and watch your town start growing.',
+    desc: 'Set your desired tax rate then unpause the simulation (1x speed or higher) and watch your town start growing.',
     check: (grid, stats) => stats.population > 0,
   },
 ];
