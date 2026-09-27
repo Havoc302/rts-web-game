@@ -916,3 +916,8 @@ Education validation:
 - Diagnostics clean; `git diff --check` clean.
 - `docs/DESIGN.md` updated; patch version `0.1.42`.
 - Balance note: School staffing is 1 job per 187 residents (capped by tier), giving ~0.107 × pop seats per School, so ~2 Schools are needed for full school coverage; one University covers university demand.
+
+Current task: Tax slider 1% increments.
+
+- [done] `#tax-slider` step changed from 5 to 1.
+- [done] Bump the patch version to 0.1.43.
