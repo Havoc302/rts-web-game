@@ -958,3 +958,12 @@ Current task: Fix phantom tank and show food flow.
 - [done] Tile Inspector `Food:` row: residential `Eats X / tick`, agricultural `Produces X / tick (max Y)` (`getTileFoodFlow`).
 - [done] Tests in `tests/resource-management.test.js`.
 - [done] Bump the patch version to 0.1.48.
+
+To check: All production which can be stored. Food, Consumer Goods, arms, tanks, raw materials (bauxite, aluminium, iron, oil) should use a similar system to power generation and batteries. Consumers of those things should be given priority first then the storage is filled, overflow is defaults to consumers or is lost if storage is full.
+Possible bug: Oil derricks are producing oil but the silo set to oil isn't storing anything, I can see it's not going to the refinery either, it shows no rate of production but I can tell because my other silo set to fuel is also not filling up. Unless it's all working but all being consumed by users before any of those things in the production chain actually show anything.
+We need an alerts panel kind of like SimCity events notifications where we can tell the user if a fire has broken out, crime rate has climbed to be high, medical coverage is critically low, treasury is out of money. Things like that.
+Change the "Utilities" name on the top right Utilies/storage/bugdets panel to be "Services" since it incorporates utilities and civic services. Add a use vs demand for all producers vs consumers, food, police/fire coverage vs crime/fire rate (if that's even possible as a stat).
+On hover over the service cost give the breakdown of the cost from each service.
+On hover over the jobs available give the breakdown between the different tile types which have jobs available and how many.
+On hover over the employment rate give the breakdown between the different tile types which have jobs taken and how many.
+Firefox appears to have a weird issue where the selected square is offset to the cursor location.
