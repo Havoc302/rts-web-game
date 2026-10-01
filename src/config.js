@@ -801,7 +801,7 @@ export const SERVICE_GLOBAL_CONFIG = {
 
 // Procedural map-generation balance controls. Adjust these to change map character.
 export const TERRAIN_GENERATION_CONFIG = {
-  GENERATION_VERSION: 1,                  // Bump when terrain or hidden-ore algorithms change
+  GENERATION_VERSION: 2,                  // Version 1 remains loadable through the legacy cluster generator
   DEFAULT_RANDOM_SEED: 12345,             // Fallback when parseInt(seed) is not a number
   RANDOM_SEED_MAX: 9000000,               // Upper bound for generated map seeds
   RANDOM_SEED_MIN: 100000,                // Lower bound for generated map seeds

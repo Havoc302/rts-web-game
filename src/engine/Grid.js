@@ -20,10 +20,11 @@ export function createPRNG(seed) {
 }
 
 export class Grid {
-  constructor(width = MAP_WIDTH, height = MAP_HEIGHT, seed = null, biome = null) {
+  constructor(width = MAP_WIDTH, height = MAP_HEIGHT, seed = null, biome = null, generationVersion = TERRAIN_GENERATION_CONFIG.GENERATION_VERSION) {
     this.width = width;
     this.height = height;
     this.biome = biome;
+    this.generationVersion = generationVersion;
     this.seed = seed !== null ? parseInt(seed, 10) : this.getInitialSeed();
     this.random = createPRNG(this.seed);
     this.tiles = [];
@@ -88,16 +89,17 @@ export class Grid {
   }
 
   initGrid() {
-    this.randomizeGrid(this.seed);
+    this.randomizeGrid(this.seed, this.biome, this.generationVersion);
   }
 
-  randomizeGrid(seed = null, biome = this.biome) {
+  randomizeGrid(seed = null, biome = this.biome, generationVersion = TERRAIN_GENERATION_CONFIG.GENERATION_VERSION) {
     if (seed !== null && !isNaN(parseInt(seed, 10))) {
       this.seed = parseInt(seed, 10);
     }
     if (biome !== undefined) {
       this.biome = biome;
     }
+    this.generationVersion = generationVersion;
     this.persistSeed();
     this.random = createPRNG(this.seed);
     this.terrainVersion++;
@@ -265,18 +267,9 @@ export class Grid {
       const cx = Math.floor(this.random() * (this.width - margin)) + margin / 2;
       const cy = Math.floor(this.random() * (this.height - margin)) + margin / 2;
       const radius = TERRAIN_GENERATION_CONFIG.FOREST_CLUSTER_RADIUS_BASE + Math.floor(this.random() * TERRAIN_GENERATION_CONFIG.FOREST_CLUSTER_RADIUS_RANDOM);
-
-      for (let y = Math.max(0, cy - radius); y <= Math.min(this.height - 1, cy + radius); y++) {
-        for (let x = Math.max(0, cx - radius); x <= Math.min(this.width - 1, cx + radius); x++) {
-          const dist = Math.sqrt((x - cx) ** 2 + (y - cy) ** 2);
-          if (dist <= radius + (this.random() * TERRAIN_GENERATION_CONFIG.FOREST_CLUSTER_RADIUS_WOBBLE_RANGE - TERRAIN_GENERATION_CONFIG.FOREST_CLUSTER_RADIUS_WOBBLE_CENTER)) {
-            const tile = this.tiles[y][x];
-            if (tile.terrain === TERRAIN_TYPE.EMPTY) {
-              tile.terrain = TERRAIN_TYPE.FOREST;
-            }
-          }
-        }
-      }
+      this.paintTerrainCluster(cx, cy, radius, TERRAIN_TYPE.FOREST,
+        TERRAIN_GENERATION_CONFIG.FOREST_CLUSTER_RADIUS_WOBBLE_RANGE,
+        TERRAIN_GENERATION_CONFIG.FOREST_CLUSTER_RADIUS_WOBBLE_CENTER);
     }
 
     const numRockClusters = Math.round(
@@ -287,16 +280,29 @@ export class Grid {
       const cx = Math.floor(this.random() * (this.width - margin)) + margin / 2;
       const cy = Math.floor(this.random() * (this.height - margin)) + margin / 2;
       const radius = TERRAIN_GENERATION_CONFIG.ROCK_CLUSTER_RADIUS_BASE + Math.floor(this.random() * TERRAIN_GENERATION_CONFIG.ROCK_CLUSTER_RADIUS_RANDOM);
+      this.paintTerrainCluster(cx, cy, radius, TERRAIN_TYPE.ROCK,
+        TERRAIN_GENERATION_CONFIG.ROCK_CLUSTER_RADIUS_WOBBLE_RANGE,
+        TERRAIN_GENERATION_CONFIG.ROCK_CLUSTER_RADIUS_WOBBLE_CENTER);
+    }
+  }
 
-      for (let y = Math.max(0, cy - radius); y <= Math.min(this.height - 1, cy + radius); y++) {
-        for (let x = Math.max(0, cx - radius); x <= Math.min(this.width - 1, cx + radius); x++) {
-          const dist = Math.sqrt((x - cx) ** 2 + (y - cy) ** 2);
-          if (dist <= radius + (this.random() * TERRAIN_GENERATION_CONFIG.ROCK_CLUSTER_RADIUS_WOBBLE_RANGE - TERRAIN_GENERATION_CONFIG.ROCK_CLUSTER_RADIUS_WOBBLE_CENTER)) {
-            const tile = this.tiles[y][x];
-            if (tile.terrain === TERRAIN_TYPE.EMPTY) {
-              tile.terrain = TERRAIN_TYPE.ROCK;
-            }
-          }
+  paintTerrainCluster(cx, cy, radius, terrain, wobbleRange, wobbleCenter) {
+    const irregular = this.generationVersion >= 2;
+    const phase = irregular ? this.random() * Math.PI * 2 : 0;
+    const secondaryPhase = irregular ? this.random() * Math.PI * 2 : 0;
+    const extent = irregular ? Math.ceil(radius * 1.35) : radius;
+    for (let y = Math.max(0, Math.ceil(cy - extent)); y <= Math.min(this.height - 1, Math.floor(cy + extent)); y++) {
+      for (let x = Math.max(0, Math.ceil(cx - extent)); x <= Math.min(this.width - 1, Math.floor(cx + extent)); x++) {
+        const dx = x - cx;
+        const dy = y - cy;
+        const angle = irregular ? Math.atan2(dy, dx) : 0;
+        const shape = irregular
+          ? 1 + 0.2 * Math.sin(3 * angle + phase) + 0.12 * Math.cos(5 * angle + secondaryPhase)
+          : 1;
+        const dist = Math.sqrt(dx ** 2 + dy ** 2);
+        if (dist <= radius * shape + (this.random() * wobbleRange - wobbleCenter)) {
+          const tile = this.tiles[y][x];
+          if (tile.terrain === TERRAIN_TYPE.EMPTY) tile.terrain = terrain;
         }
       }
     }
@@ -317,17 +323,9 @@ export class Grid {
       const cx = margin + Math.floor(this.random() * (this.width - margin * 2));
       const cy = margin + Math.floor(this.random() * (this.height - margin * 2));
 
-      for (let y = Math.max(0, cy - radius); y <= Math.min(this.height - 1, cy + radius); y++) {
-        for (let x = Math.max(0, cx - radius); x <= Math.min(this.width - 1, cx + radius); x++) {
-          const dist = Math.sqrt((x - cx) ** 2 + (y - cy) ** 2);
-          if (dist <= radius + (this.random() * TERRAIN_GENERATION_CONFIG.LAKE_RADIUS_WOBBLE_RANGE - TERRAIN_GENERATION_CONFIG.LAKE_RADIUS_WOBBLE_CENTER)) {
-            const tile = this.tiles[y][x];
-            if (tile.terrain === TERRAIN_TYPE.EMPTY) {
-              tile.terrain = TERRAIN_TYPE.RIVER;
-            }
-          }
-        }
-      }
+      this.paintTerrainCluster(cx, cy, radius, TERRAIN_TYPE.RIVER,
+        TERRAIN_GENERATION_CONFIG.LAKE_RADIUS_WOBBLE_RANGE,
+        TERRAIN_GENERATION_CONFIG.LAKE_RADIUS_WOBBLE_CENTER);
     }
   }
 

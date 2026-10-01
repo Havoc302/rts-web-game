@@ -226,7 +226,7 @@ export function serializeGame(app) {
   return {
     saveVersion: SAVE_VERSION,
     appVersion: APP_VERSION,
-    generationVersion: GENERATION_VERSION,
+    generationVersion: app.grid.generationVersion ?? GENERATION_VERSION,
     savedAt: new Date().toISOString(),
     map: {
       width: app.grid.width,
@@ -326,7 +326,7 @@ function deserializeV1(document) {
   validateCamera(document.camera);
   validateProducers(savedGrid.producers, savedGrid.width, savedGrid.height);
 
-  const grid = new Grid(savedGrid.width, savedGrid.height, savedGrid.seed, savedGrid.biome ?? null);
+  const grid = new Grid(savedGrid.width, savedGrid.height, savedGrid.seed, savedGrid.biome ?? null, 1);
   grid.tiles = savedGrid.tiles.map((row) => row.map((savedTile, y) => {
     const tile = grid.createDefaultTile(savedTile.x ?? row.indexOf(savedTile), savedTile.y ?? y);
     Object.assign(tile, clone(savedTile));
@@ -364,7 +364,7 @@ function deserializeV1(document) {
 }
 
 function deserializeV2(document) {
-  if (document.generationVersion !== GENERATION_VERSION) {
+  if (![1, GENERATION_VERSION].includes(document.generationVersion)) {
     throw new Error(
       `This save uses terrain generation version ${document.generationVersion}; the game now uses version ${GENERATION_VERSION}. The map cannot be rebuilt from this save.`,
     );
@@ -382,7 +382,7 @@ function deserializeV2(document) {
   if (!Array.isArray(document.tiles)) throw new Error('Invalid save tile data');
   validateProducers(document.producers, map.width, map.height);
 
-  const grid = new Grid(map.width, map.height, map.seed, map.biome ?? null);
+  const grid = new Grid(map.width, map.height, map.seed, map.biome ?? null, document.generationVersion);
   for (const override of document.tiles) {
     if (!override || typeof override !== 'object') throw new Error('Invalid save tile override');
     assertNumber(override.x, 'tile.x', { integer: true, min: 0 });

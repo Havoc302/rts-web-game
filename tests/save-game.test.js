@@ -116,8 +116,22 @@ function flatten(grid) {
   v1.simulation.speed = 2;
   const restored = deserializeGame(v1);
   assert.strictEqual(restored.grid.getTile(1, 2).zone, ZONE.RESIDENTIAL, 'Save version 1 should load through an explicit migration');
+  assert.strictEqual(restored.grid.generationVersion, 1, 'Full-tile legacy saves should retain their terrain generator when converted to sparse saves');
   assert.strictEqual(restored.simulation.isPaused, true, 'Version 1 imports should still restore paused');
   assert.strictEqual(restored.simulation.speed, 0, 'Version 1 imports should restore paused speed');
+}
+
+{
+  const grid = new Grid(32, 32, 24680, null, 1);
+  const originalTerrain = grid.tiles.map((row) => row.map((tile) => tile.terrain));
+  const save = serializeGame(makeApp(grid, new Simulation(grid)));
+  assert.strictEqual(save.generationVersion, 1, 'Legacy terrain saves retain their original generation version');
+  const restored = deserializeGame(save);
+  assert.strictEqual(restored.grid.generationVersion, 1);
+  assert.deepStrictEqual(restored.grid.tiles.map((row) => row.map((tile) => tile.terrain)), originalTerrain, 'Version-1 sparse maps regenerate unchanged');
+  assert.strictEqual(serializeGame(makeApp(restored.grid, new Simulation(restored.grid))).generationVersion, 1, 'Resaving a legacy map retains its version');
+  restored.grid.randomizeGrid(24680);
+  assert.strictEqual(restored.grid.generationVersion, GENERATION_VERSION, 'Resetting a legacy map adopts the new terrain generator');
 }
 
 {

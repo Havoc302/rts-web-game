@@ -6,7 +6,7 @@
 | Author | TBD |
 | Date | 2026-09-25 |
 | Status | Living draft (rev 8) |
-| Version covered | `APP_VERSION` `0.1.63` (`src/version.js`); current working tree |
+| Version covered | `APP_VERSION` `0.1.65` (`src/version.js`); current working tree |
 | Intended in-repo path | `docs/DESIGN.md` |
 | Repo | `g:\Repos\rts-web-game` (`origin`: `https://github.com/Havoc302/rts-web-game.git`) |
 | Working tree at inventory | Documentation is checked against the current implementation; uncommitted changes may exist. |
@@ -44,7 +44,7 @@ B&C2000 is a **single-player, client-only, paused-by-default city builder**. A s
 
 ### Pain points
 
-1. **Standalone JSON save/load is sparse and seed-regenerated.** Saving is available only while paused and importing restores the game paused. `SAVE_VERSION` 2 stores seed, dimensions, biome, and `GENERATION_VERSION`, then sparse tile overrides and producers. Version 1 full-tile files still load through an explicit migration. A generation-version mismatch is refused rather than rebuilding the wrong map.
+1. **Standalone JSON save/load is sparse and seed-regenerated.** Saving is available only while paused and importing restores the game paused. `SAVE_VERSION` 2 stores seed, dimensions, biome, and a terrain generation version, then sparse tile overrides and producers. Legacy full-tile and sparse version-1 maps regenerate with the original circular cluster algorithm; new version-2 maps use irregular clusters. Re-saving a legacy map retains version 1 until the map is reset, which adopts version 2. Unsupported future generation versions are refused rather than rebuilding the wrong map.
 2. **`Simulation.tick` remains a large orchestrator.** Its pause/preview semantics are now explicit and tested, but named stage extraction is still outstanding.
 3. **Military production has no unit sink.** Arms and tanks are visible stockpiles, but barracks, vehicle depots, units, and world-map deployment are later phases.
 4. **Emergency coverage now uses cached direct/road/road-side sets.** Survey work remains incomplete.
@@ -251,7 +251,7 @@ While paused, `advanceWorld` is false, so crime/fire/surveys/growth/`tickCount` 
   - Seeded (`this.random` / `createPRNG`): terrain, rivers, lakes, forests, rocks, hidden ores; crime **tile sampling** (`CrimeManager.sampleRandom(..., grid.random)`).
   - Unseeded (`Math.random`): wind capacity swing, fire ignition and spread, crime event roll and police suppression, the initial random seed pick in `getInitialSeed`.
 - **Seed sources, in order:** `?seed=` URL param → `localStorage.bc2000_map_seed` with one-time legacy read of `metropolis_map_seed` → random in `[100000, 9100000)`. Reset/regen writes the current key and URL.
-- **Generation order** (`generateProceduralTerrain`): rivers (simple 40% / fork 30% / merge 30%) → 0–5 lakes → forest clusters scaled by map area → rock/mountain clusters. Rivers store `riverFlowDir` for pollution and water animation. River *generation* uses `this.random`, not `Math.random`.
+- **Generation order** (`generateProceduralTerrain`): rivers (simple 40% / fork 30% / merge 30%) → 0–5 standalone lakes → forest clusters scaled by map area → rock/mountain clusters. Version-2 lakes, forests, and mountains vary their radius by seeded angular lobes and smaller indentations, retaining the original per-tile edge wobble; the shapes extend beyond the former circular bounds. Rivers retain their separate flow generation. Version-1 generation keeps its original loop bounds and PRNG draw order for save compatibility. All terrain generation uses `this.random`, not `Math.random`.
 - **Hidden ores.** `generateHiddenOres` rolls `ORE_GENERATION` per terrain (mountain 35%, flat 3%, forest 1.5%, water 1%) and picks uniformly from iron / bauxite / coal / oil.
 - **Tile schema** (`createDefaultTile`): terrain, road/bridge/tunnel flags, zone, density, growthScore, industrial `recipe`, population bookkeeping (`relocatedPopulation`, `fireDisplacedPopulation`, `populationLoss`), producer pointer, utility shortfall/distances, pollution, ore/survey fields, crime, fire, `destroyed`. No `ownerId`. No visibility field.
 - **Placement rules.**
@@ -1020,7 +1020,7 @@ Phase 1 stays paused-by-default sandbox (0% tax, $25,000) for solo city-building
 
 28. **Overworld Biome Generation.** `BIOME_TYPES` (`PLAINS`, `HILLY`, `MOUNTAINOUS`, `SWAMP`) modify procedural terrain generation: Hilly/Mountainous scale rock clusters (+25% / +50%); Plains reduce rock clusters (-50%); Swamp reduces forest (-50%), increases lakes (4-6), and forces fork/merge rivers. `generateProceduralTerrain(biome)` accepts the biome directly.
 
-29. **Single-source versioning.** `src/version.js` (`APP_VERSION = '0.1.63'`) is the single source of truth for version strings. `package.json` version and cache-busting consumers derive from it. Verified by `tests/version-sync.test.js`.
+29. **Single-source versioning.** `src/version.js` (`APP_VERSION = '0.1.65'`) is the single source of truth for version strings. `package.json` version and cache-busting consumers derive from it. Verified by `tests/version-sync.test.js`.
 
 30. **Desktop Pan and Drag Painting.** Desktop left-drag with the Pan tool pans the camera; clicking without dragging selects the tile without opening the inspector. Inspect Tile opens the inspector. Left-drag painting is restricted to repeatable tools (roads, bridges, tunnels, zones, bulldoze); single-placement buildings and surveys do not drag-paint.
 
