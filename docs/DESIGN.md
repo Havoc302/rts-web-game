@@ -6,7 +6,7 @@
 | Author | TBD |
 | Date | 2026-09-25 |
 | Status | Living draft (rev 8) |
-| Version covered | `APP_VERSION` `0.1.48` (`src/version.js`); current working tree |
+| Version covered | `APP_VERSION` `0.1.51` (`src/version.js`); current working tree |
 | Intended in-repo path | `docs/DESIGN.md` |
 | Repo | `g:\Repos\rts-web-game` (`origin`: `https://github.com/Havoc302/rts-web-game.git`) |
 | Working tree at inventory | Documentation is checked against the current implementation; uncommitted changes may exist. |
@@ -331,6 +331,12 @@ Background music is a single looping HTML5 `<audio>` track (`AUDIO_CONFIG.MUSIC_
 **Weather rendering:** cloud shadows are world-space blobs drawn under the camera transform (fixed to the map while panning); rain is a screen-space effect. Touch devices support two-finger pinch zoom around the pinch midpoint.
 
 **Map reset:** Reset Map and Random Seed ask for confirmation first.
+
+**Operational feedback and resources:** the right HUD is labeled Services and includes utility demand/capacity, storage, and budget views. Service costs, available jobs, and filled jobs have hover breakdowns by source. The alert strip reports fires, high crime, critically low medical coverage, and an empty treasury; active alerts stack into individual rows with dismiss buttons and reset their dismissal after clearing. Fire and high-crime rows carry tile coordinates; clicking one centers the map and opens that tile in the inspector. Food shows produced/eaten flow; goods, raw materials, oil, fuel, and uranium are shown in Storage. Consumers run before `clampToCapacity`, so warehouse overflow cannot invent stock in an empty resource type. Consumer-goods factories require bauxite bars, iron bars, and oil.
+
+**Uranium and nuclear power:** Uranium is a surveyed ore, mined by the Uranium Mine, stored in ore warehouses, and consumed by Nuclear Plants at up to 10 units per tick proportional to power draw. A Nuclear Plant with no uranium shuts down. A destroyed Nuclear Plant permanently pollutes tiles within Manhattan radius 15, displaces half of nearby residents, and records those displaced residents as immediate patients.
+
+**Balance verification:** 100% tax pushes happiness below 50 even with full employment, utilities, services, and consumer goods; high tax also reduces population and job capacity. Population movement is capped at 1.5% per advancing tick, with a one-person low-population floor and a zero lower bound.
 
 **Education tax bonus:** `Simulation.computeEducation()` sets `schoolDemand = round(pop × 0.15)`, `universityDemand = round(pop × 0.05)`, and capacities of operational School / University `filledJobs × STUDENT_CAPACITY_PER_JOB (20)`. Libraries give no seats (happiness/coverage only). `educationTaxMultiplier = 1 + min(1, schoolCap/schoolDemand) × 0.15 + min(1, uniCap/uniDemand) × 0.20` (1.0 with zero population). It multiplies every zone's base tax before fire-repair, fuel, and crime-loss modifiers, so crime loss is computed on the boosted tax. It never creates residents or jobs. University: $12,000, 10/40/100 jobs, staffed 1 per 400 residents (one University covers 5% demand), own budget slider. The Service Budgets tab shows school seats, university seats, and the multiplier.
 
@@ -1009,7 +1015,7 @@ Phase 1 stays paused-by-default sandbox (0% tax, $25,000) for solo city-building
 
 28. **Overworld Biome Generation.** `BIOME_TYPES` (`PLAINS`, `HILLY`, `MOUNTAINOUS`, `SWAMP`) modify procedural terrain generation: Hilly/Mountainous scale rock clusters (+25% / +50%); Plains reduce rock clusters (-50%); Swamp reduces forest (-50%), increases lakes (4-6), and forces fork/merge rivers. `generateProceduralTerrain(biome)` accepts the biome directly.
 
-29. **Single-source versioning.** `src/version.js` (`APP_VERSION = '0.1.48'`) is the single source of truth for version strings. `package.json` version and cache-busting consumers derive from it. Verified by `tests/version-sync.test.js`.
+29. **Single-source versioning.** `src/version.js` (`APP_VERSION = '0.1.51'`) is the single source of truth for version strings. `package.json` version and cache-busting consumers derive from it. Verified by `tests/version-sync.test.js`.
 
 30. **Desktop Pan and Drag Painting.** Desktop left-drag with the Pan tool pans the camera; clicking without dragging selects the tile without opening the inspector. Inspect Tile opens the inspector. Left-drag painting is restricted to repeatable tools (roads, bridges, tunnels, zones, bulldoze); single-placement buildings and surveys do not drag-paint.
 

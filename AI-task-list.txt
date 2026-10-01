@@ -959,6 +959,45 @@ Current task: Fix phantom tank and show food flow.
 - [done] Tests in `tests/resource-management.test.js`.
 - [done] Bump the patch version to 0.1.48.
 
+Current task: Complete the remaining optimisation, feedback, resource, and balance tasks.
+
+- [done] Route stored production through consumer priority before warehouses; expose production, consumption, and storage for food, goods, arms, tanks, ores, oil, and fuel. (The advancing resource pass produces/extracts/refines first, consumers run before `clampToCapacity`, and the Storage tab shows current stock/capacity plus food flow; oil/derrick flow is shown in the inspector.)
+- [done] Add an alerts panel for fires, high crime, critically low medical coverage, and empty treasury. (Alerts stack as separate rows; each has its own `×` dismiss button and dismissal resets after the condition clears.)
+- [done] Rename the right HUD tab group from Utilities to Services.
+- [done] Add use-versus-demand / coverage stats for producers, consumers, food, police, and fire. (Existing utility meters plus food flow, hospital meter, structured alert state; further producer detail remains in the resource batch.)
+- [done] Add service-cost, available-job, and employment-rate hover breakdowns.
+- [done] Correct Firefox selected-tile cursor offset. (Pointer coordinates are scaled from CSS pixels to canvas pixels before tile conversion.)
+- [done] Replace warehouse placeholder art with warehouse-specific sidebar and map art. (Warehouse-specific roof/door map art and industrial sidebar icons.)
+- [done] Show zero solar efficiency at night by including the daylight bell curve in the weather display. (Weather display now multiplies cloud efficiency by the day/night solar bell curve.)
+- [done] Add uranium surveying, uranium mining, nuclear fuel consumption, and nuclear accident pollution/displacement. (Implemented and covered by `tests/uranium.test.js`; destroyed mines no longer extract.)
+- [done] Relabel survey ORE results as IRON and enforce iron-mine placement only on discovered iron. (Iron is labeled IRON; unknown ore has no overlay text; placement already requires matching discovered ore.)
+- [done] Make consumer-goods production consume aluminium, iron, and oil. (Consumer goods now require bauxite bars, iron bars, and oil; `tests/industrial-inputs.test.js`.)
+- [done] Fix high-tax happiness and population drain balance. (Existing `tests/tax-pressure.test.js` verifies 100% tax pushes happiness below 50 and reduces population/jobs strongly; neutral tax remains at/above 50.)
+- [done] Verify and test population-change percentage caps. (Existing `tests/population-stabilization.test.js` verifies the 1.5% per-tick cap, early-game floor, non-negative population, and sustained compound drain.)
+
+Validation:
+- `npm test` passes all 42 test files, including `uranium.test.js` and `industrial-inputs.test.js`.
+- Diagnostics are clean for modified source files; `git diff --check` is clean.
+- `docs/DESIGN.md` updated; patch version `0.1.49`.
+- Remaining manual check: browser smoke test the alert strip, hover breakdowns, Firefox selection, warehouse icons, and mobile layout.
+
+Current task: Make alert strip rows individually dismissible.
+
+- [done] Stack all active alerts.
+- [done] Add an `×` dismiss button to every alert row.
+- [done] Clear dismissal state when an alert condition disappears.
+- [done] `npm test` passes all 42 test files; diagnostics are clean.
+- [done] Bump the patch version to 0.1.50.
+
+Current task: Jump to emergency locations from alerts.
+
+- [done] Fire and high-crime alerts carry stable IDs plus tile coordinates.
+- [done] Clicking a location-bearing alert centers the map, selects the tile, and opens the inspector.
+- [done] Treasury and medical alerts remain informational because they have no single map cell.
+- [done] Dismiss buttons stop propagation so dismissing an alert does not also jump the map.
+- [done] `npm test` passes all 42 test files; diagnostics are clean.
+- [done] Bump the patch version to 0.1.51.
+
 To check: All production which can be stored. Food, Consumer Goods, arms, tanks, raw materials (bauxite, aluminium, iron, oil) should use a similar system to power generation and batteries. Consumers of those things should be given priority first then the storage is filled, overflow is defaults to consumers or is lost if storage is full.
 Possible bug: Oil derricks are producing oil but the silo set to oil isn't storing anything, I can see it's not going to the refinery either, it shows no rate of production but I can tell because my other silo set to fuel is also not filling up. Unless it's all working but all being consumed by users before any of those things in the production chain actually show anything.
 We need an alerts panel kind of like SimCity events notifications where we can tell the user if a fire has broken out, crime rate has climbed to be high, medical coverage is critically low, treasury is out of money. Things like that.
@@ -967,3 +1006,11 @@ On hover over the service cost give the breakdown of the cost from each service.
 On hover over the jobs available give the breakdown between the different tile types which have jobs available and how many.
 On hover over the employment rate give the breakdown between the different tile types which have jobs taken and how many.
 Firefox appears to have a weird issue where the selected square is offset to the cursor location.
+- [done] Icon and tile for warehouses needs to look more like a warehouse icon rather than just a colour with a word. (Warehouse-specific roof/door map art and industrial sidebar icons.)
+- [done] Weather conditions shows Solar Efficiency at night time. That calculation should probably scale along with the bell curve for sunlight I think (correct me if I'm wrong though and it's only used to compare sunlight to power generation based on weather conditions). (Weather display now multiplies cloud efficiency by the day/night solar bell curve.)
+- [done] Add uranium as another material which can be found in the ground through surveying. Make the nuclear reactor consume it. Add it to the ore warehouse storage. Make it so the Nuclear plant produces nothing without it, make it consume a percentage of maximum based on power consumption. 1 nuclear power plant uses 10 per tick and one Uranium mine produces 1 per tick (this is meant to be end-game power generation). Add in the uranium mine. Add a permanent pollution increase to all tiles within a 15 cell radius if the nuclear plant burns down or is destroyed, so much that it makes everyone in those tiles move out with 50% immediately becoming patients. (Implemented and covered by `tests/uranium.test.js`; destroyed mines no longer extract.)
+- [done] Survey results shows ORE for some cells (if this is meant to be iron), I can't place an iron mine on this. Please relabel to IRON and make it the only allowed place an iron mine can be placed alongside a road / tunnel also. If ORE is not Iron but blank, just put no text, the small red X is enough. (Iron is labeled IRON; unknown ore has no overlay text; placement already requires matching discovered ore.)
+- [done] Check if industrial zones actually use Aluminium, Iron and Oil (for plastics) when producing consumer goods, they should use all three to be able to make consumer goods. This should be a mid-late game mechanic to get those bonuses. (Consumer goods now require bauxite bars, iron bars, and oil; `tests/industrial-inputs.test.js`.)
+Check happiness calculations. Once a city is established it seems to stay stuck at 100 with 100% taxation. They should not be happy, it should start moving to below 50 happiness above 50% tax, only able to be offset by a lot of things which improve happiness.
+Check population to tax calculations. With a larger city of 20,000 people setting tax to 100% only causes a very gradual drain to population.
+Check the hard cap for percentage of population change per tick from growth or loss works.

@@ -992,6 +992,22 @@ export class Renderer {
       ctx.strokeStyle = '#ccfbf1';
       ctx.lineWidth = 2;
       ctx.stroke();
+    } else if (prod.type === PRODUCER_TYPE.WAREHOUSE_ORE || prod.type === PRODUCER_TYPE.WAREHOUSE_BAR || prod.type === PRODUCER_TYPE.WAREHOUSE_GOODS) {
+      ctx.fillStyle = '#334155';
+      ctx.fillRect(px + 2, py + 8, 28, 20);
+      ctx.fillStyle = '#94a3b8';
+      ctx.beginPath();
+      ctx.moveTo(px + 2, py + 8);
+      ctx.lineTo(px + 16, py + 2);
+      ctx.lineTo(px + 30, py + 8);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = '#475569';
+      for (let x = 6; x < 28; x += 7) ctx.fillRect(px + x, py + 13, 3, 15);
+      ctx.fillStyle = '#f8fafc';
+      ctx.font = 'bold 6px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(prod.type === PRODUCER_TYPE.WAREHOUSE_ORE ? 'ORE' : prod.type === PRODUCER_TYPE.WAREHOUSE_BAR ? 'BAR' : 'GOODS', px + 16, py + 12);
     } else if (prod.type === PRODUCER_TYPE.SILO) {
       ctx.fillStyle = '#3f3f46';
       ctx.fillRect(px + 2, py + 2, 28, 28);
@@ -1236,6 +1252,6 @@ export class Renderer {
     ctx.font = 'bold 9px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(ore?.name?.slice(0, 3).toUpperCase() || 'ORE', px + TILE_SIZE / 2, py + TILE_SIZE / 2);
+    if (ore?.name) ctx.fillText(ore.name === 'IRON' ? 'IRON' : ore.name.slice(0, 5).toUpperCase(), px + TILE_SIZE / 2, py + TILE_SIZE / 2);
   }
 }

@@ -39,6 +39,7 @@ class GameApp {
     this.treasury = STARTING_TREASURY;
     this.activeTool = 'pan';
     this.autoSwitchToPan = false;
+    this.dismissedAlerts = new Set();
     this.isMouseDown = false;
     this.isRightMouseDown = false;
     this.lastMouseX = 0;
@@ -415,11 +416,66 @@ class GameApp {
       return false;
     }
     applyHudSnapshot(snapshot, changed, document);
+    this.renderAlerts(snapshot['alerts-panel-data']);
     this._hudSnapshot = snapshot;
     this._hudAppliedAt = at;
     this._pendingHud = false;
     recordUiTiming(this.hudTiming, this.enableUiTiming ? nowMs() - started : 0, true);
     return true;
+  }
+
+  renderAlerts(serializedAlerts) {
+    const panel = document.getElementById('alerts-panel');
+    if (!panel) return;
+    let alerts = [];
+    try {
+      alerts = JSON.parse(serializedAlerts || '[]');
+    } catch {
+      alerts = [];
+    }
+    const active = new Set(alerts.map((alert) => alert.id));
+    for (const dismissed of this.dismissedAlerts) {
+      if (!active.has(dismissed)) this.dismissedAlerts.delete(dismissed);
+    }
+    const visible = alerts.filter((alert) => !this.dismissedAlerts.has(alert.id));
+    panel.replaceChildren();
+    for (const alert of visible) {
+      const row = document.createElement('div');
+      row.className = 'alert-row';
+      if (alert.x != null && alert.y != null) {
+        row.classList.add('alert-actionable');
+        row.title = 'Jump to location';
+        row.addEventListener('click', () => this.jumpToAlert(alert));
+      }
+      const text = document.createElement('span');
+      text.textContent = alert.message;
+      const dismiss = document.createElement('button');
+      dismiss.type = 'button';
+      dismiss.className = 'alert-dismiss';
+      dismiss.textContent = '×';
+      dismiss.title = 'Dismiss alert';
+      dismiss.setAttribute('aria-label', `Dismiss ${alert.message}`);
+      dismiss.addEventListener('click', (event) => {
+        event.stopPropagation();
+        this.dismissedAlerts.add(alert.id);
+        this.renderAlerts(JSON.stringify(alerts));
+      });
+      row.append(text, dismiss);
+      panel.appendChild(row);
+    }
+    panel.style.display = visible.length > 0 ? 'block' : 'none';
+  }
+
+  jumpToAlert(alert) {
+    const tile = this.grid.getTile(alert.x, alert.y);
+    if (!tile) return;
+    const worldX = -this.grid.width * TILE_SIZE / 2 + (tile.x + 0.5) * TILE_SIZE;
+    const worldY = -this.grid.height * TILE_SIZE / 2 + (tile.y + 0.5) * TILE_SIZE;
+    this.renderer.setCamera(-worldX * this.renderer.zoom, -worldY * this.renderer.zoom);
+    this.renderer.selectedTile = tile;
+    document.getElementById('inspector-panel')?.classList.add('visible');
+    this.updateInspector(tile, { force: true });
+    this.renderer.render(this.simulation);
   }
 
   // Tooltips live on <body> because the scrolling, backdrop-filtered header clips anything below it.
@@ -641,7 +697,9 @@ class GameApp {
     const rect = this.canvas.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
-    const tile = this.screenToTile(mouseX, mouseY);
+    const scaleX = this.canvas.width / rect.width;
+    const scaleY = this.canvas.height / rect.height;
+    const tile = this.screenToTile(mouseX * scaleX, mouseY * scaleY);
 
     if (!tile) {
       this.renderer.selectedTile = null;

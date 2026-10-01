@@ -92,6 +92,11 @@ export class PollutionManager {
     }
 
     // Step 5: Forest pollution absorption (only check tiles that are currently polluted)
+    for (const row of grid.tiles) {
+      for (const tile of row) {
+        if (tile.permanentPollution > 0) this.spreadPollution(grid, tile.x, tile.y, 0, tile.permanentPollution);
+      }
+    }
     for (const tile of grid.pollutedTiles) {
       if (tile.terrain === TERRAIN.FOREST && tile.pollution > 0) {
         tile.pollution = Math.max(0, tile.pollution - FOREST_POLLUTION_ABSORPTION);

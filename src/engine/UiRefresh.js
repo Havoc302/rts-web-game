@@ -1,4 +1,4 @@
-import { MEDICAL_CONFIG, PRODUCER_CONFIG, PRODUCER_TYPE, RENDERER_CONFIG, ZONE } from '../config.js';
+import { DAY_START_HOUR, MEDICAL_CONFIG, NIGHT_START_HOUR, PRODUCER_CONFIG, PRODUCER_TYPE, RENDERER_CONFIG, ZONE } from '../config.js';
 import { formatDerrickOutput, formatProducerCapacity, formatSiloStorage, getProducerConnectionStatus, getTileUtilityStatus } from './InspectorStatus.js';
 
 function meterView(demand, capacity, formatDecimals) {
@@ -37,7 +37,7 @@ export function formatHudTime(hour, isDay) {
   return `${isDay ? '☀️' : '🌙'} ${displayHour}:00 ${ampm}`;
 }
 
-export function weatherSnapshot(weather, isDay) {
+export function weatherSnapshot(weather, isDay, hourOfDay = null) {
   const pct = (value) => `${Math.round((value ?? 0) * 100)}%`;
   return {
     'stat-weather': weatherIcons(weather, isDay),
@@ -45,8 +45,13 @@ export function weatherSnapshot(weather, isDay) {
     'stat-weather-wind': weather ? `${pct(weather.windIntensity)}${weather.extremeWindTicks > 0 ? ' ⚠️ overspeed' : ''}` : '-',
     'stat-weather-cloud': weather ? pct(weather.cloudCover) : '-',
     'stat-weather-temp': weather ? `${Math.round(weather.temperature)}°C` : '-',
-    'stat-weather-solar': weather?.getSolarEfficiency ? pct(weather.getSolarEfficiency()) : '-',
+    'stat-weather-solar': weather?.getSolarEfficiency ? pct(weather.getSolarEfficiency() * daylightFactor(hourOfDay)) : '-',
   };
+}
+
+function daylightFactor(hour) {
+  if (hour == null || hour < DAY_START_HOUR || hour >= NIGHT_START_HOUR) return 0;
+  return Math.max(0, Math.sin((Math.PI * (hour - DAY_START_HOUR)) / (NIGHT_START_HOUR - DAY_START_HOUR)));
 }
 
 export function getHudCadenceMs(isMobile) {
@@ -62,10 +67,14 @@ export function buildHudSnapshot(simulation, treasury) {
   const roundStock = (value) => String(Math.round(value || 0));
 
   return {
+    'alerts-panel': JSON.stringify(treasury <= 0 ? [{ id: 'treasury', message: 'Treasury is empty', x: null, y: null }, ...(stats.alerts || [])] : (stats.alerts || [])),
+    'alerts-panel-visible': (treasury <= 0 || (stats.alerts || []).length > 0) ? 'block' : 'none',
+    'alerts-panel-data': JSON.stringify(treasury <= 0 ? [{ id: 'treasury', message: 'Treasury is empty', x: null, y: null }, ...(stats.alerts || [])] : (stats.alerts || [])),
     'stat-pop': stats.population.toLocaleString(),
     'stat-cash': `$${Number(treasury).toLocaleString()}`,
     'stat-income': `+$${stats.incomePerTick.toLocaleString()}`,
     'stat-service-expenses': `-$${stats.serviceExpenses.toLocaleString()}`,
+    'stat-service-breakdown': formatBreakdown(stats.serviceExpenseBreakdown),
     'stat-road-expenses': `-$${stats.roadExpenses.toLocaleString()}`,
     'stat-utility-expenses': `-$${(stats.utilityExpenses || 0).toLocaleString()}`,
     'stat-school-seats': `${(stats.schoolCapacity || 0).toLocaleString()} / ${(stats.schoolDemand || 0).toLocaleString()}`,
@@ -73,10 +82,12 @@ export function buildHudSnapshot(simulation, treasury) {
     'stat-education-multiplier': `×${(stats.educationTaxMultiplier ?? 1).toFixed(2)}`,
     'stat-tick': String(simulation.tickCount),
     'stat-time': formatHudTime(simulation.getHourOfDay(), simulation.isDaytime()),
-    ...weatherSnapshot(simulation.weatherManager, simulation.isDaytime()),
+    ...weatherSnapshot(simulation.weatherManager, simulation.isDaytime(), simulation.getHourOfDay()),
     'stat-day': `Day ${Math.floor(simulation.tickCount / 24) + 1}`,
     'stat-jobs-avail': stats.jobsAvailable.toLocaleString(),
+    'stat-jobs-breakdown': formatBreakdown(stats.jobsAvailableBreakdown),
     'stat-emp-rate': `${Math.round(stats.employmentRate * 100)}%`,
+    'stat-employment-breakdown': formatBreakdown(stats.jobsFilledBreakdown),
     'stat-workforce': (stats.totalEmployablePopulation || 0).toLocaleString(),
     'stat-school-age': (stats.schoolAge || 0).toLocaleString(),
     'stat-retirees': (stats.retirees || 0).toLocaleString(),
@@ -89,6 +100,7 @@ export function buildHudSnapshot(simulation, treasury) {
     'stat-iron-bar': roundStock(stockpile.ironBar),
     'stat-bauxite-bar': roundStock(stockpile.bauxiteBar),
     'stat-oil': roundStock(stockpile.oil),
+    'stat-uranium': roundStock(stockpile.uraniumOre),
     'stat-fuel': roundStock(stockpile.fuel),
     'stat-goods': roundStock(stockpile.consumerGoods),
     'stat-arms': roundStock(stockpile.arms),
@@ -107,6 +119,10 @@ export function buildHudSnapshot(simulation, treasury) {
     'meter-pollution-text': `Avg ${stats.avgPollution} / Max ${stats.maxPollution}`,
     'meter-pollution-fill': `${pollPct}%|`,
   };
+}
+
+function formatBreakdown(values = {}) {
+  return Object.entries(values).map(([name, value]) => `${name}: ${Math.round(value)}`).join(' | ') || 'None';
 }
 
 export function changedHudFields(prev, next) {
@@ -128,19 +144,28 @@ export function shouldRefreshUi({ force = false, fieldCount = 0, now = 0, lastAp
 export function applyHudSnapshot(snapshot, changedKeys, documentRef) {
   let wrote = 0;
   for (const key of changedKeys) {
-    const el = documentRef.getElementById(key);
-    if (!el) continue;
     const value = snapshot[key];
-    if (key.endsWith('-fill')) {
+    if (key.endsWith('-visible')) {
+      const target = documentRef.getElementById(key.replace('-visible', ''));
+      if (target) target.style.display = value;
+      wrote += 1;
+      continue;
+    } else if (key.endsWith('-fill')) {
+      const el = documentRef.getElementById(key);
+      if (!el) continue;
       const sep = value.indexOf('|');
       const width = sep >= 0 ? value.slice(0, sep) : value;
       const color = sep >= 0 ? value.slice(sep + 1) : '';
       if (el.style.width !== width) el.style.width = width;
       el.style.backgroundColor = color;
       wrote += 1;
-    } else if (el.textContent !== value) {
+    } else {
+      const el = documentRef.getElementById(key);
+      if (!el) continue;
+      if (el.textContent !== value) {
       el.textContent = value;
       wrote += 1;
+      }
     }
   }
   return wrote;

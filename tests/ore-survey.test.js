@@ -27,7 +27,7 @@ function clearTerrain(grid) {
       }
     }
   }
-  assert.ok(Object.keys(ORE_CONFIG).length === 4, 'Four simplified ore types should exist');
+  assert.ok(Object.keys(ORE_CONFIG).length === 5, 'Five ore types should exist');
   assert.ok(mountainTiles > 0 && flatTiles > 0, 'Test map should contain mountain and flat terrain');
   assert.ok(mountainDeposits / mountainTiles > flatDeposits / flatTiles, 'Mountains should have a higher ore deposit rate');
 }

@@ -34,6 +34,7 @@ export class Simulation {
       sewageDemand: 0,
       sewageCapacity: 0,
       serviceExpenses: 0,
+      serviceExpenseBreakdown: {},
       pensionExpenses: 0,
       roadExpenses: 0,
       utilityExpenses: 0,
@@ -50,6 +51,8 @@ export class Simulation {
       retirees: 0,
       jobsFilled: 0,
       jobsAvailable: 0,
+      jobsAvailableBreakdown: {},
+      jobsFilledBreakdown: {},
       unemployedWorkers: 0,
       employmentRate: 0,
       crimeTaxLoss: 0,
@@ -65,6 +68,7 @@ export class Simulation {
       fuelDemand: 0,
       fuelConsumed: 0,
       fuelShortfall: 0,
+      alerts: [],
       taxRate: 0,
       resources: this.resourceManager.snapshot(),
       zones: {
@@ -414,6 +418,7 @@ export class Simulation {
       sewageDemand: 0,
       sewageCapacity: 0,
       serviceExpenses: 0,
+      serviceExpenseBreakdown: {},
       pensionExpenses: 0,
       utilityExpenses: 0,
       schoolDemand: 0,
@@ -429,6 +434,8 @@ export class Simulation {
       retirees: 0,
       jobsFilled: 0,
       jobsAvailable: 0,
+      jobsAvailableBreakdown: {},
+      jobsFilledBreakdown: {},
       unemployedWorkers: 0,
       employmentRate: 0,
       crimeTaxLoss: 0,
@@ -448,6 +455,7 @@ export class Simulation {
       fuelDemand: this.stats.fuelDemand || 0,
       fuelConsumed: this.stats.fuelConsumed || 0,
       fuelShortfall: this.stats.fuelShortfall || 0,
+      alerts: [],
       taxRate: this.taxRate,
       resources: this.resourceManager.snapshot(),
       zones: {
@@ -469,7 +477,11 @@ export class Simulation {
       if (POWER_PRODUCER_TYPES.includes(p.type)) stats.powerCapacity += p.capacity;
       if (p.type === 'water_tower') stats.waterCapacity += p.capacity;
       if (p.type === 'sewage_plant') stats.sewageCapacity += p.capacity;
-      if (p.runningCost) stats.serviceExpenses += p.runningCost;
+      if (p.runningCost) {
+        stats.serviceExpenses += p.runningCost;
+        const serviceName = PRODUCER_CONFIG[p.type]?.name || p.type;
+        stats.serviceExpenseBreakdown[serviceName] = (stats.serviceExpenseBreakdown[serviceName] || 0) + p.runningCost;
+      }
       if (p.type === PRODUCER_TYPE.SURVEY_STATION && p.surveyTarget) {
         stats.powerDemand += PRODUCER_CONFIG[PRODUCER_TYPE.SURVEY_STATION].activeUtilityUsage.power;
       }
@@ -534,7 +546,20 @@ export class Simulation {
     for (const tile of this.grid.getActiveZonedTiles()) {
       if (tile.zone === ZONE.COMMERCIAL || tile.zone === ZONE.INDUSTRIAL || tile.zone === ZONE.AGRICULTURAL) {
         tile.filledJobs = Math.round((tile.totalJobs || 0) * stats.employmentRate);
+        const zoneName = tile.zone[0].toUpperCase() + tile.zone.slice(1);
+        stats.jobsAvailableBreakdown[zoneName] = (stats.jobsAvailableBreakdown[zoneName] || 0) + Math.max(0, (tile.totalJobs || 0) - tile.filledJobs);
+        stats.jobsFilledBreakdown[zoneName] = (stats.jobsFilledBreakdown[zoneName] || 0) + tile.filledJobs;
       }
+    }
+
+    stats.alerts = [];
+    const addAlert = (id, message, tile = null) => stats.alerts.push({ id, message, x: tile?.x ?? null, y: tile?.y ?? null });
+    const fireTile = Array.from(this.grid.getActiveFireTiles())[0];
+    if (fireTile) addAlert(`fire:${fireTile.x},${fireTile.y}`, 'Fire reported', fireTile);
+    const crimeTile = Array.from(this.grid.activeZonedTiles).find((tile) => (tile.crime || 0) >= CRIME_CONFIG.CRIME_PENALTY_THRESHOLD);
+    if (crimeTile) addAlert(`crime:${crimeTile.x},${crimeTile.y}`, 'Crime is high', crimeTile);
+    if (stats.patientDemand > 0 && stats.patientCapacity / stats.patientDemand < 0.25) {
+      addAlert('medical', 'Medical coverage is critically low');
     }
 
     const pensionRatio = Math.max(0, Math.min(SERVICE_GLOBAL_CONFIG.BUDGET_MAX_VALUE, this.pensionBudget ?? SERVICE_GLOBAL_CONFIG.BUDGET_MAX_VALUE)) / SERVICE_GLOBAL_CONFIG.BUDGET_MAX_VALUE;
@@ -595,6 +620,9 @@ export class Simulation {
     totalPatientDemand += fireInjuries;
     stats.patientDemand = Math.round(totalPatientDemand);
     stats.untreatedPatients = Math.max(0, stats.patientDemand - stats.patientCapacity);
+    if (stats.patientDemand > 0 && stats.patientCapacity / stats.patientDemand < 0.25) {
+      if (!stats.alerts.some((alert) => alert.id === 'medical')) stats.alerts.push({ id: 'medical', message: 'Medical coverage is critically low', x: null, y: null });
+    }
 
     stats.incomePerTick = Math.round(income);
     this.stats = stats;

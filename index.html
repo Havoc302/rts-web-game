@@ -115,9 +115,10 @@
           <svg class="stat-icon"><use href="#hud-income"/></svg>
           <span class="value" id="stat-income">+$0</span>
         </div>
-        <div class="stat-item" title="Service Cost / Tick">
+        <div class="stat-item has-tooltip" title="Service Cost / Tick">
           <svg class="stat-icon"><use href="#hud-service"/></svg>
           <span class="value" id="stat-service-expenses">-$0</span>
+          <div class="stat-tooltip"><div class="tooltip-header">Service Costs</div><div class="tooltip-row"><span class="val" id="stat-service-breakdown">None</span></div></div>
         </div>
         <div class="stat-item" title="Road Cost / Tick">
           <svg class="stat-icon"><use href="#hud-road"/></svg>
@@ -127,13 +128,15 @@
           <span class="stat-icon" aria-hidden="true">⚡</span>
           <span class="value" id="stat-utility-expenses">-$0</span>
         </div>
-        <div class="stat-item" title="Jobs Available">
+        <div class="stat-item has-tooltip" title="Jobs Available">
           <svg class="stat-icon"><use href="#hud-jobs"/></svg>
           <span class="value" id="stat-jobs-avail">0</span>
+          <div class="stat-tooltip"><div class="tooltip-header">Available Jobs</div><div class="tooltip-row"><span class="val" id="stat-jobs-breakdown">None</span></div></div>
         </div>
-        <div class="stat-item" title="Employment Rate">
+        <div class="stat-item has-tooltip" title="Employment Rate">
           <svg class="stat-icon"><use href="#hud-employment"/></svg>
           <span class="value" id="stat-emp-rate">0%</span>
+          <div class="stat-tooltip"><div class="tooltip-header">Jobs Filled</div><div class="tooltip-row"><span class="val" id="stat-employment-breakdown">None</span></div></div>
         </div>
         <div class="stat-item" title="Happiness">
           <span class="stat-icon-text">😊</span>
@@ -167,6 +170,8 @@
           <span class="value" id="stat-day">Day 1</span>
         </div>
       </div>
+
+      <div id="alerts-panel" class="alerts-panel" style="display: none;" role="status" aria-live="polite"></div>
 
 
       <div class="speed-controls">
@@ -214,7 +219,7 @@
       <!-- Utilities HUD -->
       <div class="utility-hud glass">
         <div class="utility-hud-tabs" role="tablist" aria-label="City information">
-          <button class="utility-hud-tab-button active" type="button" data-hud-tab="utilities">Utilities</button>
+          <button class="utility-hud-tab-button active" type="button" data-hud-tab="utilities">Services</button>
           <button class="utility-hud-tab-button" type="button" data-hud-tab="storage">Storage</button>
           <button class="utility-hud-tab-button" type="button" data-hud-tab="budgets">Budgets</button>
         </div>
@@ -275,6 +280,7 @@
             <div class="storage-item"><span>Iron Bars</span><strong id="stat-iron-bar">0</strong></div>
             <div class="storage-item"><span>Bauxite Bars</span><strong id="stat-bauxite-bar">0</strong></div>
             <div class="storage-item"><span>Oil</span><strong id="stat-oil">0</strong></div>
+            <div class="storage-item"><span>Uranium</span><strong id="stat-uranium">0</strong></div>
             <div class="storage-item"><span>Fuel</span><strong id="stat-fuel">0</strong></div>
             <div class="storage-item"><span>Goods</span><strong id="stat-goods">0</strong></div>
             <div class="storage-item"><span>Arms</span><strong id="stat-arms">0</strong></div>
@@ -397,10 +403,11 @@
           <button class="tool-btn" data-tool="producer_mine_iron"><span class="icon">⛏️</span><span class="name">Iron Mine ($5,000)</span></button>
           <button class="tool-btn" data-tool="producer_mine_bauxite"><span class="icon">⛏️</span><span class="name">Bauxite Mine ($5,000)</span></button>
           <button class="tool-btn" data-tool="producer_mine_coal"><span class="icon">⛏️</span><span class="name">Coal Mine ($5,000)</span></button>
+          <button class="tool-btn" data-tool="producer_mine_uranium"><span class="icon">☢️</span><span class="name">Uranium Mine ($12,000)</span></button>
           <button class="tool-btn" data-tool="producer_oil_derrick"><span class="icon">🛢️</span><span class="name">Oil Derrick ($7,000)</span></button>
-          <button class="tool-btn" data-tool="producer_warehouse_ore"><span class="icon">📦</span><span class="name">Ore Warehouse ($4,000)</span></button>
-          <button class="tool-btn" data-tool="producer_warehouse_bar"><span class="icon">📦</span><span class="name">Bar Warehouse ($5,000)</span></button>
-          <button class="tool-btn" data-tool="producer_warehouse_goods"><span class="icon">📦</span><span class="name">Goods Warehouse ($6,000)</span></button>
+          <button class="tool-btn" data-tool="producer_warehouse_ore"><span class="icon">🏭</span><span class="name">Ore Warehouse ($4,000)</span></button>
+          <button class="tool-btn" data-tool="producer_warehouse_bar"><span class="icon">🏭</span><span class="name">Bar Warehouse ($5,000)</span></button>
+          <button class="tool-btn" data-tool="producer_warehouse_goods"><span class="icon">🏭</span><span class="name">Goods Warehouse ($6,000)</span></button>
           <button class="tool-btn" data-tool="producer_silo"><span class="icon"><svg class="tool-svg-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9a4 4 0 0 1 8 0v12H4z" fill="#d4d4d8"/><path d="M13 11a3.5 3.5 0 0 1 7 0v10h-7z" fill="#a1a1aa"/><path d="M4 13h8M4 17h8M13 15h7M13 18.5h7" stroke="#52525b" stroke-width="1"/><path d="M2 21h20" stroke="#71717a" stroke-width="1.5"/></svg></span><span class="name">Silo ($4,500)</span></button>
           <button class="tool-btn" data-tool="producer_smelter"><span class="icon">🔥</span><span class="name">Smelter ($9,000)</span></button>
         </div>

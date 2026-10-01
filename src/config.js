@@ -80,6 +80,7 @@ export const PRODUCER_TYPE = {
   MINE_IRON: 'mine_iron',
   MINE_BAUXITE: 'mine_bauxite',
   MINE_COAL: 'mine_coal',
+  MINE_URANIUM: 'mine_uranium',
   OIL_DERRICK: 'oil_derrick',
   REFINERY: 'refinery',
   WAREHOUSE_ORE: 'warehouse_ore',
@@ -125,18 +126,26 @@ export const COAL_CONFIG = {
   EMISSION: 12,
 };
 
+export const NUCLEAR_CONFIG = {
+  ACCIDENT_RADIUS: 15,
+  ACCIDENT_POLLUTION: 100,
+  ACCIDENT_DISPLACEMENT_RATIO: 0.5,
+};
+
 export const ORE_TYPE = {
   IRON_ORE: 'iron_ore',
   BAUXITE: 'bauxite',
   COAL: 'coal',
   OIL: 'oil',
+  URANIUM: 'uranium',
 };
 
 export const ORE_CONFIG = {
-  [ORE_TYPE.IRON_ORE]: { name: 'Iron Ore', color: '#94a3b8' },
+  [ORE_TYPE.IRON_ORE]: { name: 'IRON', color: '#94a3b8' },
   [ORE_TYPE.BAUXITE]: { name: 'Bauxite', color: '#c2410c' },
   [ORE_TYPE.COAL]: { name: 'Coal', color: '#1f2937' },
   [ORE_TYPE.OIL]: { name: 'Oil', color: '#111827' },
+  [ORE_TYPE.URANIUM]: { name: 'Uranium', color: '#84cc16' },
 };
 
 export const COVERAGE_CONFIG = {
@@ -164,6 +173,7 @@ export const RESOURCE_CONFIG = {
   OIL_DERRICK_OUTPUT_PER_TICK: 100,     // Oil produced by one fully staffed derrick per tick
   REFINERY_OIL_PER_TICK: 100,           // Oil a staffed operational refinery processes per tick
   REFINERY_FUEL_PER_OIL: 0.5,           // Fuel yielded per unit of refined oil
+  NUCLEAR_URANIUM_PER_TICK: 10,
 };
 
 export const FUEL_CONFIG = {
@@ -222,7 +232,7 @@ export const BIOME_CONFIG = {
 
 // Industrial recipe definitions. Input values are stockpile units per output unit.
 export const FACTORY_RECIPES = {
-  CONSUMER_GOODS: { inputs: {}, output: 'consumerGoods', rate: 0.2 },
+  CONSUMER_GOODS: { inputs: { bauxiteBar: 0.5, ironBar: 0.5, oil: 1 }, output: 'consumerGoods', rate: 0.2 },
   FOOD: { inputs: {}, output: 'food', rate: 0.1 },
   ARMS: { inputs: { ironBar: 0.5 }, output: 'arms', rate: 0.05 },
   TANKS: { inputs: { ironBar: 1.0, bauxiteBar: 0.5 }, output: 'tanks', rate: 0.02 },
@@ -236,12 +246,13 @@ export const HAPPINESS_CONFIG = {
   CONSUMER_GOODS_MAX_BONUS: 15,          // Maximum happiness points from meeting goods demand
   UNFED_OUTFLOW_PERCENT: 0.05,            // Population fraction lost from an unfed residential tile per tick
   TAX_NEUTRAL_RATE: 40,                  // Tax rate that neither improves nor harms happiness
-  TAX_PENALTY_PER_POINT: 0.5,             // Happiness points lost per tax point above neutral
+  TAX_PENALTY_PER_POINT: 1.0,             // Happiness points lost per tax point above neutral (1.0 ensures >50% tax forces happiness below 50)
   LOW_TAX_BONUS_PER_POINT: 0.25,          // Happiness points gained per tax point below neutral
   EMPLOYMENT_MAX_BONUS: 15,               // Happiness bonus at full employment
   UTILITY_SERVICE_BONUS: 10,              // Happiness bonus when all residential utilities are available
   UTILITY_SHORTFALL_PENALTY: 15,          // Happiness penalty when residential utilities are missing
-  SERVICE_BONUS_PER_COVERAGE: 2,          // Happiness points per available civic service
+  SERVICE_BONUS_PER_COVERAGE: 2,          // (legacy — kept for reference) raw count weight
+  SERVICE_MAX_BONUS: 10,                  // Maximum happiness bonus from full civic-service coverage (normalised 0-1 average)
   POLLUTION_PENALTY_PER_POINT: 1,         // Happiness points lost per pollution point
   CRIME_PENALTY_PER_POINT: 2,             // Happiness points lost per crime point
   FOOD_SHORTFALL_PENALTY: 25,             // Happiness penalty when food demand is unmet
@@ -497,6 +508,13 @@ export const PRODUCER_CONFIG = {
     utilityUsage: { power: 1, water: 1, sewage: 1 },
     jobs: { light: 10, medium: 10, high: 10 },
   },
+  [PRODUCER_TYPE.MINE_URANIUM]: {
+    name: 'Uranium Mine', category: 'resource', utility: 'resource', capacity: 0,
+    cost: 12000, color: '#84cc16',
+    requiresDiscoveredOre: ORE_TYPE.URANIUM,
+    utilityUsage: { power: 2, water: 1, sewage: 1 },
+    jobs: { light: 10, medium: 10, high: 10 },
+  },
   [PRODUCER_TYPE.OIL_DERRICK]: {
     name: 'Oil Derrick', category: 'resource', utility: 'resource', capacity: 0,
     cost: 7000, color: '#111827',
@@ -702,7 +720,7 @@ export const LABOR_TAX_GROWTH_CONFIG = {
   GROWTH_NEUTRAL_RATE: 40,
   POPULATION_OUTFLOW_START_RATE: 50,
   MAX_TAX_RATE: 100,
-  MAX_OUTFLOW_GROWTH_PENALTY: 4,
+  MAX_OUTFLOW_GROWTH_PENALTY: 8,
   MAX_HIGH_TAX_JOBS_REDUCTION: 0.5,
 };
 

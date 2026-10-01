@@ -21,6 +21,7 @@ const EMPTY_STOCKPILE = {
   food: 0,
   coal: 0,
   oil: 0,
+  uraniumOre: 0,
   fuel: 0,
   ironOre: 0,
   bauxiteOre: 0,
@@ -51,6 +52,7 @@ export class ResourceManager {
     this.capacity = this.getWarehouseCapacity(grid);
     this.updateProducerJobs(grid, stats.employmentRate || 0);
     this.extractFromMines(grid);
+    this.consumeUraniumForPower(grid);
     this.smelt(grid);
     this.refineOil(grid);
     const foodBefore = this.stockpile.food;
@@ -103,10 +105,11 @@ export class ResourceManager {
       [PRODUCER_TYPE.MINE_BAUXITE]: 'bauxiteOre',
       [PRODUCER_TYPE.MINE_COAL]: 'coal',
       [PRODUCER_TYPE.OIL_DERRICK]: 'oil',
+      [PRODUCER_TYPE.MINE_URANIUM]: 'uraniumOre',
     };
     for (const producer of grid.producers) {
       const output = outputs[producer.type];
-      if (!output || !producer.operational) continue;
+      if (!output || !producer.operational || producer.destroyed) continue;
       let amount;
       if (producer.type === PRODUCER_TYPE.OIL_DERRICK) {
         const jobs = producer.totalJobs || PRODUCER_CONFIG[PRODUCER_TYPE.OIL_DERRICK].jobs.light;
@@ -184,6 +187,27 @@ export class ResourceManager {
     }
   }
 
+  consumeUraniumForPower(grid) {
+    for (const producer of grid.producers) {
+      if (producer.type !== PRODUCER_TYPE.NUCLEAR_PLANT || producer.destroyed) continue;
+      if ((this.stockpile.uraniumOre || 0) <= 0) {
+        producer.capacity = 0;
+        producer.operational = false;
+        continue;
+      }
+      const maxOutput = PRODUCER_CONFIG[PRODUCER_TYPE.NUCLEAR_PLANT].capacity;
+      const drawRatio = maxOutput > 0 ? Math.min(1, Math.max(0, (producer.usedCapacity || 0) / maxOutput)) : 0;
+      const demand = RESOURCE_CONFIG.NUCLEAR_URANIUM_PER_TICK * drawRatio;
+      if (demand > this.stockpile.uraniumOre) {
+        this.stockpile.uraniumOre = 0;
+        producer.capacity = 0;
+        producer.operational = false;
+      } else {
+        this.stockpile.uraniumOre -= demand;
+      }
+    }
+  }
+
   // Demand is the sum of each residential tile's own population.
   consumeFood(grid) {
     const residential = [];
@@ -256,9 +280,14 @@ export class ResourceManager {
     const servicedResidential = residentialTiles.filter((tile) => (
       !tile.shortfall.power && !tile.shortfall.water && !tile.shortfall.sewage
     )).length;
-    const serviceCoverage = residentialTiles.reduce((sum, tile) => (
-      sum + Object.values(tile.services || {}).filter(Boolean).length
-    ), 0);
+    // Normalised civic-service coverage: average fraction of known service types present per tile (0–1).
+    const CIVIC_SERVICES = ['police', 'fire', 'hospital', 'school', 'library', 'cityHall'];
+    const avgServiceRatio = residentialTiles.length > 0
+      ? residentialTiles.reduce((sum, tile) => {
+          const covered = CIVIC_SERVICES.filter((s) => tile.services?.[s]).length;
+          return sum + covered / CIVIC_SERVICES.length;
+        }, 0) / residentialTiles.length
+      : 0;
     const utilityScore = residentialTiles.length > 0
       ? (servicedResidential / residentialTiles.length) * HAPPINESS_CONFIG.UTILITY_SERVICE_BONUS
       : 0;
@@ -279,7 +308,7 @@ export class ResourceManager {
       Math.max(
         HAPPINESS_CONFIG.MIN_SCORE,
         HAPPINESS_CONFIG.BASE_SCORE + taxDelta + employmentBonus + utilityScore + waterfrontDelta +
-          serviceCoverage * HAPPINESS_CONFIG.SERVICE_BONUS_PER_COVERAGE +
+          avgServiceRatio * HAPPINESS_CONFIG.SERVICE_MAX_BONUS +
           goodsRatio * HAPPINESS_CONFIG.CONSUMER_GOODS_MAX_BONUS -
           averagePollution * HAPPINESS_CONFIG.POLLUTION_PENALTY_PER_POINT -
           crimePenalty - medicalPenalty - firePenalty - utilityPenalty -
@@ -295,6 +324,7 @@ export class ResourceManager {
       bauxiteOre: this.capacity.ore,
       coal: this.capacity.ore,
       oil: this.capacity.oil,
+      uraniumOre: this.capacity.ore,
       fuel: this.capacity.fuel,
       ironBar: this.capacity.bar,
       bauxiteBar: this.capacity.bar,

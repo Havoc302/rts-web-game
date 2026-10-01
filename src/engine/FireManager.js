@@ -1,4 +1,4 @@
-import { FIRE_CONFIG, PRODUCER_TYPE, ZONE, TERRAIN, TERRAIN_TYPE, TEMPERATURE_CONFIG } from '../config.js';
+import { FIRE_CONFIG, NUCLEAR_CONFIG, PRODUCER_TYPE, ZONE, TERRAIN, TERRAIN_TYPE, TEMPERATURE_CONFIG } from '../config.js';
 import { RoadNetwork } from './RoadNetwork.js';
 import { CoverageManager } from './CoverageManager.js';
 
@@ -83,6 +83,8 @@ export class FireManager {
 
         tile.fireDamage += FIRE_CONFIG.DAMAGE_PER_TICK;
         if (tile.fireDamage >= FIRE_CONFIG.MAX_DAMAGE) {
+          const nuclearAccident = tile.producer?.type === PRODUCER_TYPE.NUCLEAR_PLANT;
+          if (nuclearAccident) this.applyNuclearAccident(grid, tile, stats);
           if (tile.zone === ZONE.RESIDENTIAL && tile.population > 0) {
             const remainingResidents = Math.max(0, tile.population - (tile.fireDisplacedPopulation || 0));
             stats.displacedPopulation = (stats.displacedPopulation || 0) + remainingResidents;
@@ -123,6 +125,21 @@ export class FireManager {
     if (damaged) {
       tile.fireRepair = 0;
       grid.repairingTiles.add(tile);
+    }
+  }
+
+  static applyNuclearAccident(grid, source, stats) {
+    for (const row of grid.tiles) {
+      for (const tile of row) {
+        if (Math.abs(tile.x - source.x) + Math.abs(tile.y - source.y) > NUCLEAR_CONFIG.ACCIDENT_RADIUS) continue;
+        tile.permanentPollution = Math.max(tile.permanentPollution || 0, NUCLEAR_CONFIG.ACCIDENT_POLLUTION);
+        if (tile.zone === ZONE.RESIDENTIAL && tile.population > 0) {
+          const displaced = Math.ceil(tile.population * NUCLEAR_CONFIG.ACCIDENT_DISPLACEMENT_RATIO);
+          tile.fireDisplacedPopulation = (tile.fireDisplacedPopulation || 0) + displaced;
+          stats.displacedPopulation = (stats.displacedPopulation || 0) + displaced;
+          stats.fireInjuries = (stats.fireInjuries || 0) + displaced;
+        }
+      }
     }
   }
 
