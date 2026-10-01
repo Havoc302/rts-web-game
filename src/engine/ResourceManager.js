@@ -44,6 +44,10 @@ export class ResourceManager {
     for (const producer of grid.producers) {
       if (producer.type === PRODUCER_TYPE.COAL_PLANT && !producer.destroyed) {
         producer.capacity = coalCapacity;
+      } else if (producer.type === PRODUCER_TYPE.NUCLEAR_PLANT && !producer.destroyed) {
+        producer.capacity = (this.stockpile.uraniumOre || 0) > 0
+          ? PRODUCER_CONFIG[PRODUCER_TYPE.NUCLEAR_PLANT].capacity
+          : 0;
       }
     }
   }
@@ -193,6 +197,7 @@ export class ResourceManager {
       if ((this.stockpile.uraniumOre || 0) <= 0) {
         producer.capacity = 0;
         producer.operational = false;
+        producer.fuelShortfall = true;
         continue;
       }
       const maxOutput = PRODUCER_CONFIG[PRODUCER_TYPE.NUCLEAR_PLANT].capacity;
@@ -202,8 +207,10 @@ export class ResourceManager {
         this.stockpile.uraniumOre = 0;
         producer.capacity = 0;
         producer.operational = false;
+        producer.fuelShortfall = true;
       } else {
         this.stockpile.uraniumOre -= demand;
+        producer.fuelShortfall = false;
       }
     }
   }

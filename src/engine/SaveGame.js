@@ -66,6 +66,7 @@ function collectTileOverride(tile, base) {
   if (tile.isPolluted) add('isPolluted', true);
   if (tile.riverPollution) add('riverPollution', tile.riverPollution);
   if (tile.crime) add('crime', tile.crime);
+  if (tile.crimeDecayTicks) add('crimeDecayTicks', tile.crimeDecayTicks);
   if (tile.onFire) add('onFire', true);
   if (tile.fireDamage) add('fireDamage', tile.fireDamage);
   if ((tile.fireRepair ?? 1) !== 1) add('fireRepair', tile.fireRepair);
@@ -107,6 +108,7 @@ function applyTileOverride(tile, override) {
   if (override.isPolluted) tile.isPolluted = true;
   if (override.riverPollution) tile.riverPollution = override.riverPollution;
   if (override.crime) tile.crime = override.crime;
+  if (override.crimeDecayTicks) tile.crimeDecayTicks = override.crimeDecayTicks;
   if (override.onFire) tile.onFire = true;
   if (override.fireDamage) tile.fireDamage = override.fireDamage;
   if (override.fireRepair != null) tile.fireRepair = override.fireRepair;

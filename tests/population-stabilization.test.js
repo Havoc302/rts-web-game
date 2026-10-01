@@ -1,7 +1,7 @@
 import assert from 'assert';
 import { Grid } from '../src/engine/Grid.js';
 import { Simulation } from '../src/engine/Simulation.js';
-import { POPULATION_STABILIZATION_CONFIG } from '../src/config.js';
+import { DENSITY, GROWTH_CONFIG, POPULATION_STABILIZATION_CONFIG, TERRAIN, ZONE } from '../src/config.js';
 
 console.log('=== population-stabilization.test.js ===');
 
@@ -63,3 +63,61 @@ assert.strictEqual(POPULATION_STABILIZATION_CONFIG.MIN_POPULATION_SHIFT_FLOOR, 1
 }
 
 console.log('Population stabilization tests passed.');
+
+{
+  const grid = new Grid(12, 12, 1);
+  for (const row of grid.tiles) for (const tile of row) tile.terrain = TERRAIN.FLAT;
+  for (let index = 0; index < 20; index++) {
+    const tile = grid.getTile(index % 10, Math.floor(index / 10));
+    tile.zone = ZONE.RESIDENTIAL;
+    tile.density = DENSITY.HIGH;
+    tile.population = 250;
+    tile.growthScore = GROWTH_CONFIG.MAX_SCORE;
+    grid.activeZonedTiles.add(tile);
+  }
+  const sim = new Simulation(grid);
+  sim.stats.population = 5000;
+  const previousRandom = Math.random;
+  Math.random = () => 0.99;
+  try {
+    sim.tick();
+  } finally {
+    Math.random = previousRandom;
+  }
+  assert.ok(sim.stats.population <= 5075, `One tick must not grow a 5,000-person city by more than 1.5% (got ${sim.stats.population})`);
+  assert.strictEqual(sim.stats.population, Array.from(grid.activeZonedTiles).reduce((sum, tile) => sum + tile.population, 0), 'HUD and residential tile totals must agree');
+  const afterGrowth = sim.stats.population;
+  for (const tile of grid.activeZonedTiles) tile.growthScore = 0;
+  sim.tick(false);
+  assert.strictEqual(sim.stats.population, afterGrowth, 'Paused preview must not move residents toward their growth-score targets');
+  sim.tick();
+  assert.ok(sim.stats.population >= afterGrowth - Math.floor(afterGrowth * POPULATION_STABILIZATION_CONFIG.MAX_POPULATION_SHIFT_PER_TICK), 'One tick must not drive city outflow faster than 1.5%');
+  assert.strictEqual(sim.stats.population, Array.from(grid.activeZonedTiles).reduce((sum, tile) => sum + tile.population, 0));
+}
+
+{
+  const grid = new Grid(8, 8, 1);
+  for (const row of grid.tiles) for (const tile of row) tile.terrain = TERRAIN.FLAT;
+  grid.placeRoad(2, 1);
+  grid.placeRoad(5, 4);
+  grid.placeZone(2, 2, ZONE.RESIDENTIAL);
+  grid.placeZone(5, 5, ZONE.RESIDENTIAL);
+  const source = grid.getTile(2, 2);
+  const destination = grid.getTile(5, 5);
+  source.growthScore = GROWTH_CONFIG.THRESHOLD_MEDIUM;
+  const sim = new Simulation(grid);
+  sim.computeStats();
+  const beforeFire = sim.stats.population;
+  source.onFire = true;
+  grid.activeFireTiles.add(source);
+  const previousRandom = Math.random;
+  Math.random = () => 0.99;
+  try {
+    sim.tick();
+  } finally {
+    Math.random = previousRandom;
+  }
+  assert.ok(destination.population > 1, 'Fire evacuation bypasses the one-person migration cap to move residents immediately');
+  assert.ok(source.population < beforeFire, 'Burning home loses residents immediately');
+  assert.ok(Math.abs(sim.stats.population - beforeFire) <= 1, 'Moving households within the city does not create a population spike');
+}

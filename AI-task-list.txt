@@ -998,6 +998,89 @@ Current task: Jump to emergency locations from alerts.
 - [done] `npm test` passes all 42 test files; diagnostics are clean.
 - [done] Bump the patch version to 0.1.51.
 
+Current task: Improve commercial and industrial tile art.
+
+- [done] Add stronger commercial storefront, awning, and window details across light/medium/high density.
+- [done] Add smoke stacks and animated smoke puffs to industrial tiles at every density.
+- [done] Smoke drift and animation respond to current wind intensity.
+- [done] Run renderer/full validation and bump the patch version to 0.1.52.
+
+Current task: Differentiate warehouse art from industrial factories.
+
+- [done] Warehouse map tiles are now large metal boxes with a slightly angled roof, horizontal metal bands, and loading doors; they have no smoke stacks or smoke.
+- [done] Warehouse sidebar icons use package/box symbols rather than factory symbols.
+- [done] Industrial zone smoke remains on the industrial-zone renderer only.
+- [done] Bump the patch version to 0.1.53.
+
+Current task: Distinguish warehouse types by color.
+
+- [done] Keep the metal warehouse shape and color its walls by type: stone-gray ore, copper bar, blue goods.
+- [done] Replace sidebar package emoji with matching colored warehouse glyphs.
+- [done] Assert each map wall color and corresponding sidebar glyph in `tests/renderer-cache.test.js`.
+- [done] Bump the patch version to 0.1.54.
+
+Current task: Let crime incidents fade over five ticks.
+
+- [done] Each new or diffused crime incident starts a five-tick fade; additional incidents restart it.
+- [done] Vacant and police-covered tiles retain a gradually fading crime trace for the overlay.
+- [done] Sparse saves preserve the remaining fade countdown; the overlay formats fractional values to one decimal.
+- [done] Focused crime and save round-trip tests pass; bump patch version to 0.1.55.
+
+Current task: Enforce population smoothing in live simulation ticks.
+
+- [done] Reproduced the report: a 5,000-person city jumped to 9,500 in one tick because `computeStats()` derived tile populations from growth scores without invoking the cap.
+- [done] Live ticks now preserve current residential populations for stats/resource calculations, then distribute separate citywide entry/outflow budgets (1.5% of starting residents, minimum one) proportionally among homes seeking changes.
+- [done] Preview ticks and tax/pension/service-budget slider refreshes do not move residents; HUD and tile population totals agree.
+- [done] Fire evacuation and relocation between homes are immediate and bypass migration smoothing because they do not represent population entering or leaving the city.
+- [done] Extend population-stabilization tests for a 5,000-person jump, city outflow, previews, and fire relocation; seed prebuilt populations in core simulation fixtures.
+- [done] Update `docs/DESIGN.md` and bump patch version to 0.1.56.
+
+Current task: Reduce spontaneous fires and limit weather ignition boosts.
+
+- [done] Lower forest, standalone producer, occupied-zone, and high-pollution spontaneous ignition chances by 10×.
+- [done] Boost spontaneous ignition by 1.5× only when cloud cover reaches 1.0 (thunderstorm) or temperature exceeds 35°C; no stacking. Ordinary wind and lesser rainfall do not raise it.
+- [done] Keep fire spread, rain extinguishing, and windmill overspeed ignition as separate mechanics.
+- [done] Add 0.99/1.0 cloud and 35/36°C boundary checks plus an actual fire-update test; update core probability assertions.
+- [done] Update `docs/DESIGN.md` and bump patch version to 0.1.57.
+
+Current task: Keep the top bar stable while adjusting tax.
+
+- [done] Reserve four character cells for the tax percentage, including `100%`, and prevent the 72px slider track from flex-shrinking.
+- [done] Browser-check the tax control and next header item's positions at 0%, 50%, and 100% on desktop and at 0% and 100% on a 390px viewport; widths/positions stayed identical.
+- [done] Update `docs/DESIGN.md` and bump patch version to 0.1.58.
+
+Current task: Only prioritize power by provider distance during shortages.
+
+- [done] Keep renewable → battery → dispatchable allocation on surplus ticks without global tile-distance sorting.
+- [done] If any zoned tile has unmet power demand, rerun power allocation across all generator types nearest-first, including when total city capacity hides a disconnected component.
+- [done] Cache expensive per-producer road BFS maps across stable ticks; invalidate on topology, connection-point, or regenerated-map changes while recalculating live demand and tile connectivity each tick.
+- [done] Prove mixed-source distance shedding, surplus fast path, cache reuse, and topology/regen invalidation in `tests/wind-solar-grid.test.js`.
+- [done] Update `docs/DESIGN.md` and bump patch version to 0.1.59.
+
+Current task: Keep nearby utility and civic buildings powered during shortages.
+
+- [done] Reproduce the blackout: a far zoned tile consumed power before a nearer pump or Survey Station because producers were allocated only after all zoned tiles.
+- [done] On any zone or producer power shortfall, reallocate power across zones and producer consumers in shared nearest-road-distance order (producer wins equal-distance ties).
+- [done] Apply producer utility failure/grace state once after final ranking; settle/charge batteries only after zone and producer power consumption is known.
+- [done] Include baseline producer power and active survey use in the HUD demand meter.
+- [done] Test nearby pump, sewage plant, Survey Station, and police station retaining power ahead of a distant home; verify renewable/pause/service regressions.
+- [done] Update `docs/DESIGN.md` and bump patch version to 0.1.60.
+
+Current task: Explain nuclear uranium requirements and fuel outages.
+
+- [done] Record nuclear fuel starvation independently of utility shortfalls; show `No Uranium` in Tile Inspector title, power status, and output, including zero-capacity plants in older saves.
+- [done] Restore nuclear capacity when uranium is supplied on the next live tick.
+- [done] Nuclear build info displays required uranium storage and maximum consumption of 10 uranium per in-game hour at full output, scaled to generation.
+- [done] Extend `tests/uranium.test.js`, verify build info and Tile Inspector in a separate browser tab, and run the full suite.
+- [done] Update `docs/DESIGN.md` and bump patch version to 0.1.61.
+
+Current task: Show hourly operating cost in utility and civic build info.
+
+- [done] Flat $2/hour on generators, batteries, Water Pumps, and Sewage Plants; Survey Station $0 idle / $10 surveying per hour.
+- [done] Civic service L/M/H full-staff and full-budget hourly estimates use `ServiceManager.getOperatingCost`, the same formula as live expenses; mark actual cost as variable. City Hall and Oil Refinery show $0 direct hourly cost.
+- [done] Browser-check every Utility Producers and Civic Services button plus Survey Station for an operating-cost row; add `tests/service-expense-scale.test.js` regression for shared cost calculations.
+- [done] Update `docs/DESIGN.md` and bump patch version to 0.1.62.
+
 To check: All production which can be stored. Food, Consumer Goods, arms, tanks, raw materials (bauxite, aluminium, iron, oil) should use a similar system to power generation and batteries. Consumers of those things should be given priority first then the storage is filled, overflow is defaults to consumers or is lost if storage is full.
 Possible bug: Oil derricks are producing oil but the silo set to oil isn't storing anything, I can see it's not going to the refinery either, it shows no rate of production but I can tell because my other silo set to fuel is also not filling up. Unless it's all working but all being consumed by users before any of those things in the production chain actually show anything.
 We need an alerts panel kind of like SimCity events notifications where we can tell the user if a fire has broken out, crime rate has climbed to be high, medical coverage is critically low, treasury is out of money. Things like that.

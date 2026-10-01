@@ -33,6 +33,8 @@ function flatten(grid) {
   flatten(grid);
   grid.placeRoad(2, 2);
   grid.placeZone(2, 1, ZONE.RESIDENTIAL);
+  grid.getTile(2, 1).crime = 1.2;
+  grid.getTile(2, 1).crimeDecayTicks = 3;
   const battery = grid.placeProducer(4, 4, PRODUCER_TYPE.BATTERY, 400);
   battery.storedEnergy = 123;
   const simulation = new Simulation(grid);
@@ -56,6 +58,8 @@ function flatten(grid) {
   const restored = deserializeGameFromJson(json);
   assert.strictEqual(restored.grid.width, 8);
   assert.strictEqual(restored.grid.getTile(2, 1).zone, ZONE.RESIDENTIAL);
+  assert.strictEqual(restored.grid.getTile(2, 1).crime, 1.2);
+  assert.strictEqual(restored.grid.getTile(2, 1).crimeDecayTicks, 3, 'Remaining crime memory should survive a save');
   assert.strictEqual(restored.grid.producers[0].storedEnergy, 123);
   assert.strictEqual(restored.simulation.tickCount, 17);
   assert.strictEqual(restored.simulation.taxRate, 35);

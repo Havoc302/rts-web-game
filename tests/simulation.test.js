@@ -108,6 +108,7 @@ console.log('Running Phase 1 Core Loop Automated Verification Tests...\n');
   source.onFire = true;
 
   const simulation = new Simulation(grid);
+  simulation.computeStats();
   simulation.tick();
 
   assert.strictEqual(source.destroyed, false, 'The home tile should still exist before reaching maximum damage');
@@ -122,11 +123,11 @@ console.log('Running Phase 1 Core Loop Automated Verification Tests...\n');
   const industrialTile = { zone: ZONE.INDUSTRIAL, filledJobs: 100, totalJobs: 100, pollution: 0 };
 
   assert.strictEqual(FireManager.getIgnitionChance(residentialTile), 0, 'Empty residential tiles should have no occupancy-based fire risk');
-  assert.strictEqual(FireManager.getIgnitionChance({ ...residentialTile, population: 50 }), 0.005, 'Half-full residential tiles should have 0.5% fire risk');
-  assert.strictEqual(FireManager.getIgnitionChance({ ...residentialTile, population: 100 }), FIRE_CONFIG.MAX_IGNITION_CHANCE_NON_INDUSTRIAL, 'Full residential tiles should cap at 1% fire risk');
-  assert.strictEqual(FireManager.getIgnitionChance(industrialTile), FIRE_CONFIG.MAX_IGNITION_CHANCE_INDUSTRIAL, 'Full industrial tiles should cap at 2% fire risk');
+  assert.strictEqual(FireManager.getIgnitionChance({ ...residentialTile, population: 50 }), FIRE_CONFIG.MAX_IGNITION_CHANCE_NON_INDUSTRIAL / 2, 'Half-full residential tiles should have 0.05% fire risk');
+  assert.strictEqual(FireManager.getIgnitionChance({ ...residentialTile, population: 100 }), FIRE_CONFIG.MAX_IGNITION_CHANCE_NON_INDUSTRIAL, 'Full residential tiles should cap at 0.1% fire risk');
+  assert.strictEqual(FireManager.getIgnitionChance(industrialTile), FIRE_CONFIG.MAX_IGNITION_CHANCE_INDUSTRIAL, 'Full industrial tiles should cap at 0.2% fire risk');
   assert.strictEqual(FireManager.getIgnitionChance({ ...industrialTile, pollution: 100 }), FIRE_CONFIG.MAX_IGNITION_CHANCE_INDUSTRIAL, 'Pollution must not exceed the industrial fire risk cap');
-  assert.strictEqual(FireManager.getIgnitionChance({ terrain: TERRAIN.FOREST, pollution: 100, population: 100, maxPopulation: 100 }), FIRE_CONFIG.FOREST_IGNITION_CHANCE, 'Forest tiles should use the fixed 0.01% fire risk');
+  assert.strictEqual(FireManager.getIgnitionChance({ terrain: TERRAIN.FOREST, pollution: 100, population: 100, maxPopulation: 100 }), FIRE_CONFIG.FOREST_IGNITION_CHANCE, 'Forest tiles should use the fixed 0.0001% fire risk');
   assert.strictEqual(FireManager.getIgnitionChance({ terrain: TERRAIN.FLAT, zone: ZONE.NONE, pollution: 100 }), 0, 'Empty barren flat should not ignite');
   assert.strictEqual(FireManager.getIgnitionChance({ terrain: TERRAIN.FLAT, zone: ZONE.NONE, producer: { type: 'power_plant' }, pollution: 0 }), FIRE_CONFIG.BASE_IGNITION_CHANCE, 'Standalone producers can ignite');
   assert.strictEqual(FireManager.getIgnitionChance({ terrain: TERRAIN.MOUNTAIN, zone: ZONE.NONE, pollution: 0 }), 0, 'Mountains are fire-immune');
@@ -401,6 +402,7 @@ console.log('Running Phase 1 Core Loop Automated Verification Tests...\n');
   grid.getTile(2, 2).growthScore = GROWTH_CONFIG.THRESHOLD_MEDIUM;
 
   const sim = new Simulation(grid);
+  sim.computeStats();
   sim.tick();
 
   const backedUpTile = grid.getTile(2, 2);
@@ -601,6 +603,7 @@ console.log('Running Phase 1 Core Loop Automated Verification Tests...\n');
   laborTile.density = DENSITY.HIGH;
   laborTile.growthScore = GROWTH_CONFIG.MAX_SCORE;
 
+  sim.computeStats();
   sim.tick();
 
   const cTile = grid.getTile(3, 2);
@@ -635,6 +638,7 @@ console.log('Running Phase 1 Core Loop Automated Verification Tests...\n');
 
   // At 0% tax, low-tax attraction applies across developed zones.
   sim.taxRate = 0;
+  sim.computeStats();
   sim.tick();
   const cTileAt100 = grid.getTile(3, 3).growthScore;
   const iTileAt100 = grid.getTile(3, 4).growthScore;

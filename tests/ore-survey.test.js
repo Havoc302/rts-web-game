@@ -1,7 +1,8 @@
 import assert from 'assert';
 import { Grid } from '../src/engine/Grid.js';
 import { Simulation } from '../src/engine/Simulation.js';
-import { PRODUCER_TYPE, TERRAIN, ORE_CONFIG } from '../src/config.js';
+import { UtilityManager } from '../src/engine/UtilityManager.js';
+import { PRODUCER_TYPE, TERRAIN, ORE_CONFIG, ZONE } from '../src/config.js';
 
 function clearTerrain(grid) {
   for (const row of grid.tiles) {
@@ -32,6 +33,48 @@ function clearTerrain(grid) {
   assert.ok(mountainDeposits / mountainTiles > flatDeposits / flatTiles, 'Mountains should have a higher ore deposit rate');
 }
 
+// A connected producer and a zoned tile compete for the same limited power.
+{
+  const grid = new Grid(12, 12, 1);
+  clearTerrain(grid);
+  grid.getTile(0, 3).terrain = TERRAIN.WATER;
+  grid.placeProducer(1, 1, PRODUCER_TYPE.POWER_PLANT, 2);
+  const pump = grid.placeProducer(1, 3, PRODUCER_TYPE.WATER_TOWER, 100);
+  for (let y = 1; y <= 6; y++) grid.placeRoad(2, y);
+  grid.placeZone(3, 6, ZONE.RESIDENTIAL);
+  const distantHome = grid.getTile(3, 6);
+  distantHome.population = 25;
+  distantHome.maxPopulation = 25;
+
+  UtilityManager.allocateAll(grid);
+  assert.strictEqual(pump.utilityShortfall.power, false, 'A nearby pump should receive power before a distant home');
+  assert.strictEqual(distantHome.shortfall.power, true, 'The farther home should lose power when the pump uses the remaining capacity');
+}
+
+{
+  const grid = new Grid(12, 12, 1);
+  clearTerrain(grid);
+  grid.getTile(0, 3).terrain = TERRAIN.WATER;
+  grid.getTile(0, 5).terrain = TERRAIN.WATER;
+  grid.placeProducer(1, 1, PRODUCER_TYPE.POWER_PLANT, 7);
+  const pump = grid.placeProducer(1, 3, PRODUCER_TYPE.WATER_TOWER, 100);
+  const sewage = grid.placeProducer(1, 5, PRODUCER_TYPE.SEWAGE_PLANT, 100);
+  const survey = grid.placeProducer(3, 3, PRODUCER_TYPE.SURVEY_STATION, 0);
+  const police = grid.placeProducer(3, 4, PRODUCER_TYPE.POLICE_STATION, 0);
+  for (let y = 1; y <= 8; y++) grid.placeRoad(2, y);
+  grid.placeZone(3, 8, ZONE.RESIDENTIAL);
+  const distantHome = grid.getTile(3, 8);
+  distantHome.population = 25;
+  distantHome.maxPopulation = 25;
+
+  UtilityManager.allocateAll(grid);
+  for (const producer of [pump, sewage, survey, police]) {
+    assert.strictEqual(producer.utilityShortfall.power, false, `${producer.type} should retain power before the distant home`);
+    assert.strictEqual(producer.operational, true, `${producer.type} should remain operational after power is reranked`);
+  }
+  assert.strictEqual(distantHome.shortfall.power, true, 'The distant home is shed after nearer utility and civic buildings');
+}
+
 // Survey stations need all utilities and survey one target at a time.
 {
   const grid = new Grid(12, 12, 1);
@@ -53,13 +96,13 @@ function clearTerrain(grid) {
   const powerPlant = grid.producers.find((producer) => producer.type === PRODUCER_TYPE.POWER_PLANT);
   assert.strictEqual(station.operational, true, 'Survey station should operate when all utilities are connected');
   assert.strictEqual(powerPlant.usedCapacity, 6, 'Idle survey station plus water/sewage baseline draws should use 6 power');
-  assert.strictEqual(simulation.stats.powerDemand, 0, 'Idle survey should not add active power demand');
+  assert.strictEqual(simulation.stats.powerDemand, 6, 'HUD demand includes the pump, sewage plant, and idle Survey Station');
   assert.strictEqual(grid.startSurvey(3, 4), true, 'Survey station should accept one target');
   assert.strictEqual(grid.startSurvey(4, 4), false, 'A busy survey station should reject a second target');
 
   simulation.tick();
   assert.strictEqual(powerPlant.usedCapacity, 16, 'Active survey should add a ten-unit power demand on top of the 6-unit baseline');
-  assert.strictEqual(simulation.stats.powerDemand, 10, 'Active survey power should appear in HUD demand');
+  assert.strictEqual(simulation.stats.powerDemand, 16, 'Active survey power adds ten units to baseline producer demand');
 
   for (let i = 0; i < 8; i++) simulation.tick();
   assert.strictEqual(grid.getTile(3, 4).oreDiscovered, false, 'Standard survey should take ten ticks');

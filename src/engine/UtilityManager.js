@@ -11,17 +11,26 @@ export class UtilityManager {
     for (const producer of grid.producers) {
       if (POWER_PRODUCER_TYPES.includes(producer.type)) producer.usedCapacity = 0;
     }
-    this.allocateUtility(grid, this.getRenewablePowerProducerTypes(), 'power', 'ascending');
-    this.allocateUtility(grid, [PRODUCER_TYPE.BATTERY], 'power', 'ascending', false);
-    this.allocateUtility(grid, this.getDispatchablePowerProducerTypes(), 'power', 'ascending', false);
+    this.allocateUtility(grid, this.getRenewablePowerProducerTypes(), 'power', 'none');
+    this.allocateUtility(grid, [PRODUCER_TYPE.BATTERY], 'power', 'none', false);
+    this.allocateUtility(grid, this.getDispatchablePowerProducerTypes(), 'power', 'none', false);
+    this.allocateUtility(grid, PRODUCER_TYPE.WATER_TOWER, 'water', 'ascending');
+    this.allocateUtility(grid, PRODUCER_TYPE.SEWAGE_PLANT, 'sewage', 'descending');
+    this.allocateUtilityConsumers(grid);
+    let hasPowerShortfall = grid.producers.some((producer) => producer.utilityShortfall?.power);
+    for (const tile of grid.getActiveZonedTiles()) {
+      if (tile.shortfall.power && this.getTileUtilityUsage(tile, 'power') > 0) {
+        hasPowerShortfall = true;
+        break;
+      }
+    }
+    if (hasPowerShortfall) this.allocatePowerByDistance(grid);
+    this.updateProducerOperationalState(grid);
     if (!preview) {
       this.settleBatteries(grid);
       this.chargeRenewableSurplus(grid);
       this.chargeDispatchableSurplus(grid);
     }
-    this.allocateUtility(grid, PRODUCER_TYPE.WATER_TOWER, 'water', 'ascending');
-    this.allocateUtility(grid, PRODUCER_TYPE.SEWAGE_PLANT, 'sewage', 'descending');
-    this.allocateUtilityConsumers(grid);
   }
 
   static getAdjacentBattery(grid, x, y) {
@@ -165,7 +174,6 @@ export class UtilityManager {
       if (!usage) continue;
 
       producer.utilityShortfall = { power: false, water: false, sewage: false };
-      let hasUtilityShortfall = false;
       const activeUsage = producer.type === PRODUCER_TYPE.SURVEY_STATION && producer.surveyTarget
         ? config.activeUtilityUsage || {}
         : {};
@@ -187,16 +195,68 @@ export class UtilityManager {
           available.producer.usedCapacity += required;
         } else {
           producer.utilityShortfall[utilityKey] = true;
-          hasUtilityShortfall = true;
         }
       }
+    }
+  }
 
+  static updateProducerOperationalState(grid) {
+    for (const producer of grid.producers) {
+      if (!PRODUCER_CONFIG[producer.type]?.utilityUsage) continue;
+      const hasUtilityShortfall = Object.values(producer.utilityShortfall).some(Boolean);
       if (hasUtilityShortfall) {
         producer.utilityFailureTicks = (producer.utilityFailureTicks || 0) + 1;
         producer.operational = producer.utilityFailureTicks <= SERVICE_GLOBAL_CONFIG.UTILITY_FAILURE_GRACE_TICKS;
       } else {
         producer.utilityFailureTicks = 0;
         producer.operational = true;
+      }
+    }
+  }
+
+  static allocatePowerByDistance(grid) {
+    const { roadDistancesMap, connectedZonedTiles } = RoadNetwork.computeProducerDistances(grid, POWER_PRODUCER_TYPES);
+    for (const producer of grid.producers) {
+      if (POWER_PRODUCER_TYPES.includes(producer.type)) producer.usedCapacity = 0;
+    }
+
+    const consumers = connectedZonedTiles.map((item) => ({
+      tile: item.tile,
+      distance: item.distance,
+      candidates: item.allCandidatesSorted,
+      required: this.getTileUtilityUsage(item.tile, 'power'),
+    }));
+    for (const producer of grid.producers) {
+      const config = PRODUCER_CONFIG[producer.type];
+      const active = producer.type === PRODUCER_TYPE.SURVEY_STATION && producer.surveyTarget ? config?.activeUtilityUsage?.power || 0 : 0;
+      const required = (config?.utilityUsage?.power || 0) + active;
+      if (required <= 0) continue;
+      const choices = new Map();
+      for (const neighbor of grid.getNeighbors(producer.x, producer.y)) {
+        if (!neighbor.hasRoad) continue;
+        for (const [id, info] of roadDistancesMap.get(`${neighbor.x},${neighbor.y}`) || []) {
+          if (!choices.has(id) || choices.get(id).distance > info.distance) choices.set(id, info);
+        }
+      }
+      const candidates = Array.from(choices.values()).sort((a, b) => a.distance - b.distance);
+      consumers.push({ producer, distance: candidates[0]?.distance ?? Infinity, candidates, required });
+    }
+
+    for (const tile of grid.getActiveZonedTiles()) {
+      tile.shortfall.power = true;
+      tile.distanceToProducer.power = Infinity;
+    }
+    consumers.sort((a, b) => a.distance - b.distance || Number(Boolean(b.producer)) - Number(Boolean(a.producer)));
+    for (const consumer of consumers) {
+      const source = consumer.candidates.find(({ producer }) =>
+        !producer.contaminated && producer.capacity - producer.usedCapacity >= consumer.required
+      )?.producer;
+      if (source) source.usedCapacity += consumer.required;
+      if (consumer.tile) {
+        consumer.tile.shortfall.power = !source;
+        consumer.tile.distanceToProducer.power = consumer.distance;
+      } else {
+        consumer.producer.utilityShortfall.power = !source;
       }
     }
   }

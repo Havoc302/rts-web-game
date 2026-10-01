@@ -13,11 +13,9 @@ export class CrimeManager {
       const pop = tile.population || 0;
       const jobs = tile.filledJobs || 0;
 
-      // Rule 1: No population/occupants = No crime. Dissipate existing crime on vacant tiles.
+      // Rule 1: No population/occupants = No new crime.
       if (pop === 0 && jobs === 0) {
-        if (currentCrime > 0) {
-          tile.crime = Math.max(0, currentCrime - CRIME_CONFIG.CRIME_DISSIPATION_RATE * 2);
-        }
+        this.decayCrime(tile);
         continue;
       }
 
@@ -25,9 +23,7 @@ export class CrimeManager {
       // Kids and retirees are excluded from the risk pool.
       const tileWorkforce = pop > 0 ? splitDemographics(pop).workforce : jobs;
       if (tileWorkforce <= 0) {
-        if (currentCrime > 0) {
-          tile.crime = Math.max(0, currentCrime - CRIME_CONFIG.CRIME_DISSIPATION_RATE);
-        }
+        this.decayCrime(tile);
         continue;
       }
 
@@ -36,10 +32,7 @@ export class CrimeManager {
       const suppressionChance = hasPoliceCoverage ? CRIME_CONFIG.POLICE_SUPPRESSION_CHANCE : 0;
 
       if (Math.random() < suppressionChance) {
-        // Police presence actively reduces existing crime levels
-        if (currentCrime > 0) {
-          tile.crime = Math.max(0, currentCrime - CRIME_CONFIG.CRIME_DISSIPATION_RATE);
-        }
+        this.decayCrime(tile);
         continue;
       }
 
@@ -55,9 +48,9 @@ export class CrimeManager {
           CRIME_CONFIG.MAX_CRIME_LEVEL,
           currentCrime + CRIME_CONFIG.CRIME_INCREMENT_PER_EVENT
         );
+        tile.crimeDecayTicks = CRIME_CONFIG.CRIME_MEMORY_TICKS;
       } else if (currentCrime > 0) {
-        // Natural decay when no crime event triggers
-        tile.crime = Math.max(0, currentCrime - CRIME_CONFIG.CRIME_DISSIPATION_RATE);
+        this.decayCrime(tile);
       }
 
       // Rule 5: Crime Diffusion to Adjacent Occupied Tiles
@@ -69,9 +62,17 @@ export class CrimeManager {
               CRIME_CONFIG.MAX_CRIME_LEVEL,
               (neighbor.crime || 0) + CRIME_CONFIG.CRIME_DIFFUSION_INCREMENT
             );
+            neighbor.crimeDecayTicks = CRIME_CONFIG.CRIME_MEMORY_TICKS;
           }
         }
       }
     }
+  }
+
+  static decayCrime(tile) {
+    if (!(tile.crime > 0)) return;
+    const remaining = tile.crimeDecayTicks || CRIME_CONFIG.CRIME_MEMORY_TICKS;
+    tile.crimeDecayTicks = remaining - 1;
+    tile.crime = tile.crimeDecayTicks > 0 ? tile.crime * (tile.crimeDecayTicks / remaining) : 0;
   }
 }

@@ -305,9 +305,15 @@ span.stat-icon {
 
 .tax-control input[type="range"] {
   width: 72px;
+  flex: 0 0 72px;
   margin: 0;
   accent-color: var(--accent);
   cursor: pointer;
+}
+
+.tax-control > .value {
+  flex: 0 0 4ch;
+  width: 4ch;
 }
 
 .service-budgets h3 {

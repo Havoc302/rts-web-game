@@ -22,6 +22,11 @@ export function getProducerConnectionStatus(grid, producer) {
   return { isBatteryDependent: true, isConnected: true, message: 'Connected via Battery Storage' };
 }
 
+export function isNuclearFuelStarved(producer) {
+  return producer?.type === PRODUCER_TYPE.NUCLEAR_PLANT &&
+    (producer.fuelShortfall || (producer.capacity === 0 && !producer.destroyed));
+}
+
 export function getTileUtilityStatus(grid, tile, key) {
   if (!tile) return 'Not Required';
   const connectionStatus = tile.producer
@@ -32,6 +37,9 @@ export function getTileUtilityStatus(grid, tile, key) {
 
   if (tile.producer) {
     const producerConfig = PRODUCER_CONFIG[tile.producer.type];
+    if (key === 'power' && isNuclearFuelStarved(tile.producer)) {
+      return 'Offline (No Uranium)';
+    }
     if (producerConfig?.utility === key) {
       return 'Produces This Utility';
     }
@@ -96,6 +104,7 @@ export function formatSiloStorage(producer, stockpile = {}, capacity = {}) {
 
 export function formatProducerCapacity(producer, grid = null) {
   if (!producer) return 'N/A';
+  if (isNuclearFuelStarved(producer)) return 'Offline (No Uranium)';
   const isBatteryDependent = producer.type === PRODUCER_TYPE.WINDMILL ||
     producer.type === PRODUCER_TYPE.SOLAR_PANEL;
   if (isBatteryDependent) {

@@ -1,4 +1,6 @@
 export class RoadNetwork {
+  static distanceCache = new WeakMap();
+
   static computeProducerDistances(grid, producerType) {
     const types = Array.isArray(producerType) ? producerType : [producerType];
     const producersOfChoice = grid.producers.filter((p) => types.includes(p.type));
@@ -7,6 +9,59 @@ export class RoadNetwork {
       return { roadDistancesMap: new Map(), connectedZonedTiles: [] };
     }
 
+    const key = `${types.join(',')}:${grid.coverageVersion}:${producersOfChoice.map((prod) =>
+      `${prod.id}:${prod.gridConnectionX ?? prod.x},${prod.gridConnectionY ?? prod.y}`
+    ).join(';')}`;
+    let cache = this.distanceCache.get(grid);
+    if (!cache || cache.version !== grid.coverageVersion || cache.tiles !== grid.tiles) {
+      cache = { version: grid.coverageVersion, tiles: grid.tiles, distances: new Map() };
+      this.distanceCache.set(grid, cache);
+    }
+    let roadDistancesMap = cache.distances.get(key);
+    if (!roadDistancesMap) {
+      roadDistancesMap = this.computeRoadDistances(grid, producersOfChoice);
+      cache.distances.set(key, roadDistancesMap);
+    }
+
+    const connectedZonedTiles = [];
+
+    for (const tile of grid.getActiveZonedTiles()) {
+
+        const neighbors = grid.getNeighbors(tile.x, tile.y);
+        const producerMapForTile = new Map(); // producerId -> { distance, producer }
+
+        for (const n of neighbors) {
+          if (n.hasRoad) {
+            const roadKey = `${n.x},${n.y}`;
+            if (roadDistancesMap.has(roadKey)) {
+              const prodEntries = roadDistancesMap.get(roadKey);
+              for (const [prodId, info] of prodEntries) {
+                if (!producerMapForTile.has(prodId) || info.distance < producerMapForTile.get(prodId).distance) {
+                  producerMapForTile.set(prodId, info);
+                }
+              }
+            }
+          }
+        }
+
+        if (producerMapForTile.size > 0) {
+          const sortedCandidates = Array.from(producerMapForTile.values()).sort((a, b) => a.distance - b.distance);
+          const minDistance = sortedCandidates[0].distance;
+          const candidateProducers = sortedCandidates.map((candidate) => candidate.producer);
+
+          connectedZonedTiles.push({
+            tile,
+            distance: minDistance,
+            candidateProducers,
+            allCandidatesSorted: sortedCandidates,
+          });
+        }
+    }
+
+    return { roadDistancesMap, connectedZonedTiles };
+  }
+
+  static computeRoadDistances(grid, producersOfChoice) {
     // Map: roadKey -> Map(producerId -> { distance, producer })
     const roadDistancesMap = new Map();
 
@@ -56,41 +111,6 @@ export class RoadNetwork {
       }
     }
 
-    const connectedZonedTiles = [];
-
-    for (const tile of grid.getActiveZonedTiles()) {
-
-        const neighbors = grid.getNeighbors(tile.x, tile.y);
-        const producerMapForTile = new Map(); // producerId -> { distance, producer }
-
-        for (const n of neighbors) {
-          if (n.hasRoad) {
-            const key = `${n.x},${n.y}`;
-            if (roadDistancesMap.has(key)) {
-              const prodEntries = roadDistancesMap.get(key);
-              for (const [pId, info] of prodEntries) {
-                if (!producerMapForTile.has(pId) || info.distance < producerMapForTile.get(pId).distance) {
-                  producerMapForTile.set(pId, info);
-                }
-              }
-            }
-          }
-        }
-
-        if (producerMapForTile.size > 0) {
-          const sortedCandidates = Array.from(producerMapForTile.values()).sort((a, b) => a.distance - b.distance);
-          const minDistance = sortedCandidates[0].distance;
-          const candidateProducers = sortedCandidates.map((c) => c.producer);
-
-          connectedZonedTiles.push({
-            tile,
-            distance: minDistance,
-            candidateProducers,
-            allCandidatesSorted: sortedCandidates,
-          });
-        }
-    }
-
-    return { roadDistancesMap, connectedZonedTiles };
+    return roadDistancesMap;
   }
 }

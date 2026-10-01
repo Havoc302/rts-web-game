@@ -2,7 +2,8 @@ import { Grid, producerTypeForTool } from './engine/Grid.js';
 import { Simulation } from './engine/Simulation.js';
 import { Renderer } from './engine/Renderer.js';
 import { UtilityManager } from './engine/UtilityManager.js';
-import { getProducerConnectionStatus, getTileUtilityStatus, formatProducerCapacity, formatSiloStorage, formatDerrickOutput, getTileFoodFlow } from './engine/InspectorStatus.js';
+import { ServiceManager } from './engine/ServiceManager.js';
+import { getProducerConnectionStatus, getTileUtilityStatus, formatProducerCapacity, formatSiloStorage, formatDerrickOutput, getTileFoodFlow, isNuclearFuelStarved } from './engine/InspectorStatus.js';
 import {
   applyHudSnapshot,
   buildHudSnapshot,
@@ -17,7 +18,7 @@ import {
 import { deserializeGameFromJson, serializeGameToJson } from './engine/SaveGame.js';
 import { AudioManager } from './engine/AudioManager.js';
 import { TutorialManager } from './engine/TutorialManager.js';
-import { APP_VERSION, ZONE, TERRAIN, PRODUCER_TYPE, PRODUCER_CONFIG, FACTORY_RECIPES, COSTS, TILE_SIZE, STARTING_TREASURY, RESIDENTIAL_CAPACITY, JOBS_PROVIDED, FOREST_POLLUTION_ABSORPTION, FOREST_DESIRABILITY_RADIUS, CRIME_CONFIG, MEDICAL_CONFIG, POWER_PRODUCER_TYPES, POLLUTION_CONFIG, COAL_CONFIG, WIND_CONFIG, SOLAR_CONFIG, BATTERY_CONFIG, DENSITY, RENDERER_CONFIG, TERRAIN_GENERATION_CONFIG, MAP_SEED_STORAGE_KEY, EDUCATION_CONFIG, splitDemographics } from './config.js';
+import { APP_VERSION, ZONE, TERRAIN, PRODUCER_TYPE, PRODUCER_CONFIG, SERVICE_CONFIG, FACTORY_RECIPES, COSTS, TILE_SIZE, STARTING_TREASURY, RESIDENTIAL_CAPACITY, JOBS_PROVIDED, FOREST_POLLUTION_ABSORPTION, FOREST_DESIRABILITY_RADIUS, CRIME_CONFIG, MEDICAL_CONFIG, POWER_PRODUCER_TYPES, POLLUTION_CONFIG, COAL_CONFIG, WIND_CONFIG, SOLAR_CONFIG, BATTERY_CONFIG, RESOURCE_CONFIG, UTILITY_OPERATING_COST, SURVEY_COST_PER_TICK, TICKS_PER_HOUR, DENSITY, RENDERER_CONFIG, TERRAIN_GENERATION_CONFIG, MAP_SEED_STORAGE_KEY, EDUCATION_CONFIG, splitDemographics } from './config.js';
 
 const nowMs = typeof performance !== 'undefined' ? () => performance.now() : () => Date.now();
 
@@ -145,7 +146,7 @@ class GameApp {
           .forEach((producer) => { producer.budget = budget; });
         const value = document.getElementById(`${type}-budget-value`);
         if (value) value.textContent = `${budget}%`;
-        this.simulation.computeStats();
+        this.simulation.computeStats({ preservePopulation: true });
         this.updateHUD({ force: true });
       });
     });
@@ -157,7 +158,7 @@ class GameApp {
         this.simulation.pensionBudget = budget;
         const value = document.getElementById('pension-budget-value');
         if (value) value.textContent = `${budget}%`;
-        this.simulation.computeStats();
+        this.simulation.computeStats({ preservePopulation: true });
         this.updateHUD({ force: true });
       });
     }
@@ -168,7 +169,7 @@ class GameApp {
         const val = parseInt(e.target.value, 10);
         this.simulation.taxRate = val;
         document.getElementById('tax-rate-val').textContent = val;
-        this.simulation.computeStats();
+        this.simulation.computeStats({ preservePopulation: true });
         this.updateHUD({ force: true });
       });
     }
@@ -816,6 +817,21 @@ class GameApp {
 
       title.textContent = config.name;
       const rows = [row('Cost', `$${config.cost.toLocaleString()}`)];
+      if (POWER_PRODUCER_TYPES.includes(pType) || pType === PRODUCER_TYPE.WATER_TOWER || pType === PRODUCER_TYPE.SEWAGE_PLANT) {
+        rows.push(row('Operating / Hour', `$${(UTILITY_OPERATING_COST * TICKS_PER_HOUR).toLocaleString()}`));
+      } else if (pType === PRODUCER_TYPE.SURVEY_STATION) {
+        rows.push(row('Operating / Hour', `$0 idle / $${SURVEY_COST_PER_TICK * TICKS_PER_HOUR} surveying`));
+      } else if (SERVICE_CONFIG[pType]) {
+        const hourly = [DENSITY.LIGHT, DENSITY.MEDIUM, DENSITY.HIGH].map((density) => {
+          const staff = config.jobs[density];
+          return ServiceManager.getOperatingCost(pType, density, staff, staff) * TICKS_PER_HOUR;
+        });
+        rows.push(row('Operating / Hour (L/M/H)', hourly.some(Boolean)
+          ? `${hourly.map((cost) => `$${cost.toLocaleString()}`).join(' / ')} (full staff & budget; actual varies)`
+          : '$0 (no direct running cost)'));
+      } else if (pType === PRODUCER_TYPE.REFINERY) {
+        rows.push(row('Operating / Hour', '$0 direct (uses oil)'));
+      }
       if (config.requiresWaterAdjacent) rows.push(row('Requires', 'Adjacent to water'));
 
       if (config.utility === 'power') {
@@ -830,6 +846,10 @@ class GameApp {
           rows.push(row('Discharge Rate', `${BATTERY_CONFIG.DISCHARGE_RATE} / tick`));
         } else {
           rows.push(row('Power Output', `${config.capacity}`));
+        }
+        if (pType === PRODUCER_TYPE.NUCLEAR_PLANT) {
+          rows.push(row('Requires', 'Uranium (stored in Ore Warehouse)'));
+          rows.push(row('Uranium Use', `Up to ${RESOURCE_CONFIG.NUCLEAR_URANIUM_PER_TICK} / hour at full output; scales with power generated`));
         }
         if (pType === PRODUCER_TYPE.COAL_PLANT) {
           rows.push(row('Pollution', `Emits ${COAL_CONFIG.EMISSION} within ${COAL_CONFIG.RADIUS} tiles`));
@@ -1052,11 +1072,14 @@ class GameApp {
       const roadStatusStr = isBatteryDependent
         ? connectionStatus.message ? ` (${connectionStatus.message})` : ''
         : prodHasRoad ? '' : ' ⚠️ (Needs Road!)';
-      const utilityStatusStr = !isBatteryDependent && PRODUCER_CONFIG[tile.producer.type]?.utilityUsage && !tile.producer.operational
+      const utilityStatusStr = !isBatteryDependent && Object.values(tile.producer.utilityShortfall || {}).some(Boolean) && !tile.producer.operational
         ? ' ⚠️ (Needs Utilities!)'
         : '';
+      const fuelStatusStr = isNuclearFuelStarved(tile.producer)
+        ? ' ⚠️ (No Uranium!)'
+        : '';
       const contaminatedStr = tile.producer.contaminated ? ' ☣️ Contaminated!' : '';
-      document.getElementById('inspect-producer-type').textContent = (config ? config.name : tile.producer.type) + roadStatusStr + utilityStatusStr + contaminatedStr;
+      document.getElementById('inspect-producer-type').textContent = (config ? config.name : tile.producer.type) + roadStatusStr + utilityStatusStr + fuelStatusStr + contaminatedStr;
 
       const capLabel = document.getElementById('inspect-producer-cap-label');
       const capVal = document.getElementById('inspect-producer-cap');

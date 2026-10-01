@@ -2,6 +2,7 @@ import assert from 'assert';
 import { Grid } from '../src/engine/Grid.js';
 import { Simulation } from '../src/engine/Simulation.js';
 import { UtilityManager } from '../src/engine/UtilityManager.js';
+import { RoadNetwork } from '../src/engine/RoadNetwork.js';
 import { BATTERY_CONFIG, PRODUCER_TYPE, TERRAIN, ZONE } from '../src/config.js';
 
 function flatten(grid) {
@@ -152,3 +153,60 @@ function flatten(grid) {
 }
 
 console.log('Wind/solar grid connectivity tests passed.');
+
+{
+  const grid = new Grid(12, 8, 1);
+  flatten(grid);
+  grid.placeProducer(2, 2, PRODUCER_TYPE.COAL_PLANT, 1);
+  grid.placeProducer(5, 2, PRODUCER_TYPE.BATTERY, BATTERY_CONFIG.MAX_STORAGE);
+  grid.placeProducer(6, 2, PRODUCER_TYPE.WINDMILL, 40);
+  for (let x = 2; x <= 9; x++) grid.placeRoad(x, 3);
+  for (const x of [9, 4, 3]) {
+    grid.placeZone(x, 4, ZONE.RESIDENTIAL);
+    const home = grid.getTile(x, 4);
+    home.population = 25;
+    home.maxPopulation = 25;
+  }
+  const weather = { windIntensity: 1 / 65, extremeWindTicks: 0, getSolarEfficiency: () => 1 };
+  const originalCompute = RoadNetwork.computeRoadDistances;
+  const originalAllocateByDistance = UtilityManager.allocatePowerByDistance;
+  let calculations = 0;
+  let deficitPasses = 0;
+  RoadNetwork.computeRoadDistances = function (...args) {
+    calculations++;
+    return originalCompute.call(this, ...args);
+  };
+  UtilityManager.allocatePowerByDistance = function (...args) {
+    deficitPasses++;
+    return originalAllocateByDistance.call(this, ...args);
+  };
+  try {
+    UtilityManager.allocateAll(grid, 12, weather);
+    assert.strictEqual(grid.getTile(3, 4).shortfall.power, false, 'The closest home should retain power');
+    assert.strictEqual(grid.getTile(4, 4).shortfall.power, false, 'The middle home should retain power');
+    assert.strictEqual(grid.getTile(9, 4).shortfall.power, true, 'The farthest home should shed power across generator tiers');
+    assert.strictEqual(deficitPasses, 1, 'A shortfall triggers global nearest-first shedding');
+    const firstCalculations = calculations;
+    assert.ok(firstCalculations > 0, 'First allocation calculates road distances');
+    UtilityManager.allocateAll(grid, 12, weather, { preview: true });
+    assert.strictEqual(calculations, firstCalculations, 'Unchanged topology reuses road distances on the next pass');
+    grid.producers.find((producer) => producer.type === PRODUCER_TYPE.COAL_PLANT).capacity = 5;
+    UtilityManager.allocateAll(grid, 12, weather, { preview: true });
+    assert.strictEqual(deficitPasses, 2, 'Enough supply skips the global distance-priority pass');
+    assert.strictEqual(grid.getTile(9, 4).shortfall.power, false, 'The previously shed home receives power when supply recovers');
+    grid.placeRoad(1, 3);
+    UtilityManager.allocateAll(grid, 12, weather, { preview: true });
+    assert.ok(calculations > firstCalculations, 'Road topology changes invalidate the distance cache');
+    const afterRoadChange = calculations;
+    grid.randomizeGrid(3);
+    flatten(grid);
+    grid.placeProducer(2, 2, PRODUCER_TYPE.COAL_PLANT, 5);
+    grid.placeRoad(2, 3);
+    grid.placeZone(3, 3, ZONE.RESIDENTIAL);
+    UtilityManager.allocateAll(grid, 12, weather, { preview: true });
+    assert.ok(calculations > afterRoadChange, 'Regenerating a map on the same grid cannot reuse old road distances');
+  } finally {
+    RoadNetwork.computeRoadDistances = originalCompute;
+    UtilityManager.allocatePowerByDistance = originalAllocateByDistance;
+  }
+}

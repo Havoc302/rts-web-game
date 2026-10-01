@@ -169,6 +169,7 @@ export class Grid {
       isPolluted: false,
       riverPollution: 0,
       crime: 0,
+      crimeDecayTicks: 0,
       onFire: false,
       fireDamage: 0,
       fireRepair: 1,

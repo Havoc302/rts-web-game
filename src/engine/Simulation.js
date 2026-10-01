@@ -81,6 +81,9 @@ export class Simulation {
   }
 
   tick(advanceWorld = true, treasury = Infinity) {
+    const populationAtStart = Array.from(this.grid.getActiveZonedTiles()).reduce((sum, tile) => (
+      sum + (tile.zone === ZONE.RESIDENTIAL ? tile.population || 0 : 0)
+    ), 0);
     const timing = this.enableTiming;
     let t0, t1;
     const timings = timing ? {} : null;
@@ -97,7 +100,7 @@ export class Simulation {
       t0 = t1;
     }
 
-    this.computeStats();
+    this.computeStats({ preservePopulation: true });
     if (timing) {
       t1 = now();
       timings['stats-before'] = t1 - t0;
@@ -155,8 +158,10 @@ export class Simulation {
       t0 = t1;
     }
 
-    this.computeStats();
+    this.computeStats({ preservePopulation: true });
     if (advanceWorld) {
+      this.applyPopulationChange(populationAtStart);
+      this.computeStats({ preservePopulation: true });
       this.settleRelocatedPopulation();
     }
     if (timing) {
@@ -402,7 +407,7 @@ export class Simulation {
     }
   }
 
-  computeStats() {
+  computeStats({ preservePopulation = false } = {}) {
     const fireInjuries = this.stats.fireInjuries || 0;
     const happiness = this.stats.happiness ?? HAPPINESS_CONFIG.BASE_SCORE;
     const happinessGrowthModifier = this.stats.happinessGrowthModifier || 0;
@@ -467,6 +472,10 @@ export class Simulation {
     };
 
     for (const p of this.grid.producers) {
+      stats.powerDemand += PRODUCER_CONFIG[p.type]?.utilityUsage?.power || 0;
+      if (p.type === PRODUCER_TYPE.SURVEY_STATION && p.surveyTarget) {
+        stats.powerDemand += PRODUCER_CONFIG[p.type].activeUtilityUsage.power;
+      }
       if (POWER_PRODUCER_TYPES.includes(p.type) || p.type === PRODUCER_TYPE.WATER_TOWER || p.type === PRODUCER_TYPE.SEWAGE_PLANT) {
         stats.utilityExpenses += UTILITY_OPERATING_COST;
       }
@@ -481,9 +490,6 @@ export class Simulation {
         stats.serviceExpenses += p.runningCost;
         const serviceName = PRODUCER_CONFIG[p.type]?.name || p.type;
         stats.serviceExpenseBreakdown[serviceName] = (stats.serviceExpenseBreakdown[serviceName] || 0) + p.runningCost;
-      }
-      if (p.type === PRODUCER_TYPE.SURVEY_STATION && p.surveyTarget) {
-        stats.powerDemand += PRODUCER_CONFIG[PRODUCER_TYPE.SURVEY_STATION].activeUtilityUsage.power;
       }
       if (p.totalJobs && p.totalJobs > 0) stats.totalJobsProvided += p.totalJobs;
       if ((p.type === PRODUCER_TYPE.HOSPITAL || p.type === PRODUCER_TYPE.CLINIC) && p.operational) {
@@ -516,9 +522,9 @@ export class Simulation {
             cap,
             Math.max(0, this.computeTilePopulation(tile, cap) + (tile.relocatedPopulation || 0) - (tile.fireDisplacedPopulation || 0) - (tile.populationLoss || 0)),
           );
-          tile.population = pop;
+          if (!preservePopulation) tile.population = pop;
           tile.maxPopulation = cap;
-          stats.population += pop;
+          stats.population += tile.population || 0;
         } else if (tile.zone === ZONE.COMMERCIAL || tile.zone === ZONE.INDUSTRIAL || tile.zone === ZONE.AGRICULTURAL) {
           const jobs = JOBS_PROVIDED[tile.zone]?.[tile.density] || 0;
           tile.totalJobs = Math.max(0, Math.round(jobs * jobsMultiplier));
@@ -700,6 +706,45 @@ export class Simulation {
       }
     }
     return false;
+  }
+
+  applyPopulationChange(populationAtStart) {
+    const maxShift = Math.max(
+      POPULATION_STABILIZATION_CONFIG.MIN_POPULATION_SHIFT_FLOOR,
+      Math.floor(populationAtStart * POPULATION_STABILIZATION_CONFIG.MAX_POPULATION_SHIFT_PER_TICK),
+    );
+    const incoming = [];
+    const outgoing = [];
+    for (const tile of this.grid.getActiveZonedTiles()) {
+      if (tile.zone !== ZONE.RESIDENTIAL || tile.destroyed) continue;
+      const capacity = RESIDENTIAL_CAPACITY[tile.density] || 0;
+      const evacuated = Math.min(tile.population || 0, tile.fireDisplacedPopulation || 0);
+      tile.population -= evacuated;
+      tile.population = Math.min(capacity, tile.population + (tile.relocatedPopulation || 0));
+      const desired = Math.min(capacity, Math.max(0,
+        this.computeTilePopulation(tile, capacity) - (tile.populationLoss || 0),
+      ));
+      const delta = desired - (tile.population || 0);
+      if (delta > 0) incoming.push({ tile, amount: delta });
+      else if (delta < 0) outgoing.push({ tile, amount: -delta });
+    }
+    const distribute = (candidates, direction) => {
+      const total = candidates.reduce((sum, entry) => sum + entry.amount, 0);
+      if (!total) return;
+      const budget = Math.min(maxShift, total);
+      const allocations = candidates.map((entry) => {
+        const exact = entry.amount * budget / total;
+        return { ...entry, count: Math.floor(exact), fraction: exact % 1 };
+      });
+      let remainder = budget - allocations.reduce((sum, entry) => sum + entry.count, 0);
+      for (const entry of [...allocations].sort((a, b) => b.fraction - a.fraction)) {
+        if (remainder-- <= 0) break;
+        entry.count++;
+      }
+      for (const entry of allocations) entry.tile.population += direction * entry.count;
+    };
+    distribute(incoming, 1);
+    distribute(outgoing, -1);
   }
 
   processPopulationTick(rawCalculatedDelta) {

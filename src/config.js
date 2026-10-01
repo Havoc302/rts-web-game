@@ -736,7 +736,7 @@ export const CRIME_CONFIG = {
 
   // Crime severity, spread, decay, and growth impact.
   CRIME_PENALTY_THRESHOLD: 3,         // Crime level triggering growth score penalties
-  CRIME_DISSIPATION_RATE: 1,          // Natural crime decay rate per tick
+  CRIME_MEMORY_TICKS: 5,              // Ticks for an incident to fade after the last event
   CRIME_GROWTH_PENALTY: -2,           // Growth delta applied when crime reaches the penalty threshold
   CRIME_INCREMENT_PER_EVENT: 2,        // Crime points added by a successful event
   CRIME_DIFFUSION_THRESHOLD: 4,        // Crime level required before spreading to neighbors
@@ -758,12 +758,14 @@ export const MEDICAL_CONFIG = {
 };
 
 export const FIRE_CONFIG = {
-  BASE_IGNITION_CHANCE: 0.0001,           // Fixed standalone infrastructure chance: 0.01% per tick
-  FOREST_IGNITION_CHANCE: 0.00001,        // Fixed forest ignition chance: 0.001% per tick
-  MAX_IGNITION_CHANCE_NON_INDUSTRIAL: 0.01, // Maximum occupied tile risk (1% per tick)
-  MAX_IGNITION_CHANCE_INDUSTRIAL: 0.02,   // Maximum occupied industrial tile risk (2% per tick)
+  BASE_IGNITION_CHANCE: 0.00001,          // Fixed standalone infrastructure chance: 0.001% per tick
+  FOREST_IGNITION_CHANCE: 0.000001,       // Fixed forest ignition chance: 0.0001% per tick
+  MAX_IGNITION_CHANCE_NON_INDUSTRIAL: 0.001, // Maximum occupied tile risk (0.1% per tick)
+  MAX_IGNITION_CHANCE_INDUSTRIAL: 0.002,  // Maximum occupied industrial tile risk (0.2% per tick)
   HIGH_POLLUTION_IGNITION_THRESHOLD: 5,   // Pollution level at which ignition becomes more likely
-  HIGH_POLLUTION_IGNITION_BONUS: 0.003,   // Extra chance if tile pollution >= 5
+  HIGH_POLLUTION_IGNITION_BONUS: 0.0003,  // Extra chance if tile pollution >= 5
+  EXTREME_WEATHER_IGNITION_MULTIPLIER: 1.5, // Thunderstorm or extreme heat ignition boost
+  HOT_IGNITION_TEMP_C: 35,               // Heat boost starts strictly above 35 C
   BURNING_POPULATION_RELOCATION_RATE: 0.5, // Share of residents relocated from a burning home tile per fire tick
   DAMAGE_PER_TICK: 10,                    // Fire damage accumulated per tick (10 ticks to reach 100)
   MAX_DAMAGE: 100,                         // Damage threshold that destroys the burning building
@@ -860,6 +862,7 @@ export const POPULATION_STABILIZATION_CONFIG = {
 };
 
 export const WEATHER_CONFIG = {
+  THUNDERSTORM_CLOUD_COVER: 1.0,    // Full rainfall required for a lightning ignition boost
   MAX_TICK_DELTA: 0.20,             // Maximum metric shift per tick
   MEAN_REVERSION_STRENGTH: 0.15,    // Pull toward 0.5 to maintain central distribution
   WIND_HAZARD_THRESHOLD: 0.98,      // Wind speed trigger for windmill structural damage
@@ -878,8 +881,6 @@ export const TEMPERATURE_CONFIG = {
   BASE_TEMP: 20,                    // Neutral baseline temperature in °C
   MIN_TEMP: 0,                      // Cold floor in °C
   MAX_TEMP: 40,                     // Heat ceiling in °C
-  FIRE_RISK_THRESHOLD: 30,          // Temp in °C above which fire ignition risk scales up
-  FIRE_RISK_MULTIPLIER: 1.5,        // Extra ignition chance multiplier when hot
   HEALTH_RISK_LOW: 5,               // Cold exposure threshold in °C
   HEALTH_RISK_HIGH: 35,             // Heatwave exposure threshold in °C
   PATIENT_PER_RESIDENT_EXTREME: 0.005, // Extra patient demand per resident during temp extremes

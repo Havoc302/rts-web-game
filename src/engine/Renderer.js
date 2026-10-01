@@ -64,6 +64,7 @@ export class Renderer {
     const elapsed = this.lastRenderTime > 0 ? Math.min(RENDERER_CONFIG.DELTA_TIME_MAX, (now - this.lastRenderTime) / 1000) : 0;
     this.lastRenderTime = now;
     this.animTime += elapsed;
+    this.windIntensity = simulation?.weatherManager?.windIntensity ?? 0.5;
     this.lastTerrainRebuild = { kind: 'none', chunksRebuilt: 0 };
     this.lastOverlayDraws = 0;
 
@@ -648,6 +649,8 @@ export class Renderer {
       ctx.fillStyle = '#93c5fd';
       ctx.fillRect(px + 8, py + 12, 6, 8);
       ctx.fillRect(px + 18, py + 12, 6, 8);
+      ctx.fillStyle = '#fef3c7';
+      ctx.fillRect(px + 6, py + 22, 20, 3);
     } else if (density === DENSITY.MEDIUM) {
       ctx.fillStyle = '#2563eb';
       ctx.fillRect(px + 4, py + 4, 24, 24);
@@ -657,6 +660,8 @@ export class Renderer {
       ctx.fillStyle = '#93c5fd';
       ctx.fillRect(px + 7, py + 8, 18, 5);
       ctx.fillRect(px + 7, py + 16, 18, 5);
+      ctx.fillStyle = '#fbbf24';
+      ctx.fillRect(px + 5, py + 24, 20, 2);
     } else {
       ctx.fillStyle = '#1e40af';
       ctx.fillRect(px + 6, py + 2, 20, 28);
@@ -667,10 +672,25 @@ export class Renderer {
       ctx.fillRect(px + 11, py + 6, 10, 20);
       ctx.fillStyle = '#1e3a8a';
       ctx.fillRect(px + 15, py + 6, 2, 20);
+      ctx.fillStyle = '#fbbf24';
+      ctx.fillRect(px + 10, py + 24, 12, 3);
     }
   }
 
   renderIndustrialArt(ctx, density, px, py) {
+    const wind = this.windIntensity ?? 0.5;
+    const drift = (this.animTime * (3 + wind * 8)) % 18;
+    const drawSmoke = (stackX, stackY, size = 3) => {
+      ctx.fillStyle = 'rgba(203, 213, 225, 0.62)';
+      for (let i = 0; i < 3; i++) {
+        const progress = (drift + i * 6) % 18;
+        const puffX = px + stackX + (wind - 0.5) * progress * 2;
+        const puffY = py + stackY - progress * 0.35;
+        ctx.beginPath();
+        ctx.arc(puffX, puffY, size + i * 0.7, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    };
     if (density === DENSITY.LIGHT) {
       ctx.fillStyle = '#fbbf24';
       ctx.fillRect(px + 4, py + 10, 16, 16);
@@ -678,6 +698,7 @@ export class Renderer {
       ctx.fillRect(px + 22, py + 6, 5, 20);
       ctx.fillStyle = '#94a3b8';
       ctx.fillRect(px + 21, py + 2, 7, 4);
+      drawSmoke(24, 2, 2.5);
     } else if (density === DENSITY.MEDIUM) {
       ctx.fillStyle = '#d97706';
       ctx.fillRect(px + 4, py + 6, 24, 20);
@@ -690,6 +711,9 @@ export class Renderer {
       ctx.lineTo(px + 28, py + 6);
       ctx.closePath();
       ctx.fill();
+      ctx.fillStyle = '#78350f';
+      ctx.fillRect(px + 21, py + 7, 5, 12);
+      drawSmoke(23, 7, 2.5);
     } else {
       ctx.fillStyle = '#b45309';
       ctx.fillRect(px + 2, py + 4, 28, 24);
@@ -697,12 +721,8 @@ export class Renderer {
       ctx.fillRect(px + 5, py + 8, 8, 16);
       ctx.fillRect(px + 19, py + 8, 8, 16);
 
-      const smokeOffset = (Math.sin(this.animTime * 2) * 3) | 0;
-      ctx.fillStyle = 'rgba(203, 213, 225, 0.7)';
-      ctx.beginPath();
-      ctx.arc(px + 9 + smokeOffset, py + 2, 4, 0, Math.PI * 2);
-      ctx.arc(px + 23 - smokeOffset, py + 2, 4, 0, Math.PI * 2);
-      ctx.fill();
+      drawSmoke(9, 4, 3);
+      drawSmoke(23, 4, 3);
     }
   }
 
@@ -993,21 +1013,23 @@ export class Renderer {
       ctx.lineWidth = 2;
       ctx.stroke();
     } else if (prod.type === PRODUCER_TYPE.WAREHOUSE_ORE || prod.type === PRODUCER_TYPE.WAREHOUSE_BAR || prod.type === PRODUCER_TYPE.WAREHOUSE_GOODS) {
-      ctx.fillStyle = '#334155';
-      ctx.fillRect(px + 2, py + 8, 28, 20);
-      ctx.fillStyle = '#94a3b8';
+      ctx.fillStyle = PRODUCER_CONFIG[prod.type].color;
+      ctx.fillRect(px + 2, py + 7, 28, 21);
+      ctx.fillStyle = '#cbd5e1';
       ctx.beginPath();
-      ctx.moveTo(px + 2, py + 8);
+      ctx.moveTo(px + 2, py + 7);
       ctx.lineTo(px + 16, py + 2);
-      ctx.lineTo(px + 30, py + 8);
+      ctx.lineTo(px + 30, py + 7);
       ctx.closePath();
       ctx.fill();
-      ctx.fillStyle = '#475569';
-      for (let x = 6; x < 28; x += 7) ctx.fillRect(px + x, py + 13, 3, 15);
-      ctx.fillStyle = '#f8fafc';
-      ctx.font = 'bold 6px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText(prod.type === PRODUCER_TYPE.WAREHOUSE_ORE ? 'ORE' : prod.type === PRODUCER_TYPE.WAREHOUSE_BAR ? 'BAR' : 'GOODS', px + 16, py + 12);
+      ctx.fillStyle = '#64748b';
+      ctx.fillRect(px + 5, py + 11, 22, 2);
+      ctx.fillRect(px + 5, py + 16, 22, 2);
+      ctx.fillStyle = '#1e293b';
+      ctx.fillRect(px + 7, py + 20, 18, 8);
+      ctx.fillStyle = '#94a3b8';
+      ctx.fillRect(px + 9, py + 21, 6, 7);
+      ctx.fillRect(px + 17, py + 21, 6, 7);
     } else if (prod.type === PRODUCER_TYPE.SILO) {
       ctx.fillStyle = '#3f3f46';
       ctx.fillRect(px + 2, py + 2, 28, 28);
@@ -1178,7 +1200,7 @@ export class Renderer {
         ctx.font = '10px sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText(`${tile.crime}`, px + 16, py + 16);
+        ctx.fillText(`${Number(tile.crime.toFixed(1))}`, px + 16, py + 16);
       }
       return;
     }

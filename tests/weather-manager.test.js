@@ -130,8 +130,13 @@ console.log('=== weather-manager.test.js ===');
   assert.strictEqual(sim.stats.patientDemand, 9, 'Heatwave should add extreme weather patient demand');
 }
 
-// 7. FireManager Heatwave Risk Multiplier
+// 7. Spontaneous fire risk with full rain or extreme heat
 {
+  assert.strictEqual(FIRE_CONFIG.BASE_IGNITION_CHANCE, 0.00001);
+  assert.strictEqual(FIRE_CONFIG.FOREST_IGNITION_CHANCE, 0.000001);
+  assert.strictEqual(FIRE_CONFIG.MAX_IGNITION_CHANCE_NON_INDUSTRIAL, 0.001);
+  assert.strictEqual(FIRE_CONFIG.MAX_IGNITION_CHANCE_INDUSTRIAL, 0.002);
+  assert.strictEqual(FIRE_CONFIG.HIGH_POLLUTION_IGNITION_BONUS, 0.0003);
   const grid = new Grid(8, 8, 1);
   for (const row of grid.tiles) for (const tile of row) tile.terrain = TERRAIN.FLAT;
 
@@ -139,18 +144,33 @@ console.log('=== weather-manager.test.js ===');
   forest.terrain = TERRAIN.FOREST;
   grid.fireCandidateTiles.add(forest);
 
-  const stats = {};
-  const wmHot = new WeatherManager();
-  wmHot.temperature = 35; // Above FIRE_RISK_THRESHOLD (30°C)
-
-  const origRandom = Math.random;
+  const weather = new WeatherManager();
+  const baseline = FIRE_CONFIG.FOREST_IGNITION_CHANCE;
+  weather.cloudCover = 0.99;
+  weather.temperature = 35;
+  weather.windIntensity = 1.0;
+  assert.strictEqual(FireManager.getSpontaneousIgnitionChance(forest, weather), baseline, 'Near-full rain and exactly 35 C do not boost ignition');
+  weather.temperature = 36;
+  assert.strictEqual(FireManager.getSpontaneousIgnitionChance(forest, weather), baseline * FIRE_CONFIG.EXTREME_WEATHER_IGNITION_MULTIPLIER, 'Temperature above 35 C boosts ignition without a thunderstorm');
+  weather.cloudCover = 1.0;
+  weather.temperature = 0;
+  weather.windIntensity = 0;
+  assert.strictEqual(FireManager.getSpontaneousIgnitionChance(forest, weather), baseline * FIRE_CONFIG.EXTREME_WEATHER_IGNITION_MULTIPLIER, 'Full rain boosts ignition even when cool and calm');
+  weather.temperature = 36;
+  assert.strictEqual(FireManager.getSpontaneousIgnitionChance(forest, weather), baseline * FIRE_CONFIG.EXTREME_WEATHER_IGNITION_MULTIPLIER, 'Rain and heat together must not stack multipliers');
+  weather.temperature = 20;
+  weather.getRainExtinguishChance = () => 0;
+  const originalRandom = Math.random;
   try {
-    // Between the baseline chance and the heatwave-boosted chance.
-    Math.random = () => FIRE_CONFIG.FOREST_IGNITION_CHANCE * 1.2;
-    FireManager.updateFires(grid, stats, wmHot);
-    assert.strictEqual(forest.onFire, true, 'Forest should ignite under heatwave fire multiplier');
+    Math.random = () => baseline * 1.2;
+    weather.cloudCover = 0.99;
+    FireManager.updateFires(grid, {}, weather);
+    assert.strictEqual(forest.onFire, false, 'The real fire pass leaves the tile unlit below full rainfall');
+    weather.cloudCover = 1.0;
+    FireManager.updateFires(grid, {}, weather);
+    assert.strictEqual(forest.onFire, true, 'The real fire pass applies the full-rain boost');
   } finally {
-    Math.random = origRandom;
+    Math.random = originalRandom;
   }
 }
 

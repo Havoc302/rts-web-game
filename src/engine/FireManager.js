@@ -1,4 +1,4 @@
-import { FIRE_CONFIG, NUCLEAR_CONFIG, PRODUCER_TYPE, ZONE, TERRAIN, TERRAIN_TYPE, TEMPERATURE_CONFIG } from '../config.js';
+import { FIRE_CONFIG, NUCLEAR_CONFIG, PRODUCER_TYPE, ZONE, TERRAIN, TERRAIN_TYPE, WEATHER_CONFIG } from '../config.js';
 import { RoadNetwork } from './RoadNetwork.js';
 import { CoverageManager } from './CoverageManager.js';
 
@@ -29,10 +29,7 @@ export class FireManager {
 
     for (const tile of grid.getFireCandidateTiles()) {
       if (tile.destroyed || tile.onFire || !this.isFlammable(tile)) continue;
-      let chance = this.getIgnitionChance(tile);
-      if (weatherManager && weatherManager.temperature > TEMPERATURE_CONFIG.FIRE_RISK_THRESHOLD) {
-        chance *= TEMPERATURE_CONFIG.FIRE_RISK_MULTIPLIER;
-      }
+      const chance = this.getSpontaneousIgnitionChance(tile, weatherManager);
       if (chance > 0 && Math.random() < chance) {
         tile.onFire = true;
         tile.fireDamage = 0;
@@ -176,6 +173,14 @@ export class FireManager {
       ? FIRE_CONFIG.HIGH_POLLUTION_IGNITION_BONUS
       : 0;
     return Math.min(maxChance, chance + pollutionBonus);
+  }
+
+  static getSpontaneousIgnitionChance(tile, weatherManager = null) {
+    const chance = this.getIgnitionChance(tile);
+    return weatherManager?.cloudCover >= WEATHER_CONFIG.THUNDERSTORM_CLOUD_COVER ||
+      weatherManager?.temperature > FIRE_CONFIG.HOT_IGNITION_TEMP_C
+      ? chance * FIRE_CONFIG.EXTREME_WEATHER_IGNITION_MULTIPLIER
+      : chance;
   }
 
   // Nearest operational fire station covering this tile, mirroring ServiceManager's road-adjacency lookup.

@@ -2,8 +2,29 @@ import { SERVICE_TYPE, SERVICE_CONFIG, SERVICE_GLOBAL_CONFIG, LABOR_TAX_GROWTH_C
 import { RoadNetwork } from './RoadNetwork.js';
 import { CoverageManager } from './CoverageManager.js';
 
+const POPULATION_STAFFED_TYPES = new Set([
+  SERVICE_TYPE.POLICE_STATION,
+  SERVICE_TYPE.FIRE_STATION,
+  SERVICE_TYPE.HOSPITAL,
+  SERVICE_TYPE.CLINIC,
+  SERVICE_TYPE.SCHOOL,
+  SERVICE_TYPE.UNIVERSITY,
+]);
+
 export class ServiceManager {
   static previousEmergencyCoverage = new WeakMap();
+
+  static getOperatingCost(type, density, filledJobs, totalJobs, budgetRatio = 1) {
+    const config = SERVICE_CONFIG[type];
+    if (!config) return 0;
+    const maxJobs = config.jobs[density] || SERVICE_GLOBAL_CONFIG.MIN_STAFFING_BASELINE;
+    const utilityDemand = Object.values(config.utilityUsage || {}).reduce((sum, amount) => sum + amount, 0);
+    const demandFactor = 1 + utilityDemand * SERVICE_GLOBAL_CONFIG.UTILITY_DEMAND_COST_MULTIPLIER;
+    const staffingFactor = POPULATION_STAFFED_TYPES.has(type) && maxJobs > 0 ? totalJobs / maxJobs : 1;
+    return config.runningCostPerJob
+      ? Math.ceil(filledJobs * config.runningCostPerJob * demandFactor * budgetRatio)
+      : Math.ceil((config.runningCost?.[density] || 0) * staffingFactor * demandFactor * budgetRatio);
+  }
 
   static updateServices(grid, totalPopulation, employmentRate = 1.0, workforce = null) {
     const serviceKeys = [
@@ -47,15 +68,7 @@ export class ServiceManager {
         const maxJobs = config.jobs[density] || SERVICE_GLOBAL_CONFIG.MIN_STAFFING_BASELINE;
         const effectivePop = config.maxPopulationServed ? Math.min(totalPopulation, config.maxPopulationServed) : totalPopulation;
         const populationOfficers = Math.max(SERVICE_GLOBAL_CONFIG.MIN_STAFFING_BASELINE, Math.ceil(effectivePop / (config.officersPerPopulation || Infinity)));
-        const populationStaffedTypes = [
-          SERVICE_TYPE.POLICE_STATION,
-          SERVICE_TYPE.FIRE_STATION,
-          SERVICE_TYPE.HOSPITAL,
-          SERVICE_TYPE.CLINIC,
-          SERVICE_TYPE.SCHOOL,
-          SERVICE_TYPE.UNIVERSITY,
-        ];
-        const staffedBase = populationStaffedTypes.includes(type)
+        const staffedBase = POPULATION_STAFFED_TYPES.has(type)
           ? Math.min(maxJobs, populationOfficers)
           : maxJobs;
         const budgetedJobs = Math.round(staffedBase * budgetRatio);
@@ -75,15 +88,7 @@ export class ServiceManager {
         const maxRadius = config.radius[density] || SERVICE_GLOBAL_CONFIG.DEFAULT_SERVICE_RADIUS;
         // Emergency coverage is calculated by CoverageManager from staffed jobs.
         prod.effectiveRadius = maxRadius;
-        const baseCost = config.runningCost?.[density] || 0;
-        const utilityDemand = Object.values(config.utilityUsage || {}).reduce((sum, amount) => sum + amount, 0);
-        const demandFactor = 1 + utilityDemand * SERVICE_GLOBAL_CONFIG.UTILITY_DEMAND_COST_MULTIPLIER;
-        const staffingFactor = populationStaffedTypes.includes(type) && maxJobs > 0
-          ? prod.totalJobs / maxJobs
-          : 1;
-        prod.runningCost = config.runningCostPerJob
-          ? Math.ceil(prod.filledJobs * config.runningCostPerJob * demandFactor * budgetRatio)
-          : Math.ceil(baseCost * staffingFactor * demandFactor * budgetRatio);
+        prod.runningCost = this.getOperatingCost(type, density, prod.filledJobs, prod.totalJobs, budgetRatio);
 
         producerStateSignature += `${prod.id}:${prod.x},${prod.y}:1:${prod.filledJobs}:${prod.effectiveRadius}:${prod.budget};`;
       });

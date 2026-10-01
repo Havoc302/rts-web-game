@@ -2,6 +2,7 @@ import assert from 'assert';
 import { Grid } from '../src/engine/Grid.js';
 import { Simulation } from '../src/engine/Simulation.js';
 import { FireManager } from '../src/engine/FireManager.js';
+import { formatProducerCapacity, getTileUtilityStatus } from '../src/engine/InspectorStatus.js';
 import { ORE_TYPE, PRODUCER_CONFIG, PRODUCER_TYPE, TERRAIN, ZONE } from '../src/config.js';
 
 console.log('=== uranium.test.js ===');
@@ -27,6 +28,15 @@ mine.destroyed = true;
 sim.tick();
 assert.strictEqual(nuclear.operational, false, 'Nuclear plant must shut down without uranium');
 assert.strictEqual(nuclear.capacity, 0, 'Nuclear plant produces nothing without uranium');
+assert.strictEqual(nuclear.fuelShortfall, true, 'Fuel starvation should be distinct from a utility shortfall');
+assert.strictEqual(getTileUtilityStatus(grid, grid.getTile(nuclear.x, nuclear.y), 'power'), 'Offline (No Uranium)');
+assert.strictEqual(formatProducerCapacity(nuclear, grid), 'Offline (No Uranium)');
+assert.strictEqual(formatProducerCapacity({ ...nuclear, fuelShortfall: undefined }, grid), 'Offline (No Uranium)', 'Older saves with zero capacity should explain the outage');
+
+sim.resourceManager.stockpile.uraniumOre = 20;
+sim.tick();
+assert.strictEqual(nuclear.fuelShortfall, false, 'Fuel status should clear when uranium is restored');
+assert.strictEqual(nuclear.capacity, PRODUCER_CONFIG[PRODUCER_TYPE.NUCLEAR_PLANT].capacity, 'A refueled nuclear plant should generate again');
 
 mine.operational = true;
 mine.totalJobs = 10;

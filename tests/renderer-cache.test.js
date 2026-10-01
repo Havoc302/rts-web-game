@@ -1,8 +1,9 @@
 import assert from 'assert';
+import { readFileSync } from 'node:fs';
 import { Grid } from '../src/engine/Grid.js';
 import { Renderer } from '../src/engine/Renderer.js';
 import { Simulation } from '../src/engine/Simulation.js';
-import { TERRAIN } from '../src/config.js';
+import { PRODUCER_CONFIG, PRODUCER_TYPE, TERRAIN } from '../src/config.js';
 
 function createMockCtx(canvas) {
   return new Proxy({
@@ -53,6 +54,21 @@ function makeRenderer(grid, width = 800, height = 600) {
   renderer.setCamera(0, 0, 1);
   renderer.enableTiming = true;
   return renderer;
+}
+
+{
+  const grid = new Grid(8, 8, 1);
+  const renderer = makeRenderer(grid);
+  const markup = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  for (const type of [PRODUCER_TYPE.WAREHOUSE_ORE, PRODUCER_TYPE.WAREHOUSE_BAR, PRODUCER_TYPE.WAREHOUSE_GOODS]) {
+    const ctx = createMockCtx(new MockCanvas());
+    const painted = [];
+    ctx.fillRect = () => painted.push(ctx.fillStyle);
+    renderer.renderProducerTile(ctx, { producer: { type, x: 2, y: 2 } }, 0, 0);
+    assert.strictEqual(painted[0], PRODUCER_CONFIG[type].color, `${type} walls should use their configured color`);
+    const button = markup.match(new RegExp(`<button[^>]*data-tool="producer_${type}"[^>]*>(.*?)<\\/button>`))?.[1];
+    assert.ok(button?.includes(`color:${PRODUCER_CONFIG[type].color}`), `${type} sidebar glyph should match its map color`);
+  }
 }
 
 {
