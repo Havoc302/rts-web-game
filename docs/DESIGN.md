@@ -6,7 +6,7 @@
 | Author | TBD |
 | Date | 2026-09-25 |
 | Status | Living draft (rev 8) |
-| Version covered | `APP_VERSION` `0.1.62` (`src/version.js`); current working tree |
+| Version covered | `APP_VERSION` `0.1.63` (`src/version.js`); current working tree |
 | Intended in-repo path | `docs/DESIGN.md` |
 | Repo | `g:\Repos\rts-web-game` (`origin`: `https://github.com/Havoc302/rts-web-game.git`) |
 | Working tree at inventory | Documentation is checked against the current implementation; uncommitted changes may exist. |
@@ -179,7 +179,7 @@ flowchart TB
 | Tile size | 32 px → 6400×6400 world pixels | `TILE_SIZE` |
 | Money scale | Pre-scaled monetary constants; no runtime multiplier | `src/config.js` |
 | Starting treasury | `$25,000` (`2500 * 10`) | `STARTING_TREASURY`; HUD seed text in `index.html` |
-| Tick wall-clock | `2000 / speed` ms (`1x=2s`, `2x=1s`, `5x=400ms`) | `GameApp.setSpeed` |
+| Tick wall-clock | `4000 / speed` ms (`1x=4s`, `2x=2s`, `5x=800ms`) | `GameApp.setSpeed` |
 | Clock | 1 tick = 1 in-game hour, 24-hour day, day 06:00–18:00 | `TICKS_PER_HOUR`, `DAY_START_HOUR`, `NIGHT_START_HOUR` |
 | Zoom | 0.4–2.5, default 1.0; low-detail below 0.7 | `RENDERER_CONFIG` |
 | Terrain cache budget | 1,200 tiles/frame while building | `RENDERER_CONFIG.TERRAIN_BUILD_BUDGET` |
@@ -1020,7 +1020,7 @@ Phase 1 stays paused-by-default sandbox (0% tax, $25,000) for solo city-building
 
 28. **Overworld Biome Generation.** `BIOME_TYPES` (`PLAINS`, `HILLY`, `MOUNTAINOUS`, `SWAMP`) modify procedural terrain generation: Hilly/Mountainous scale rock clusters (+25% / +50%); Plains reduce rock clusters (-50%); Swamp reduces forest (-50%), increases lakes (4-6), and forces fork/merge rivers. `generateProceduralTerrain(biome)` accepts the biome directly.
 
-29. **Single-source versioning.** `src/version.js` (`APP_VERSION = '0.1.62'`) is the single source of truth for version strings. `package.json` version and cache-busting consumers derive from it. Verified by `tests/version-sync.test.js`.
+29. **Single-source versioning.** `src/version.js` (`APP_VERSION = '0.1.63'`) is the single source of truth for version strings. `package.json` version and cache-busting consumers derive from it. Verified by `tests/version-sync.test.js`.
 
 30. **Desktop Pan and Drag Painting.** Desktop left-drag with the Pan tool pans the camera; clicking without dragging selects the tile without opening the inspector. Inspect Tile opens the inspector. Left-drag painting is restricted to repeatable tools (roads, bridges, tunnels, zones, bulldoze); single-placement buildings and surveys do not drag-paint.
 

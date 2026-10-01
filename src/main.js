@@ -389,7 +389,7 @@ class GameApp {
       this.simulation.isPaused = false;
       this.simulation.speed = speed;
       if (this.simInterval) clearInterval(this.simInterval);
-      this.simInterval = setInterval(() => this.simTick(), 2000 / speed);
+      this.simInterval = setInterval(() => this.simTick(), 4000 / speed);
     }
   }
 

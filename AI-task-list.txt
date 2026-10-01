@@ -1081,6 +1081,12 @@ Current task: Show hourly operating cost in utility and civic build info.
 - [done] Browser-check every Utility Producers and Civic Services button plus Survey Station for an operating-cost row; add `tests/service-expense-scale.test.js` regression for shared cost calculations.
 - [done] Update `docs/DESIGN.md` and bump patch version to 0.1.62.
 
+Current task: Double the real-time interval between ticks.
+
+- [done] `GameApp.setSpeed()` now schedules ticks every `4000 / speed` ms (1× = 4s, 2× = 2s, 5× = 800ms); simulation time per tick remains one in-game hour.
+- [done] Verify all speed intervals and Pause in a separate browser tab.
+- [done] Update `docs/DESIGN.md` and bump patch version to 0.1.63.
+
 To check: All production which can be stored. Food, Consumer Goods, arms, tanks, raw materials (bauxite, aluminium, iron, oil) should use a similar system to power generation and batteries. Consumers of those things should be given priority first then the storage is filled, overflow is defaults to consumers or is lost if storage is full.
 Possible bug: Oil derricks are producing oil but the silo set to oil isn't storing anything, I can see it's not going to the refinery either, it shows no rate of production but I can tell because my other silo set to fuel is also not filling up. Unless it's all working but all being consumed by users before any of those things in the production chain actually show anything.
 We need an alerts panel kind of like SimCity events notifications where we can tell the user if a fire has broken out, crime rate has climbed to be high, medical coverage is critically low, treasury is out of money. Things like that.
