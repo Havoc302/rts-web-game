@@ -1127,6 +1127,56 @@ Current task: Add sparse desert biomes.
 - [done] Cover desert terrain density, lake counts, grouped planet regions, and save/import; all 43 test files pass with no changed-file diagnostics.
 - [blocked] Live browser check: browser connection timed out; automated terrain and save checks passed.
 
+Current task: Label tile actions Open Map and mark existing cities.
+
+- [done] Use Open Map for all selected land-tile actions, including the current city.
+- [done] Refresh small outward-facing globe markers for current and visited cities whenever the globe opens; oceans and unexplored land stay unmarked.
+- [done] Test marker eligibility, refresh without duplicates, orientation and labels; all 43 test files pass.
+- [done] Browser-check desktop/mobile screenshots and marker pixels, opening a new city adds its marker, and drag rotation still works.
+
+Current task: Mark only maps with a player-built road.
+
+- [done] Use the existing road registry for marker eligibility; visiting or generating a map does not add a marker.
+- [done] Include bridges and tunnels and remove stale registry entries when bulldozing them.
+- [done] Test road placement/removal, empty current and visited maps, and zones/buildings remaining without roads; all 43 test files pass with no changed-file diagnostics.
+
+Current task: Increase swamp lake counts and sizes.
+
+- [done] Increase new swamp maps from 4-6 lakes to 10-16 lakes and double radius scale from 1.6x to 3.2x.
+- [done] Introduce biome profile 3 while retaining old profile-1 and profile-2 terrain reconstruction; terrain generation remains version 2.
+- [done] Verify lake count/radius and water coverage across three seeds; sampled water coverage increases from 6-7% to 17-33%.
+- [done] Validate save round-trips for all three biome profiles; all 43 test files pass with no changed-file diagnostics.
+
+Current task: Start on the globe and select a map before building.
+
+- [done] Open the globe at startup and show the welcome popup above it after loading; do not assign or visit the mixed placeholder city.
+- [done] Add Step 1: Select a map tile to the tutorial and welcome guide, shifting all previous steps down one.
+- [done] Hide Return to city until a map is chosen; generate the selected hex's actual seed and biome, then advance to roads.
+- [done] Place the globe tutorial below the header to avoid mobile tile-detail overlap; preserve current city during planet regeneration.
+- [done] Run all 43 test files and changed-file diagnostics; browser-check desktop/mobile screenshots, nonblank globe pixels, land click/entry, matching seed/biome, step advancement, and regeneration.
+
+Current task: Remove malformed globe polygon edges.
+
+- [done] Replace displayed H3 projection boundaries with spherical Voronoi polygons derived from unchanged tile centers using Three.js ConvexHull.
+- [done] Render 830 convex hexagons and 12 convex pentagons with shared edges, matching fills, outlines and picking; keep tile IDs, seeds, biomes and saves unchanged.
+- [done] Test polygon convexity, shared edges, polygon counts and stable tile data; all 43 test files pass with no changed-file diagnostics.
+- [done] Reproduce the user's swamp tile at seed 2185603: original seven-point kinked boundary now renders as a six-sided tile. Browser-check desktop/mobile screenshots, pixels, selection and drag rotation without altering the user's original session.
+
+Current task: Add Temperate as the base biome.
+
+- [done] Define explicit Temperate settings matching the unmodified base generator exactly.
+- [done] Add grouped Temperate regions in cooler continental lowlands with a distinct green globe color; retain plains and all other biomes.
+- [done] Test identical base terrain, river flow and ore across three seeds and all biome profiles; verify regional grouping and save/import. All 43 test files pass with no changed-file diagnostics.
+- [done] Browser-check desktop/mobile screenshots and globe pixels, select a Temperate hex, and verify the opened city's Temperate biome and matching seed.
+
+Current task: Keep Plains visible after adding Temperate.
+
+- [done] Confirm live seed 77767 still had 28 Plains tiles, largely limited to equatorial leftovers by the Temperate latitude rule.
+- [done] Split cooler lowlands by a seeded regional direction so both Plains and Temperate form recognizable regions; seed 77767 now generates 57 Plains tiles.
+- [done] Give Plains a distinct light-green globe color, separate from darker-green Temperate.
+- [done] Test substantial Plains coverage and grouped regions across five seeds; all 43 test files pass with no changed-file diagnostics.
+- [done] Browser-check desktop/mobile screenshots and pixels and actual Plains selection on seed 77767 without altering the user's original session.
+
 To check: All production which can be stored. Food, Consumer Goods, arms, tanks, raw materials (bauxite, aluminium, iron, oil) should use a similar system to power generation and batteries. Consumers of those things should be given priority first then the storage is filled, overflow is defaults to consumers or is lost if storage is full.
 Possible bug: Oil derricks are producing oil but the silo set to oil isn't storing anything, I can see it's not going to the refinery either, it shows no rate of production but I can tell because my other silo set to fuel is also not filling up. Unless it's all working but all being consumed by users before any of those things in the production chain actually show anything.
 We need an alerts panel kind of like SimCity events notifications where we can tell the user if a fire has broken out, crime rate has climbed to be high, medical coverage is critically low, treasury is out of money. Things like that.

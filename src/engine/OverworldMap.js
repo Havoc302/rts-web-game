@@ -49,6 +49,8 @@ function regionAt(lat, lng, continents) {
     if (ridge < 0.16 && Math.hypot(x, y) < 0.85) return BIOME_TYPES.MOUNTAINOUS;
     if (Math.abs(lat) < 40 && Math.hypot(x - continent.wetX, y - continent.wetY) < 0.4) return BIOME_TYPES.SWAMP;
     if (Math.abs(lat) < 50 && Math.hypot(x + continent.wetX + 0.45, y + continent.wetY) < 0.5) return BIOME_TYPES.DESERT;
+    const lowlandRegion = x * Math.cos(continent.phase) + y * Math.sin(continent.phase);
+    if (Math.abs(lat) > 20 && Math.abs(lat) <= 49 && Math.hypot(x, y) <= 0.8 && lowlandRegion < 0) return BIOME_TYPES.TEMPERATE;
     return Math.abs(lat) > 49 || Math.hypot(x, y) > 0.8 ? BIOME_TYPES.HILLY : BIOME_TYPES.PLAINS;
   }
   return null;

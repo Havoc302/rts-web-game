@@ -1,4 +1,4 @@
-import { TERRAIN, TERRAIN_TYPE, ZONE, DENSITY, MAP_WIDTH, MAP_HEIGHT, PRODUCER_CONFIG, PRODUCER_TYPE, ORE_CONFIG, ORE_GENERATION, SERVICE_GLOBAL_CONFIG, TERRAIN_GENERATION_CONFIG, MAP_SEED_STORAGE_KEY, MAP_SEED_STORAGE_KEY_LEGACY, BIOME_CONFIG, BIOME_TERRAIN_CONFIG, BIOME_GENERATION_VERSION } from '../config.js';
+import { TERRAIN, TERRAIN_TYPE, ZONE, DENSITY, MAP_WIDTH, MAP_HEIGHT, PRODUCER_CONFIG, PRODUCER_TYPE, ORE_CONFIG, ORE_GENERATION, SERVICE_GLOBAL_CONFIG, TERRAIN_GENERATION_CONFIG, MAP_SEED_STORAGE_KEY, MAP_SEED_STORAGE_KEY_LEGACY, BIOME_CONFIG, BIOME_TERRAIN_CONFIG, BIOME_LAKE_CONFIG, BIOME_GENERATION_VERSION } from '../config.js';
 
 export function producerTypeForTool(tool) {
   if (!tool?.startsWith('producer_')) return null;
@@ -251,7 +251,11 @@ export class Grid {
       lakeRadiusScale: 1,
       riverMode: 'mixed',
     };
-    return this.biomeGenerationVersion >= 2 ? { ...modifiers, ...BIOME_TERRAIN_CONFIG[biome] } : modifiers;
+    return {
+      ...modifiers,
+      ...(this.biomeGenerationVersion >= 2 ? BIOME_TERRAIN_CONFIG[biome] : {}),
+      ...(this.biomeGenerationVersion >= 3 ? BIOME_LAKE_CONFIG[biome] : {}),
+    };
   }
 
   generateProceduralTerrain(biome = this.biome) {
@@ -787,11 +791,13 @@ export class Grid {
     if (tile.hasBridge) {
       tile.hasBridge = false;
       tile.hasRoad = false;
+      this.activeRoadTiles.delete(tile);
       modified = true;
     }
     if (tile.hasTunnel) {
       tile.hasTunnel = false;
       tile.hasRoad = false;
+      this.activeRoadTiles.delete(tile);
       modified = true;
     }
     if (tile.terrain === TERRAIN_TYPE.FOREST) {

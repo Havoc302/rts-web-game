@@ -187,6 +187,7 @@ export const FUEL_CONFIG = {
 };
 
 export const BIOME_TYPES = {
+  TEMPERATE: 'temperate',
   PLAINS: 'plains',
   HILLY: 'hilly',
   MOUNTAINOUS: 'mountainous',
@@ -196,7 +197,11 @@ export const BIOME_TYPES = {
 
 // Modifiers applied on top of TERRAIN_GENERATION_CONFIG. Omit biome for current
 // city-map defaults (scale 1, mixed rivers, 0–5 lakes).
-export const BIOME_GENERATION_VERSION = 2;
+export const BIOME_GENERATION_VERSION = 3;
+
+export const BIOME_LAKE_CONFIG = {
+  [BIOME_TYPES.SWAMP]: { lakeCountMin: 10, lakeCountMax: 16, lakeRadiusScale: 3.2 },
+};
 
 export const BIOME_TERRAIN_CONFIG = {
   [BIOME_TYPES.PLAINS]: { rockClusterScale: 0.25, forestClusterScale: 0.8, rockRadiusScale: 1 },
@@ -205,6 +210,14 @@ export const BIOME_TERRAIN_CONFIG = {
 };
 
 export const BIOME_CONFIG = {
+  [BIOME_TYPES.TEMPERATE]: {
+    rockClusterScale: 1,
+    forestClusterScale: 1,
+    lakeCountMin: 0,
+    lakeCountMax: 5,
+    lakeRadiusScale: 1,
+    riverMode: 'mixed',
+  },
   [BIOME_TYPES.DESERT]: {
     rockClusterScale: 0.1,
     forestClusterScale: 0.02,

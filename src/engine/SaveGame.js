@@ -395,7 +395,7 @@ function deserializeV2(document) {
   }
   assertNumber(map.seed, 'map.seed', { integer: true });
   const biomeGenerationVersion = map.biomeGenerationVersion ?? 1;
-  if (![1, BIOME_GENERATION_VERSION].includes(biomeGenerationVersion)) {
+  if (![1, 2, BIOME_GENERATION_VERSION].includes(biomeGenerationVersion)) {
     throw new Error(`Unsupported biome generation version: ${biomeGenerationVersion}`);
   }
   assertNumber(map.nextProducerId, 'map.nextProducerId', { integer: true, min: 1 });

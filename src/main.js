@@ -83,10 +83,11 @@ class GameApp {
 
     this.audioManager = new AudioManager();
     this.initAudioUI();
-    this.tutorialManager = new TutorialManager(this);
+    this.tutorialManager = new TutorialManager(this, { showWelcome: false });
 
     this.setSpeed(0);
     this.startRenderLoop();
+    this.openOverworld().then(() => this.tutorialManager.checkWelcomeModal());
   }
 
   initCanvasSize() {
@@ -331,20 +332,24 @@ class GameApp {
         ]);
         this.planet = new OverworldMap(this.worldSeed, this.homeSeed);
         this.homeCellId = this.planet.homeCellId;
-        if (!this.currentCellId || this.planet.getCell(this.currentCellId)?.ocean) this.currentCellId = this.homeCellId;
-        this.planet.getCell(this.currentCellId).seed = this.grid.seed;
-        if (!this.grid.biome) this.planet.getCell(this.currentCellId).biome = 'mixed';
+        if (this.currentCellId) {
+          if (this.planet.getCell(this.currentCellId)?.ocean) this.currentCellId = this.homeCellId;
+          this.planet.getCell(this.currentCellId).seed = this.grid.seed;
+          this.planet.getCell(this.currentCellId).biome = this.grid.biome || 'mixed';
+        }
         this.overworldView = new OverworldView(document.getElementById('overworld-view'), this.planet, {
           onEnter: (id) => this.enterOverworldCell(id),
           onClose: () => this.renderer.render(this.simulation),
           onRegenerate: (seed) => this.regenerateOverworld(seed),
           isVisited: (id) => this.cityStates.has(id),
+          hasCity: (id) => (this.cityStates.get(id)?.grid.activeRoadTiles.size ?? 0) > 0,
         });
       }
-      this.cityStates.set(this.currentCellId, this.captureCity());
+      if (this.currentCellId) this.cityStates.set(this.currentCellId, this.captureCity());
       this.overworldView.open(this.currentCellId);
     } catch (error) {
       console.error(error);
+      document.getElementById('overworld-view').hidden = true;
       window.alert('Unable to open the world map. Check your connection to the map libraries.');
     } finally {
       button.disabled = false;
@@ -359,7 +364,10 @@ class GameApp {
     localStorage.setItem('simconquer_world_seed', seed);
     localStorage.setItem('simconquer_home_seed', this.homeSeed);
     this.cityStates.clear();
-    this.currentCellId = null;
+    if (this.currentCellId) {
+      const { OverworldMap } = await import('./engine/OverworldMap.js');
+      this.currentCellId = new OverworldMap(seed, this.homeSeed).homeCellId;
+    }
     this.overworldView.dispose();
     this.overworldView = null;
     this.planet = null;
@@ -370,7 +378,7 @@ class GameApp {
     const cell = this.planet?.getCell(id);
     if (!cell || cell.ocean) return;
     if (id !== this.currentCellId) {
-      this.cityStates.set(this.currentCellId, this.captureCity());
+      if (this.currentCellId) this.cityStates.set(this.currentCellId, this.captureCity());
       const saved = this.cityStates.get(id);
       const city = saved || (() => {
         const grid = new Grid(this.grid.width, this.grid.height, cell.seed, cell.biome);
@@ -401,6 +409,7 @@ class GameApp {
       this.syncBudgetControls();
       this.updateHUD({ force: true });
     }
+    this.overworldView.currentId = id;
     this.overworldView.close();
   }
 

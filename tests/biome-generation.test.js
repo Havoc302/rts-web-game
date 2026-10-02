@@ -14,6 +14,15 @@ const mountain = new Grid(40, 40, seed, BIOME_TYPES.MOUNTAINOUS);
 const swamp = new Grid(40, 40, seed, BIOME_TYPES.SWAMP);
 
 for (const citySeed of [424242, 12345, 4893875]) {
+  for (const profile of [1, 2, 3]) {
+    const base = new Grid(40, 40, citySeed, null, TERRAIN_GENERATION_CONFIG.GENERATION_VERSION, profile);
+    const temperate = new Grid(40, 40, citySeed, BIOME_TYPES.TEMPERATE, TERRAIN_GENERATION_CONFIG.GENERATION_VERSION, profile);
+    assert.deepStrictEqual(temperate.getBiomeModifiers(), base.getBiomeModifiers(), 'Temperate should use the unmodified base settings');
+    assert.deepStrictEqual(temperate.tiles, base.tiles, 'Temperate terrain, river flow and hidden ore should exactly match the base map');
+  }
+}
+
+for (const citySeed of [424242, 12345, 4893875]) {
   const maps = Object.fromEntries([BIOME_TYPES.PLAINS, BIOME_TYPES.HILLY, BIOME_TYPES.MOUNTAINOUS]
     .map((biome) => [biome, new Grid(200, 200, citySeed, biome)]));
   const rockCoverage = (biome) => countTerrain(maps[biome], TERRAIN.MOUNTAIN) / 40000;
@@ -34,6 +43,22 @@ for (const citySeed of [424242, 12345, 4893875]) {
   const beforeRiver = countTerrain(desert, TERRAIN.WATER);
   desert.generateRiver(desert.getBiomeModifiers().riverMode);
   assert.strictEqual(countTerrain(desert, TERRAIN.WATER), beforeRiver, 'Deserts should not add a river');
+  const previousSwamp = new Grid(200, 200, citySeed, BIOME_TYPES.SWAMP, TERRAIN_GENERATION_CONFIG.GENERATION_VERSION, 2);
+  const wetterSwamp = new Grid(200, 200, citySeed, BIOME_TYPES.SWAMP);
+  assert.ok(countTerrain(wetterSwamp, TERRAIN.WATER) > countTerrain(previousSwamp, TERRAIN.WATER) * 2,
+    'New swamp maps should have substantially more water than the previous profile');
+}
+
+{
+  const lakeGrid = new Grid(200, 200, seed, BIOME_TYPES.SWAMP);
+  const radii = [];
+  lakeGrid.random = () => 0.5;
+  lakeGrid.paintTerrainCluster = (centerX, centerY, radius) => radii.push(radius);
+  lakeGrid.generateLakes();
+  assert.strictEqual(radii.length, 13, 'Swamps should generate 10 to 16 lakes');
+  assert.ok(radii.every((radius) => radius === 16), 'Swamp lake radius should double from the previous scale');
+  assert.strictEqual(lakeGrid.getBiomeModifiers().lakeCountMin, 10);
+  assert.strictEqual(lakeGrid.getBiomeModifiers().lakeCountMax, 16);
 }
 
 assert.ok(

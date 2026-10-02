@@ -977,7 +977,7 @@ h4 {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
+  z-index: 1200;
 }
 
 .modal-box {
@@ -1097,7 +1097,7 @@ h4 {
   left: 50%;
   bottom: 16px;
   transform: translateX(-50%);
-  z-index: 900;
+  z-index: 1100;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -1112,6 +1112,12 @@ h4 {
   flex-direction: column;
   gap: 2px;
   font-size: 0.85rem;
+}
+
+.overworld-view:not([hidden]) ~ .tutorial-banner {
+  top: calc(76px + env(safe-area-inset-top, 0px));
+  bottom: auto;
+  width: min(560px, calc(100% - 32px));
 }
 
 .tutorial-banner .btn-secondary {

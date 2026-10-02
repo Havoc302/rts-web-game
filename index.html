@@ -514,10 +514,10 @@
       </aside>
   </div>
 
-  <section id="overworld-view" class="overworld-view" hidden role="dialog" aria-modal="true" aria-label="World map">
+  <section id="overworld-view" class="overworld-view" role="dialog" aria-modal="true" aria-label="World map">
     <div id="overworld-scene" class="overworld-scene"></div>
     <div class="overworld-header">
-      <button id="btn-close-overworld" type="button" title="Return to city" aria-label="Return to city">←</button>
+      <button id="btn-close-overworld" type="button" hidden title="Return to city" aria-label="Return to city">←</button>
       <h2>WORLD MAP</h2>
       <div class="overworld-seed-control">
         <label for="overworld-seed-input">Planet seed</label>
@@ -529,7 +529,7 @@
       <span id="overworld-status" class="overworld-status"></span>
       <h3 id="overworld-biome"></h3>
       <div class="overworld-seed">Seed <strong id="overworld-seed"></strong></div>
-      <button id="btn-enter-hex" type="button">Open City</button>
+      <button id="btn-enter-hex" type="button">Open Map</button>
     </div>
   </section>
 
@@ -560,14 +560,15 @@
         <p>Build a thriving metropolis. Balance utility networks, food production, employment, civic services, and taxes to keep your citizens happy and treasury afloat, then build an army to destroy others cities.</p>
 
         <h4>Essential Starting Foundation:</h4>
-        <p>Every functional town requires a core grid containing these six connected fundamentals:</p>
+        <p>Start by selecting a map tile, then build these six connected fundamentals:</p>
         <ul>
-          <li><strong>1. Road Network:</strong> Build roads first &mdash; every building and zone must sit next to one (except renewable power generation). Roads act as water, sewage, power transmission and transportation conduits, connecting all essential infrastructure.</li>
-          <li><strong>2. Power Generation:</strong> Build Power Plants or Windmills/Solar (renewables require adjacent Battery Storage).</li>
-          <li><strong>3. Water Pump:</strong> Supply clean water to zoned structures.</li>
-          <li><strong>4. Sewage Plant:</strong> Process wastewater to prevent environmental pollution backups.</li>
-          <li><strong>5. Agricultural Zone:</strong> Produce food locally to prevent starvation and rapid population outflow and give people jobs.</li>
-          <li><strong>6. Residential Zone:</strong> House citizens to build your local workforce.</li>
+          <li><strong>1. Select a map tile:</strong> Choose a land tile on the globe, then Open Map.</li>
+          <li><strong>2. Road Network:</strong> Build roads first &mdash; every building and zone must sit next to one (except renewable power generation). Roads act as water, sewage, power transmission and transportation conduits, connecting all essential infrastructure.</li>
+          <li><strong>3. Power Generation:</strong> Build Power Plants or Windmills/Solar (renewables require adjacent Battery Storage).</li>
+          <li><strong>4. Water Pump:</strong> Supply clean water to zoned structures.</li>
+          <li><strong>5. Sewage Plant:</strong> Process wastewater to prevent environmental pollution backups.</li>
+          <li><strong>6. Agricultural Zone:</strong> Produce food locally to prevent starvation and rapid population outflow and give people jobs.</li>
+          <li><strong>7. Residential Zone:</strong> House citizens to build your local workforce.</li>
         </ul>
       </div>
       <div class="modal-actions">

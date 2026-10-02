@@ -29,7 +29,7 @@ function flatten(grid) {
 }
 
 for (const biome of Object.values(BIOME_TYPES)) {
-  for (const profile of [1, 2]) {
+  for (const profile of [1, 2, 3]) {
     const grid = new Grid(40, 40, 424242, biome, GENERATION_VERSION, profile);
     const app = makeApp(grid, new Simulation(grid));
     const saved = serializeGame(app);
