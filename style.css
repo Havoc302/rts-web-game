@@ -775,6 +775,24 @@ h4 {
   pointer-events: none;
 }
 
+.overworld-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  min-width: 0;
+}
+
+.overworld-brand {
+  color: #afc9c6;
+  font-size: 0.75rem;
+  line-height: 1.2;
+}
+
+#overworld-version {
+  white-space: nowrap;
+}
+
 .overworld-header h2 {
   font-size: 0.9rem;
   font-weight: 700;
@@ -795,6 +813,7 @@ h4 {
 
 .overworld-seed-control {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   gap: 8px;
   margin-left: auto;

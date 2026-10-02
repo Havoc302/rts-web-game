@@ -40,6 +40,8 @@ class GameApp {
     this.renderer = new Renderer(this.canvas, this.grid);
     const versionEl = document.getElementById('app-version');
     if (versionEl) versionEl.textContent = `v${APP_VERSION}`;
+    const overworldVersionEl = document.getElementById('overworld-version');
+    if (overworldVersionEl) overworldVersionEl.textContent = `v${APP_VERSION}`;
     const stylesheet = document.querySelector('link[rel="stylesheet"]');
     if (stylesheet) {
       const href = new URL(stylesheet.href, window.location.href);

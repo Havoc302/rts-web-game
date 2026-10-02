@@ -1177,6 +1177,11 @@ Current task: Keep Plains visible after adding Temperate.
 - [done] Test substantial Plains coverage and grouped regions across five seeds; all 43 test files pass with no changed-file diagnostics.
 - [done] Browser-check desktop/mobile screenshots and pixels and actual Plains selection on seed 77767 without altering the user's original session.
 
+Current task: Display game name and version beside World Map.
+
+- [done] Add SimConquer 2000 and the shared APP_VERSION beside the World Map title with responsive wrapping.
+- [done] Verify version-sync test and changed-file diagnostics; browser-check matching city/globe versions and non-overlapping header layout at 1280px, 390px, and 320px.
+
 To check: All production which can be stored. Food, Consumer Goods, arms, tanks, raw materials (bauxite, aluminium, iron, oil) should use a similar system to power generation and batteries. Consumers of those things should be given priority first then the storage is filled, overflow is defaults to consumers or is lost if storage is full.
 Possible bug: Oil derricks are producing oil but the silo set to oil isn't storing anything, I can see it's not going to the refinery either, it shows no rate of production but I can tell because my other silo set to fuel is also not filling up. Unless it's all working but all being consumed by users before any of those things in the production chain actually show anything.
 We need an alerts panel kind of like SimCity events notifications where we can tell the user if a fire has broken out, crime rate has climbed to be high, medical coverage is critically low, treasury is out of money. Things like that.
