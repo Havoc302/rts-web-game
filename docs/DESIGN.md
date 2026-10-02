@@ -6,7 +6,7 @@
 | Author | TBD |
 | Date | 2026-09-25 |
 | Status | Living draft (rev 8) |
-| Version covered | `APP_VERSION` `0.1.65` (`src/version.js`); current working tree |
+| Version covered | `APP_VERSION` `0.2.0` (`src/version.js`); current working tree |
 | Intended in-repo path | `docs/DESIGN.md` |
 | Repo | `g:\Repos\rts-web-game` (`origin`: `https://github.com/Havoc302/rts-web-game.git`) |
 | Working tree at inventory | Documentation is checked against the current implementation; uncommitted changes may exist. |
@@ -17,7 +17,7 @@ This is a **living** architecture + product document. It records the current imp
 
 ## Overview
 
-Build & Conquer 2000 is a browser city-builder written in vanilla ES modules and Canvas 2D. The player zones a seeded 200×200 map, connects power/water/sewage over a road graph, funds civic services, and runs a tick-based economy of tax, labor, pollution, crime, fire, food, and industry. The current public surface is a **playable SimCity-style loop** with no persistence of city state, no units, no opponents, and no victory condition.
+Build & Conquer 2000 is a browser city-builder written in vanilla ES modules and Canvas 2D. The player zones a seeded 200×200 map, connects power/water/sewage over a road graph, funds civic services, and runs a tick-based economy of tax, labor, pollution, crime, fire, food, and industry. The current public surface includes local JSON city saves and a seeded planet map, but no units, opponents, or victory condition.
 
 The **product** is a hybrid of **SimCity 2000** (the city), **Command & Conquer** (the army fighting across a map), and a **RimWorld-style world map** (the strategic layer). The city acts like a real city: it provides the **money, industrial base, and people to supply its army**. That army is then used **across the world map** to conquer enemies. Online matches use **Google login and Google Firebase**. Two City Halls on one 200×200 city grid is **not** the end-state.
 
@@ -40,7 +40,17 @@ This document exists to make the following boundaries explicit:
 
 ### Current state (honest)
 
-B&C2000 is a **single-player, client-only, paused-by-default city builder**. A session is: pick a seed → paint roads/zones/producers → unpause → watch the tick. Resetting the map or refreshing the tab **destroys the city** because persistence is still outstanding. Food, consumer goods, oil/fuel, agriculture, crime, fire, services, and military stockpile display are implemented; military production has no unit sink yet.
+B&C2000 is a **single-player, client-only, paused-by-default city builder**. A session is: pick a seed, build a city, open the planet globe, and visit other seeded cities. Paused cities can be exported to JSON and imported later; refreshing without exporting still loses the session. Food, consumer goods, oil/fuel, agriculture, crime, fire, services, and military stockpile display are implemented; military production has no unit sink yet.
+
+### Seeded Planet (0.2.0)
+
+`OverworldMap` uses H3 resolution-one cells to cover the spherical planet with 842 connected hexes. The planet seed independently places six irregular continents and island chains; no Earth coastlines or fixed continent coordinates are used. Ocean hexes have no biome or city seed. Land biomes form regional plains, hills, mountains, and swamps, and each land hex has a deterministic city seed. The first seeded continent supplies the home hex for the existing city.
+
+`OverworldView` renders the globe using Three.js and opens from the bottom-right city button. Players rotate and select land, enter a city generated on first visit, and return to visited cities with their state intact. Globe browsing pauses simulation. Changing the planet seed asks for confirmation, moves the active city to the new home hex, and removes previously visited cities. Version-2 JSON saves include the planet seed, active hex, home city seed, and visited city snapshots; older city-only saves remain importable. Terrain generation stays at version 2. Combat and world-map armies are still future work.
+
+New biome cities use biome profile 2: plains have sparse rocks, hills have larger rocky clusters, and mountains have large formations with less forest cover. The hex seed and biome both reach `Grid` on first entry. Saves record `map.biomeGenerationVersion` separately from the unchanged terrain generation version 2. Saves without that field regenerate using the original biome profile 1, preserving terrain and hidden ore; already-visited cities are not regenerated automatically. Resetting a city adopts the current biome profile.
+
+Desert regions occupy seeded dry areas of continents and use sand-colored globe hexes. Desert cities have fewer rock clusters than plains, almost no forest, one or two small lakes, and no rivers. Desert changes do not alter the generation settings of other city biomes; existing visited cities retain their terrain.
 
 ### Pain points
 

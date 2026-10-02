@@ -1101,6 +1101,32 @@ Current task: Apply version-2 cluster shapes to standalone lakes.
 - [done] Add a lake indentation/lobe test, check seeded terrain visually, and run biome/save/soak checks.
 - [done] Update `docs/DESIGN.md` and bump app patch version to 0.1.65.
 
+Current task: Add a seeded hex-planet overworld for multiple city maps.
+
+- [done] Add deterministic H3 planet cells with connected continental land, island groups, regional biome types, preassigned seeds, and ocean cells with no city metadata (`OverworldMap`).
+- [done] Test seed-derived home location, different seeded coastlines, ocean majority, biome grouping and determinism (`tests/overworld.test.js`).
+- [done] Add full-screen Three.js globe, bottom-right button, selected-current-city outline, land selection and unusable oceans (desktop browser render and land/ocean selection checked).
+- [done] Open city maps lazily from hex seeds and retain visited city state while switching; pause the current city while browsing (browser return restored the same Grid object).
+- [done] Persist the selected world location and visited cities through save/import without breaking older saves.
+- [done] Randomize continent and island positions from the planet seed; move the home city to seeded land when regenerating.
+- [done] Browser-check desktop/mobile globe pixels, hit testing, drag rotation, city switching and save/import; run full tests and diagnostics.
+- [done] Update `docs/DESIGN.md` and bump app version to 0.2.0 (terrain generation remains version 2).
+
+Current task: Make overmap city biomes visibly distinct.
+
+- [done] Verify the hex seed and biome reach the generated city; weak rock density, not seed transfer, caused similar-looking maps.
+- [done] Use sparse plains rocks, larger hilly clusters, and broad mountain formations with less forest for new cities.
+- [done] Persist a separate biome profile version; old saves retain their terrain and hidden ore with terrain generation still at version 2.
+- [done] Test full 200x200 biome coverage across three seeds and old/new save round-trips; all 43 test files pass.
+- [done] Browser-check actual city entry: matching hex/city seeds and approximately 3%, 32%, and 70% rocky coverage for plains, hills, and mountains.
+
+Current task: Add sparse desert biomes.
+
+- [done] Add seeded regional desert hexes with sand-colored globe rendering.
+- [done] Generate sparse desert cities: fewer rocks than plains, almost no forest, one or two small lakes, and no rivers.
+- [done] Cover desert terrain density, lake counts, grouped planet regions, and save/import; all 43 test files pass with no changed-file diagnostics.
+- [blocked] Live browser check: browser connection timed out; automated terrain and save checks passed.
+
 To check: All production which can be stored. Food, Consumer Goods, arms, tanks, raw materials (bauxite, aluminium, iron, oil) should use a similar system to power generation and batteries. Consumers of those things should be given priority first then the storage is filled, overflow is defaults to consumers or is lost if storage is full.
 Possible bug: Oil derricks are producing oil but the silo set to oil isn't storing anything, I can see it's not going to the refinery either, it shows no rate of production but I can tell because my other silo set to fuel is also not filling up. Unless it's all working but all being consumed by users before any of those things in the production chain actually show anything.
 We need an alerts panel kind of like SimCity events notifications where we can tell the user if a fire has broken out, crime rate has climbed to be high, medical coverage is critically low, treasury is out of money. Things like that.

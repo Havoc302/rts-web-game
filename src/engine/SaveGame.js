@@ -1,4 +1,4 @@
-import { APP_VERSION, DENSITY, MAP_HEIGHT, MAP_WIDTH, PRODUCER_TYPE, TERRAIN_GENERATION_CONFIG, ZONE } from '../config.js';
+import { APP_VERSION, BIOME_GENERATION_VERSION, DENSITY, MAP_HEIGHT, MAP_WIDTH, PRODUCER_TYPE, TERRAIN_GENERATION_CONFIG, ZONE } from '../config.js';
 import { Grid } from './Grid.js';
 
 export const SAVE_VERSION = 2;
@@ -125,7 +125,7 @@ function applyTileOverride(tile, override) {
 }
 
 function collectTileOverrides(grid) {
-  const base = new Grid(grid.width, grid.height, grid.seed, grid.biome);
+  const base = new Grid(grid.width, grid.height, grid.seed, grid.biome, grid.generationVersion, grid.biomeGenerationVersion ?? 1);
   const overrides = [];
   for (let y = 0; y < grid.height; y++) {
     for (let x = 0; x < grid.width; x++) {
@@ -233,6 +233,7 @@ export function serializeGame(app) {
       height: app.grid.height,
       seed: app.grid.seed,
       biome: app.grid.biome ?? null,
+      biomeGenerationVersion: app.grid.biomeGenerationVersion ?? 1,
       nextProducerId: app.grid.nextProducerId,
     },
     tiles: collectTileOverrides(app.grid),
@@ -264,6 +265,24 @@ export function serializeGame(app) {
       overlayMode: app.renderer.overlayMode,
       autoSwitchToPan: app.autoSwitchToPan,
     },
+    ...(app.planet && app.currentCellId ? {
+      overworld: {
+        seed: app.worldSeed,
+        cellId: app.currentCellId,
+        homeSeed: app.planet.getCell?.(app.homeCellId)?.seed ?? app.grid.seed,
+        visited: Array.from(app.cityStates || []).filter(([id]) => id !== app.currentCellId).map(([id, city]) => ({
+          cellId: id,
+          city: serializeGame({
+            grid: city.grid,
+            simulation: city.simulation,
+            treasury: city.treasury,
+            activeTool: city.activeTool,
+            autoSwitchToPan: app.autoSwitchToPan,
+            renderer: { cameraX: city.camera.x, cameraY: city.camera.y, zoom: city.camera.zoom, overlayMode: city.overlayMode },
+          }),
+        })),
+      },
+    } : {}),
   };
 }
 
@@ -375,14 +394,22 @@ function deserializeV2(document) {
     throw new Error('Invalid save grid dimensions');
   }
   assertNumber(map.seed, 'map.seed', { integer: true });
+  const biomeGenerationVersion = map.biomeGenerationVersion ?? 1;
+  if (![1, BIOME_GENERATION_VERSION].includes(biomeGenerationVersion)) {
+    throw new Error(`Unsupported biome generation version: ${biomeGenerationVersion}`);
+  }
   assertNumber(map.nextProducerId, 'map.nextProducerId', { integer: true, min: 1 });
   assertNumber(document.treasury, 'treasury');
   validateSimulation(document.simulation);
   validateCamera(document.camera);
   if (!Array.isArray(document.tiles)) throw new Error('Invalid save tile data');
   validateProducers(document.producers, map.width, map.height);
+  if (document.overworld && (!Number.isInteger(document.overworld.seed) || typeof document.overworld.cellId !== 'string' ||
+    !Array.isArray(document.overworld.visited) || document.overworld.visited.some((entry) => typeof entry.cellId !== 'string' || !entry.city))) {
+    throw new Error('Invalid overworld save data');
+  }
 
-  const grid = new Grid(map.width, map.height, map.seed, map.biome ?? null, document.generationVersion);
+  const grid = new Grid(map.width, map.height, map.seed, map.biome ?? null, document.generationVersion, biomeGenerationVersion);
   for (const override of document.tiles) {
     if (!override || typeof override !== 'object') throw new Error('Invalid save tile override');
     assertNumber(override.x, 'tile.x', { integer: true, min: 0 });
@@ -399,6 +426,7 @@ function deserializeV2(document) {
     treasury: document.treasury,
     camera: { ...document.camera },
     ui: restoredUi(document.ui),
+    overworld: document.overworld || null,
   };
 }
 

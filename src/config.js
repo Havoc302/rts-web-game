@@ -191,11 +191,28 @@ export const BIOME_TYPES = {
   HILLY: 'hilly',
   MOUNTAINOUS: 'mountainous',
   SWAMP: 'swamp',
+  DESERT: 'desert',
 };
 
 // Modifiers applied on top of TERRAIN_GENERATION_CONFIG. Omit biome for current
 // city-map defaults (scale 1, mixed rivers, 0–5 lakes).
+export const BIOME_GENERATION_VERSION = 2;
+
+export const BIOME_TERRAIN_CONFIG = {
+  [BIOME_TYPES.PLAINS]: { rockClusterScale: 0.25, forestClusterScale: 0.8, rockRadiusScale: 1 },
+  [BIOME_TYPES.HILLY]: { rockClusterScale: 1.25, forestClusterScale: 0.75, rockRadiusScale: 1.8 },
+  [BIOME_TYPES.MOUNTAINOUS]: { rockClusterScale: 1.5, forestClusterScale: 0.35, rockRadiusScale: 3 },
+};
+
 export const BIOME_CONFIG = {
+  [BIOME_TYPES.DESERT]: {
+    rockClusterScale: 0.1,
+    forestClusterScale: 0.02,
+    lakeCountMin: 1,
+    lakeCountMax: 2,
+    lakeRadiusScale: 0.6,
+    riverMode: 'none',
+  },
   [BIOME_TYPES.PLAINS]: {
     rockClusterScale: 0.5,
     forestClusterScale: 1,

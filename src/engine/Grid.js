@@ -1,4 +1,4 @@
-import { TERRAIN, TERRAIN_TYPE, ZONE, DENSITY, MAP_WIDTH, MAP_HEIGHT, PRODUCER_CONFIG, PRODUCER_TYPE, ORE_CONFIG, ORE_GENERATION, SERVICE_GLOBAL_CONFIG, TERRAIN_GENERATION_CONFIG, MAP_SEED_STORAGE_KEY, MAP_SEED_STORAGE_KEY_LEGACY, BIOME_CONFIG } from '../config.js';
+import { TERRAIN, TERRAIN_TYPE, ZONE, DENSITY, MAP_WIDTH, MAP_HEIGHT, PRODUCER_CONFIG, PRODUCER_TYPE, ORE_CONFIG, ORE_GENERATION, SERVICE_GLOBAL_CONFIG, TERRAIN_GENERATION_CONFIG, MAP_SEED_STORAGE_KEY, MAP_SEED_STORAGE_KEY_LEGACY, BIOME_CONFIG, BIOME_TERRAIN_CONFIG, BIOME_GENERATION_VERSION } from '../config.js';
 
 export function producerTypeForTool(tool) {
   if (!tool?.startsWith('producer_')) return null;
@@ -20,11 +20,12 @@ export function createPRNG(seed) {
 }
 
 export class Grid {
-  constructor(width = MAP_WIDTH, height = MAP_HEIGHT, seed = null, biome = null, generationVersion = TERRAIN_GENERATION_CONFIG.GENERATION_VERSION) {
+  constructor(width = MAP_WIDTH, height = MAP_HEIGHT, seed = null, biome = null, generationVersion = TERRAIN_GENERATION_CONFIG.GENERATION_VERSION, biomeGenerationVersion = generationVersion >= 2 ? BIOME_GENERATION_VERSION : 1) {
     this.width = width;
     this.height = height;
     this.biome = biome;
     this.generationVersion = generationVersion;
+    this.biomeGenerationVersion = biomeGenerationVersion;
     this.seed = seed !== null ? parseInt(seed, 10) : this.getInitialSeed();
     this.random = createPRNG(this.seed);
     this.tiles = [];
@@ -89,10 +90,10 @@ export class Grid {
   }
 
   initGrid() {
-    this.randomizeGrid(this.seed, this.biome, this.generationVersion);
+    this.randomizeGrid(this.seed, this.biome, this.generationVersion, this.biomeGenerationVersion);
   }
 
-  randomizeGrid(seed = null, biome = this.biome, generationVersion = TERRAIN_GENERATION_CONFIG.GENERATION_VERSION) {
+  randomizeGrid(seed = null, biome = this.biome, generationVersion = TERRAIN_GENERATION_CONFIG.GENERATION_VERSION, biomeGenerationVersion = BIOME_GENERATION_VERSION) {
     if (seed !== null && !isNaN(parseInt(seed, 10))) {
       this.seed = parseInt(seed, 10);
     }
@@ -100,6 +101,7 @@ export class Grid {
       this.biome = biome;
     }
     this.generationVersion = generationVersion;
+    this.biomeGenerationVersion = biomeGenerationVersion;
     this.persistSeed();
     this.random = createPRNG(this.seed);
     this.terrainVersion++;
@@ -241,7 +243,7 @@ export class Grid {
   }
 
   getBiomeModifiers(biome = this.biome) {
-    return BIOME_CONFIG[biome] || {
+    const modifiers = BIOME_CONFIG[biome] || {
       rockClusterScale: 1,
       forestClusterScale: 1,
       lakeCountMin: 0,
@@ -249,6 +251,7 @@ export class Grid {
       lakeRadiusScale: 1,
       riverMode: 'mixed',
     };
+    return this.biomeGenerationVersion >= 2 ? { ...modifiers, ...BIOME_TERRAIN_CONFIG[biome] } : modifiers;
   }
 
   generateProceduralTerrain(biome = this.biome) {
@@ -280,7 +283,7 @@ export class Grid {
       const cx = Math.floor(this.random() * (this.width - margin)) + margin / 2;
       const cy = Math.floor(this.random() * (this.height - margin)) + margin / 2;
       const radius = TERRAIN_GENERATION_CONFIG.ROCK_CLUSTER_RADIUS_BASE + Math.floor(this.random() * TERRAIN_GENERATION_CONFIG.ROCK_CLUSTER_RADIUS_RANDOM);
-      this.paintTerrainCluster(cx, cy, radius, TERRAIN_TYPE.ROCK,
+      this.paintTerrainCluster(cx, cy, radius * (modifiers.rockRadiusScale ?? 1), TERRAIN_TYPE.ROCK,
         TERRAIN_GENERATION_CONFIG.ROCK_CLUSTER_RADIUS_WOBBLE_RANGE,
         TERRAIN_GENERATION_CONFIG.ROCK_CLUSTER_RADIUS_WOBBLE_CENTER);
     }
@@ -330,6 +333,7 @@ export class Grid {
   }
 
   generateRiver(riverMode = 'mixed') {
+    if (riverMode === 'none') return;
     const edges = ['top', 'bottom', 'left', 'right'];
 
     // Primary start and end edges

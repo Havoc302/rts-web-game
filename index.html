@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>SimConquer 2000</title>
   <link rel="stylesheet" href="style.css">
+  <script type="importmap">
+    {"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/","h3-js":"https://cdn.jsdelivr.net/npm/h3-js@4.3.0/dist/h3-js.es.js"}}
+  </script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
@@ -201,6 +204,7 @@
       <!-- Mobile drawer toggles (hidden on desktop) -->
       <button class="mobile-toggle mobile-toggle-tools glass" id="btn-toggle-tools" aria-label="Toggle Tools">🛠️</button>
       <button class="mobile-toggle mobile-toggle-hud glass" id="btn-toggle-hud" aria-label="Toggle Stats">📊</button>
+      <button class="overworld-toggle glass" id="btn-overworld" type="button" title="Open world map" aria-label="Open world map">🌐</button>
 
       <!-- Overlay View Selector -->
       <div class="view-overlay-picker glass">
@@ -509,6 +513,25 @@
         </div>
       </aside>
   </div>
+
+  <section id="overworld-view" class="overworld-view" hidden role="dialog" aria-modal="true" aria-label="World map">
+    <div id="overworld-scene" class="overworld-scene"></div>
+    <div class="overworld-header">
+      <button id="btn-close-overworld" type="button" title="Return to city" aria-label="Return to city">←</button>
+      <h2>WORLD MAP</h2>
+      <div class="overworld-seed-control">
+        <label for="overworld-seed-input">Planet seed</label>
+        <input type="number" id="overworld-seed-input" min="1" max="9999999" />
+        <button id="btn-generate-overworld" type="button" title="Regenerate planet from seed" aria-label="Regenerate planet from seed">↻</button>
+      </div>
+    </div>
+    <div id="overworld-info" class="overworld-info" hidden>
+      <span id="overworld-status" class="overworld-status"></span>
+      <h3 id="overworld-biome"></h3>
+      <div class="overworld-seed">Seed <strong id="overworld-seed"></strong></div>
+      <button id="btn-enter-hex" type="button">Open City</button>
+    </div>
+  </section>
 
   <div id="audio-prompt-modal" class="modal-overlay">
     <div class="modal-box">

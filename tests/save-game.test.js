@@ -10,7 +10,7 @@ import {
   serializeGameToJson,
   serializeGameV1,
 } from '../src/engine/SaveGame.js';
-import { PRODUCER_TYPE, TERRAIN, ZONE } from '../src/config.js';
+import { BIOME_TYPES, PRODUCER_TYPE, TERRAIN, ZONE } from '../src/config.js';
 
 function makeApp(grid, simulation, extras = {}) {
   simulation.isPaused = true;
@@ -26,6 +26,50 @@ function makeApp(grid, simulation, extras = {}) {
 
 function flatten(grid) {
   for (const row of grid.tiles) for (const tile of row) tile.terrain = TERRAIN.FLAT;
+}
+
+for (const biome of Object.values(BIOME_TYPES)) {
+  for (const profile of [1, 2]) {
+    const grid = new Grid(40, 40, 424242, biome, GENERATION_VERSION, profile);
+    const app = makeApp(grid, new Simulation(grid));
+    const saved = serializeGame(app);
+    assert.strictEqual(saved.tiles.length, 0, 'Untouched terrain should not require tile overrides');
+    if (profile === 1) delete saved.map.biomeGenerationVersion;
+    const restored = deserializeGame(saved);
+    const terrainAndOre = (city) => city.tiles.flat().map((tile) => [tile.terrain, tile.ore]);
+    assert.strictEqual(restored.grid.biomeGenerationVersion, profile);
+    assert.deepStrictEqual(terrainAndOre(restored.grid), terrainAndOre(grid), 'Biome terrain and hidden ore must survive save/import');
+    assert.strictEqual(serializeGame(makeApp(restored.grid, new Simulation(restored.grid))).map.biomeGenerationVersion, profile);
+    saved.map.biomeGenerationVersion = 99;
+    assert.throws(() => deserializeGame(saved), /Unsupported biome generation version/);
+  }
+}
+
+{
+  const currentGrid = new Grid(8, 8, 22222);
+  const visitedGrid = new Grid(8, 8, 33333);
+  flatten(visitedGrid);
+  visitedGrid.placeRoad(2, 2);
+  const visitedSimulation = new Simulation(visitedGrid);
+  visitedSimulation.isPaused = true;
+  visitedSimulation.tickCount = 7;
+  const app = makeApp(currentGrid, new Simulation(currentGrid));
+  app.planet = {};
+  app.worldSeed = 77777;
+  app.currentCellId = 'current-hex';
+  app.cityStates = new Map([
+    ['current-hex', {}],
+    ['visited-hex', { grid: visitedGrid, simulation: visitedSimulation, treasury: 4356,
+      activeTool: 'road', overlayMode: 'normal', camera: { x: 20, y: -10, zoom: 1.2 } }],
+  ]);
+  const restored = deserializeGameFromJson(serializeGameToJson(app));
+  assert.strictEqual(restored.overworld.seed, 77777);
+  assert.strictEqual(restored.overworld.cellId, 'current-hex');
+  assert.strictEqual(restored.overworld.visited.length, 1, 'Only other visited cities are nested in a save');
+  const visited = deserializeGame(restored.overworld.visited[0].city);
+  assert.strictEqual(visited.grid.getTile(2, 2).hasRoad, true);
+  assert.strictEqual(visited.simulation.tickCount, 7);
+  assert.strictEqual(visited.treasury, 4356);
 }
 
 {

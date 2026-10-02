@@ -1,6 +1,6 @@
 {
   "name": "rts-web-game",
-  "version": "0.1.65",
+  "version": "0.2.0",
   "type": "module",
   "scripts": {
     "test": "node tests/run-all.js",
@@ -17,5 +17,9 @@
     "test:resources": "node tests/resource-management.test.js",
     "test:demographics": "node tests/demographics.test.js",
     "dev": "npx serve ."
+  },
+  "dependencies": {
+    "h3-js": "^4.3.0",
+    "three": "^0.180.0"
   }
 }

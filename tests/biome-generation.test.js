@@ -13,6 +13,29 @@ const plains = new Grid(40, 40, seed, BIOME_TYPES.PLAINS);
 const mountain = new Grid(40, 40, seed, BIOME_TYPES.MOUNTAINOUS);
 const swamp = new Grid(40, 40, seed, BIOME_TYPES.SWAMP);
 
+for (const citySeed of [424242, 12345, 4893875]) {
+  const maps = Object.fromEntries([BIOME_TYPES.PLAINS, BIOME_TYPES.HILLY, BIOME_TYPES.MOUNTAINOUS]
+    .map((biome) => [biome, new Grid(200, 200, citySeed, biome)]));
+  const rockCoverage = (biome) => countTerrain(maps[biome], TERRAIN.MOUNTAIN) / 40000;
+  assert.ok(rockCoverage(BIOME_TYPES.PLAINS) < 0.05, 'Plains should have little rocky terrain');
+  assert.ok(rockCoverage(BIOME_TYPES.HILLY) > 0.12, 'Hilly cities should have substantial rocky terrain');
+  assert.ok(rockCoverage(BIOME_TYPES.MOUNTAINOUS) > 0.3, 'Mountainous cities should be visibly mountain-dominated');
+  assert.ok(rockCoverage(BIOME_TYPES.MOUNTAINOUS) > rockCoverage(BIOME_TYPES.HILLY) * 1.5);
+  const desert = new Grid(200, 200, citySeed, BIOME_TYPES.DESERT);
+  assert.ok(countTerrain(desert, TERRAIN.FLAT) > 40000 * 0.95, 'Deserts should be mostly open terrain');
+  assert.ok(countTerrain(desert, TERRAIN.MOUNTAIN) < countTerrain(maps[BIOME_TYPES.PLAINS], TERRAIN.MOUNTAIN), 'Deserts should have fewer rocks than plains');
+  assert.ok(countTerrain(desert, TERRAIN.FOREST) < 40000 * 0.02, 'Deserts should have almost no forest');
+  assert.ok(countTerrain(desert, TERRAIN.WATER) > 0 && countTerrain(desert, TERRAIN.WATER) < 40000 * 0.01, 'Deserts should have sparse lake water');
+  const lakeGrid = new Grid(200, 200, citySeed, BIOME_TYPES.DESERT);
+  let lakeCount = 0;
+  lakeGrid.paintTerrainCluster = () => { lakeCount++; };
+  lakeGrid.generateLakes();
+  assert.ok(lakeCount >= 1 && lakeCount <= 2, 'Deserts should generate one or two lakes');
+  const beforeRiver = countTerrain(desert, TERRAIN.WATER);
+  desert.generateRiver(desert.getBiomeModifiers().riverMode);
+  assert.strictEqual(countTerrain(desert, TERRAIN.WATER), beforeRiver, 'Deserts should not add a river');
+}
+
 assert.ok(
   countTerrain(mountain, TERRAIN.MOUNTAIN) > countTerrain(plains, TERRAIN.MOUNTAIN),
   'Mountainous biomes should place more rock than plains',
