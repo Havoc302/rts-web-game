@@ -60,6 +60,8 @@ Desert regions occupy seeded dry areas of continents and use sand-colored globe 
 
 Temperate is the explicit unmodified base biome: normal forest and rock cluster counts and sizes, 0-5 lakes at normal size, and mixed river layouts. For the same seed and generation profile, Temperate produces exactly the same terrain, river flow, and hidden ore as the biome-unspecified base generator. A seeded direction splits available cooler continental lowlands into grouped Temperate and Plains regions, rather than assigning all cooler lowlands to Temperate and confining Plains to the equator. Plains remains a separate, more open biome, shown in light green; Temperate uses darker green. Existing visited cities retain their generated terrain.
 
+Selecting a land hex shows its generated city-map water, forest, and mountain coverage as percentages of all city tiles, with water including both rivers and lakes. Existing cities use their current terrain. Unopened hexes use a deterministic city-grid preview keyed by hex ID; its cached percentages match the map generated when the hex is opened. Ocean hexes have no city terrain stats.
+
 The land-tile action is labeled `Open Map` for current, visited, and unexplored tiles. Small bordered markers identify land maps with at least one player-built road, including bridges and tunnels. Markers refresh when the world map opens and follow globe rotation. Generated or visited maps without roads remain unmarked, including the current map. Removing the last road removes the marker even if zones or buildings remain; oceans are never marked.
 
 ### Pain points

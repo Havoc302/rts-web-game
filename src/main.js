@@ -36,6 +36,7 @@ class GameApp {
     this.cityStates = new Map();
     this.planet = null;
     this.overworldView = null;
+    this.terrainPreviewCache = new Map();
     this.simulation = new Simulation(this.grid);
     this.renderer = new Renderer(this.canvas, this.grid);
     const versionEl = document.getElementById('app-version');
@@ -345,6 +346,7 @@ class GameApp {
           onRegenerate: (seed) => this.regenerateOverworld(seed),
           isVisited: (id) => this.cityStates.has(id),
           hasCity: (id) => (this.cityStates.get(id)?.grid.activeRoadTiles.size ?? 0) > 0,
+          getTerrainStats: (id) => this.getOverworldTerrainStats(id),
         });
       }
       if (this.currentCellId) this.cityStates.set(this.currentCellId, this.captureCity());
@@ -358,6 +360,18 @@ class GameApp {
     }
   }
 
+  getOverworldTerrainStats(id) {
+    const cell = this.planet?.getCell(id);
+    if (!cell || cell.ocean) return { water: 0, forest: 0, mountain: 0 };
+    const cityGrid = id === this.currentCellId ? this.grid : this.cityStates.get(id)?.grid;
+    if (cityGrid) return cityGrid.getTerrainPercentages();
+    if (!this.terrainPreviewCache.has(id)) {
+      const previewGrid = new Grid(undefined, undefined, cell.seed, cell.biome);
+      this.terrainPreviewCache.set(id, previewGrid.getTerrainPercentages());
+    }
+    return this.terrainPreviewCache.get(id);
+  }
+
   async regenerateOverworld(seed) {
     if (seed === this.worldSeed) return;
     if (!window.confirm('Generate a new planet? Your current city will move to its new home hex. Other visited cities will be removed.')) return;
@@ -366,6 +380,7 @@ class GameApp {
     localStorage.setItem('simconquer_world_seed', seed);
     localStorage.setItem('simconquer_home_seed', this.homeSeed);
     this.cityStates.clear();
+    this.terrainPreviewCache.clear();
     if (this.currentCellId) {
       const { OverworldMap } = await import('./engine/OverworldMap.js');
       this.currentCellId = new OverworldMap(seed, this.homeSeed).homeCellId;
@@ -454,6 +469,7 @@ class GameApp {
       localStorage.setItem('simconquer_world_seed', this.worldSeed);
       localStorage.setItem('simconquer_home_seed', this.homeSeed);
       this.cityStates = new Map();
+      this.terrainPreviewCache.clear();
       for (const visited of imported.overworld?.visited || []) {
         this.cityStates.set(visited.cellId, this.restoreImportedCity(deserializeGame(visited.city)));
       }

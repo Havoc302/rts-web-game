@@ -85,6 +85,13 @@ assert.ok(neighbors.filter(([a, b]) => a.biome === b.biome).length > neighbors.l
 	Object.assign(view, {
 		planet, currentId: planet.homeCellId, isVisited: (id) => visited.has(id),
 		hasCity: (id) => (grids.get(id)?.activeRoadTiles.size ?? 0) > 0,
+		getTerrainStats: (id) => {
+			if (!grids.has(id)) {
+				const cell = planet.getCell(id);
+				grids.set(id, new Grid(8, 8, cell.seed, cell.biome));
+			}
+			return grids.get(id).getTerrainPercentages();
+		},
 		cityMarkers: new THREE.Group(), cityMarkerGeometry: new THREE.CircleGeometry(0.03, 20),
 		cityMarkerBorderMaterial: new THREE.MeshBasicMaterial(), cityMarkerMaterial: new THREE.MeshBasicMaterial(),
 		scene: new THREE.Scene(),
@@ -132,6 +139,9 @@ assert.ok(neighbors.filter(([a, b]) => a.biome === b.biome).length > neighbors.l
 	for (const cell of [planet.getCell(planet.homeCellId), newlyVisited, land.find((cell) => cell.id !== planet.homeCellId && !visited.has(cell.id))]) {
 		view.select(cell);
 		assert.strictEqual(elements.get('#btn-enter-hex').textContent, 'Open Map');
+		for (const terrain of ['water', 'forest', 'mountain']) {
+			assert.match(elements.get(`#overworld-${terrain}-percent`).textContent, /^\d+\.\d%$/);
+		}
 	}
 	assert.ok(homeGrid.bulldoze(2, 2));
 	assert.ok(newGrid.bulldoze(2, 3));

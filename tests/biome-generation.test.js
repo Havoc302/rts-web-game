@@ -8,6 +8,16 @@ function countTerrain(grid, terrain) {
   return grid.tiles.flat().filter((tile) => tile.terrain === terrain).length;
 }
 
+{
+  const grid = new Grid(10, 10, 424242, BIOME_TYPES.TEMPERATE);
+  for (const tile of grid.tiles.flat()) tile.terrain = TERRAIN.FLAT;
+  grid.tiles[0][0].terrain = TERRAIN.WATER;
+  grid.tiles[0][1].terrain = TERRAIN.WATER;
+  grid.tiles[0][2].terrain = TERRAIN.FOREST;
+  grid.tiles[0][3].terrain = TERRAIN.MOUNTAIN;
+  assert.deepStrictEqual(grid.getTerrainPercentages(), { water: 2, forest: 1, mountain: 1 });
+}
+
 const seed = 424242;
 const plains = new Grid(40, 40, seed, BIOME_TYPES.PLAINS);
 const mountain = new Grid(40, 40, seed, BIOME_TYPES.MOUNTAINOUS);
@@ -19,6 +29,9 @@ for (const citySeed of [424242, 12345, 4893875]) {
     const temperate = new Grid(40, 40, citySeed, BIOME_TYPES.TEMPERATE, TERRAIN_GENERATION_CONFIG.GENERATION_VERSION, profile);
     assert.deepStrictEqual(temperate.getBiomeModifiers(), base.getBiomeModifiers(), 'Temperate should use the unmodified base settings');
     assert.deepStrictEqual(temperate.tiles, base.tiles, 'Temperate terrain, river flow and hidden ore should exactly match the base map');
+    const preview = new Grid(40, 40, citySeed, BIOME_TYPES.MOUNTAINOUS);
+    const openedCity = new Grid(40, 40, citySeed, BIOME_TYPES.MOUNTAINOUS);
+    assert.deepStrictEqual(preview.getTerrainPercentages(), openedCity.getTerrainPercentages(), 'Preview percentages should match the city generated from the same hex seed');
   }
 }
 

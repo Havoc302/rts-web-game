@@ -517,6 +517,19 @@ export class Grid {
     return manuallyAssignedZones;
   }
 
+  getTerrainPercentages() {
+    const counts = { water: 0, forest: 0, mountain: 0 };
+    for (const row of this.tiles) {
+      for (const tile of row) {
+        if (tile.terrain === TERRAIN.WATER) counts.water++;
+        else if (tile.terrain === TERRAIN.FOREST) counts.forest++;
+        else if (tile.terrain === TERRAIN.MOUNTAIN) counts.mountain++;
+      }
+    }
+    const total = this.width * this.height;
+    return Object.fromEntries(Object.entries(counts).map(([terrain, count]) => [terrain, count / total * 100]));
+  }
+
   getNeighbors(x, y) {
     const neighbors = [];
     const dirs = [

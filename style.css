@@ -857,6 +857,19 @@ h4 {
   text-transform: capitalize;
 }
 
+.overworld-terrain-stats {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  color: #afc9c6;
+  font: 0.72rem var(--font-mono);
+}
+
+.overworld-terrain-stats strong {
+  color: #fff;
+}
+
 .overworld-seed {
   margin-left: auto;
   color: #afc9c6;

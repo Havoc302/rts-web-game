@@ -61,13 +61,14 @@ function outline(cell, color, boundary = cell.boundary) {
 }
 
 export class OverworldView {
-  constructor(element, planet, { onEnter, onClose, onRegenerate, isVisited, hasCity }) {
+  constructor(element, planet, { onEnter, onClose, onRegenerate, isVisited, hasCity, getTerrainStats }) {
     this.element = element;
     this.planet = planet;
     this.onEnter = onEnter;
     this.onClose = onClose;
     this.isVisited = isVisited;
     this.hasCity = hasCity;
+    this.getTerrainStats = getTerrainStats;
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color('#0b2331');
     this.camera = new THREE.PerspectiveCamera(43, 1, 0.1, 100);
@@ -197,6 +198,10 @@ export class OverworldView {
     if (this.selected) {
       this.element.querySelector('#overworld-biome').textContent = this.selected.biome;
       this.element.querySelector('#overworld-seed').textContent = this.selected.seed.toLocaleString();
+      const terrainStats = this.getTerrainStats(this.selected.id);
+      this.element.querySelector('#overworld-water-percent').textContent = `${terrainStats.water.toFixed(1)}%`;
+      this.element.querySelector('#overworld-forest-percent').textContent = `${terrainStats.forest.toFixed(1)}%`;
+      this.element.querySelector('#overworld-mountain-percent').textContent = `${terrainStats.mountain.toFixed(1)}%`;
       this.element.querySelector('#overworld-status').textContent = this.selected.id === this.currentId
         ? 'Current city' : this.isVisited(this.selected.id) ? 'Visited city' : 'Unexplored';
       this.element.querySelector('#btn-enter-hex').textContent = 'Open Map';
