@@ -1197,6 +1197,13 @@ Current task: Move map seeds and world save controls into globe options.
 - [done] Set simulation paused and speed to zero synchronously when opening the globe.
 - [done] Test no-city world save, visited-city save/import, unopened randomized-hex seed persistence, selected seed changes and randomization, and 320px menu layout; all 43 test files pass with no changed-file diagnostics.
 
+Current task: Bump app release to 0.2.2.
+
+- [done] Synchronize `APP_VERSION`, `package.json`, and `package-lock.json` at 0.2.2.
+- [done] Update the design document's covered version and seeded planet section for 0.2.2; record globe-first startup, biome generation, tile terrain stats, selected-tile seed options, and full-world save/load behavior.
+- [done] Confirm recent world-map implementation tasks are marked complete in this task list.
+- [done] Run version synchronization, all 43 tests, diagnostics, and final diff whitespace validation.
+
 To check: All production which can be stored. Food, Consumer Goods, arms, tanks, raw materials (bauxite, aluminium, iron, oil) should use a similar system to power generation and batteries. Consumers of those things should be given priority first then the storage is filled, overflow is defaults to consumers or is lost if storage is full.
 Possible bug: Oil derricks are producing oil but the silo set to oil isn't storing anything, I can see it's not going to the refinery either, it shows no rate of production but I can tell because my other silo set to fuel is also not filling up. Unless it's all working but all being consumed by users before any of those things in the production chain actually show anything.
 We need an alerts panel kind of like SimCity events notifications where we can tell the user if a fire has broken out, crime rate has climbed to be high, medical coverage is critically low, treasury is out of money. Things like that.
