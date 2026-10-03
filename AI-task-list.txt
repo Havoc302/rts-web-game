@@ -1189,6 +1189,14 @@ Current task: Show terrain percentages for a selected world-map hex.
 - [done] Test exact percentages, seeded parity, and panel output; all 43 test files pass with no changed-file diagnostics.
 - [done] Browser-check desktop and mobile layouts at 390px and 320px; panel values fit without clipping.
 
+Current task: Move map seeds and world save controls into globe options.
+
+- [done] Move city/planet seed fields, reset/randomize actions, and save/load buttons from the city header into a world-map-only Options menu.
+- [done] Show the selected land tile's seed; reset and randomize that tile, invalidating its old visited city while preserving other cities.
+- [done] Save/import whole-world state including nullable active hex, planet seed, all land-hex city seeds and visited city snapshots; world-only saves reload to the globe and city-only legacy saves remain supported.
+- [done] Set simulation paused and speed to zero synchronously when opening the globe.
+- [done] Test no-city world save, visited-city save/import, unopened randomized-hex seed persistence, selected seed changes and randomization, and 320px menu layout; all 43 test files pass with no changed-file diagnostics.
+
 To check: All production which can be stored. Food, Consumer Goods, arms, tanks, raw materials (bauxite, aluminium, iron, oil) should use a similar system to power generation and batteries. Consumers of those things should be given priority first then the storage is filled, overflow is defaults to consumers or is lost if storage is full.
 Possible bug: Oil derricks are producing oil but the silo set to oil isn't storing anything, I can see it's not going to the refinery either, it shows no rate of production but I can tell because my other silo set to fuel is also not filling up. Unless it's all working but all being consumed by users before any of those things in the production chain actually show anything.
 We need an alerts panel kind of like SimCity events notifications where we can tell the user if a fire has broken out, crime rate has climbed to be high, medical coverage is critically low, treasury is out of money. Things like that.

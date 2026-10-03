@@ -265,11 +265,14 @@ export function serializeGame(app) {
       overlayMode: app.renderer.overlayMode,
       autoSwitchToPan: app.autoSwitchToPan,
     },
-    ...(app.planet && app.currentCellId ? {
+    ...(app.planet ? {
       overworld: {
         seed: app.worldSeed,
-        cellId: app.currentCellId,
+        cellId: app.currentCellId ?? null,
         homeSeed: app.planet.getCell?.(app.homeCellId)?.seed ?? app.grid.seed,
+        cellSeeds: Array.from(app.planet.cells?.values?.() ?? [])
+          .filter((cell) => !cell.ocean)
+          .map((cell) => [cell.id, cell.seed]),
         visited: Array.from(app.cityStates || []).filter(([id]) => id !== app.currentCellId).map(([id, city]) => ({
           cellId: id,
           city: serializeGame({
@@ -404,9 +407,13 @@ function deserializeV2(document) {
   validateCamera(document.camera);
   if (!Array.isArray(document.tiles)) throw new Error('Invalid save tile data');
   validateProducers(document.producers, map.width, map.height);
-  if (document.overworld && (!Number.isInteger(document.overworld.seed) || typeof document.overworld.cellId !== 'string' ||
-    !Array.isArray(document.overworld.visited) || document.overworld.visited.some((entry) => typeof entry.cellId !== 'string' || !entry.city))) {
-    throw new Error('Invalid overworld save data');
+  if (document.overworld) {
+    const { cellSeeds, visited } = document.overworld;
+    if (!Number.isInteger(document.overworld.seed) || (document.overworld.cellId !== null && typeof document.overworld.cellId !== 'string') ||
+      !Array.isArray(visited) || visited.some((entry) => typeof entry.cellId !== 'string' || !entry.city) ||
+      (cellSeeds != null && (!Array.isArray(cellSeeds) || cellSeeds.some((entry) => !Array.isArray(entry) || entry.length !== 2 || typeof entry[0] !== 'string' || !Number.isInteger(entry[1]))))) {
+      throw new Error('Invalid overworld save data');
+    }
   }
 
   const grid = new Grid(map.width, map.height, map.seed, map.biome ?? null, document.generationVersion, biomeGenerationVersion);

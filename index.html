@@ -183,16 +183,7 @@
         <button class="btn-icon" id="btn-speed-2" title="2x Speed">⏩</button>
         <button class="btn-icon" id="btn-speed-5" title="5x Speed">⚡</button>
 
-        <div class="seed-control" title="Map Seed">
-          <span class="seed-label">SEED</span>
-          <input type="number" id="seed-input" min="1" max="9999999" value="12345" />
-        </div>
-        <button class="btn-icon" id="btn-reset-map" title="Reset Map (Current Seed)">🔄</button>
-        <button class="btn-icon" id="btn-regen-map" title="Randomize Seed & Regenerate">🎲</button>
-        <button class="btn-icon" id="btn-save-game" title="Save Game">💾</button>
-        <button class="btn-icon" id="btn-load-game" title="Load Game">📂</button>
         <button class="btn-icon" id="btn-toggle-audio" title="Toggle Audio (Mute/Unmute)">🔇</button>
-        <input type="file" id="game-file-input" accept="application/json,.json" hidden />
       </div>
 
     </header>
@@ -522,11 +513,33 @@
         <h2>WORLD MAP</h2>
         <span class="overworld-brand">SimConquer 2000 <span id="overworld-version"></span></span>
       </div>
-      <div class="overworld-seed-control">
-        <label for="overworld-seed-input">Planet seed</label>
-        <input type="number" id="overworld-seed-input" min="1" max="9999999" />
-        <button id="btn-generate-overworld" type="button" title="Regenerate planet from seed" aria-label="Regenerate planet from seed">↻</button>
-      </div>
+      <details class="overworld-options" id="overworld-options">
+        <summary title="World options" aria-label="World options">⚙</summary>
+        <div class="overworld-options-menu">
+          <section class="overworld-options-group">
+            <h3>City Map</h3>
+            <label for="seed-input">Selected tile seed</label>
+            <div class="overworld-options-row">
+              <input type="number" id="seed-input" min="1" max="9999999" value="12345" />
+              <button class="overworld-option-button" id="btn-reset-map" type="button">Reset Map</button>
+            </div>
+            <button class="overworld-option-button overworld-option-wide" id="btn-regen-map" type="button">🎲 Randomize Seed &amp; Regenerate Selected Tile</button>
+          </section>
+          <section class="overworld-options-group">
+            <h3>Planet</h3>
+            <label for="overworld-seed-input">Planet seed</label>
+            <div class="overworld-options-row">
+              <input type="number" id="overworld-seed-input" min="1" max="9999999" />
+              <button class="overworld-option-button" id="btn-generate-overworld" type="button">Regenerate</button>
+            </div>
+          </section>
+          <section class="overworld-options-actions">
+            <button class="overworld-option-button" id="btn-save-game" type="button">💾 Save World</button>
+            <button class="overworld-option-button" id="btn-load-game" type="button">📂 Load World</button>
+          </section>
+          <input type="file" id="game-file-input" accept="application/json,.json" hidden />
+        </div>
+      </details>
     </div>
     <div id="overworld-info" class="overworld-info" hidden>
       <span id="overworld-status" class="overworld-status"></span>

@@ -747,6 +747,7 @@ h4 {
   inset: 0;
   z-index: 1001;
   background: #0b2331;
+  pointer-events: auto;
   color: #f2f5ed;
 }
 
@@ -822,14 +823,105 @@ h4 {
   pointer-events: auto;
 }
 
-.overworld-seed-control input {
-  width: 100px;
-  padding: 7px;
+.overworld-options {
+  position: relative;
+  flex-shrink: 0;
+  margin-left: auto;
+  border-radius: 4px;
+  font: inherit;
+  pointer-events: auto;
+}
+
+.overworld-options summary {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid #628285;
+  border-radius: 4px;
+  background: #1a424f;
+  color: #fff;
+  cursor: pointer;
+  list-style: none;
+}
+
+.overworld-options summary::-webkit-details-marker { display: none; }
+
+.overworld-options-menu {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  display: grid;
+  gap: 14px;
+  width: min(340px, calc(100vw - 24px));
+  max-height: calc(100dvh - 100px);
+  overflow-y: auto;
+  padding: 16px;
+  border: 1px solid #628285;
+  border-radius: 6px;
+  background: rgba(9, 31, 43, 0.98);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+  pointer-events: auto;
+}
+
+.overworld-options-group {
+  display: grid;
+  gap: 8px;
+}
+
+.overworld-options-group h3 {
+  margin: 0;
+  color: #f2f5ed;
+  font-size: 0.8rem;
+}
+
+.overworld-options-group label {
+  color: #afc9c6;
+  font: 0.72rem var(--font-mono);
+}
+
+.overworld-options-row,
+.overworld-options-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.overworld-options-row input {
+  min-width: 0;
+  width: 100%;
+  padding: 8px;
   border: 1px solid #628285;
   border-radius: 4px;
   background: #123948;
   color: #fff;
-  font: inherit;
+  font: 0.78rem var(--font-mono);
+}
+
+.overworld-option-button {
+  flex: 1 1 auto;
+  width: auto !important;
+  min-width: 0;
+  height: auto !important;
+  padding: 9px 10px;
+  border: 1px solid #628285 !important;
+  border-radius: 4px !important;
+  background: #1a424f !important;
+  color: #fff !important;
+  font: 0.75rem var(--font-mono) !important;
+  white-space: nowrap;
+}
+
+.overworld-option-wide {
+  width: 100% !important;
+  white-space: normal;
+  line-height: 1.3;
+}
+
+.overworld-option-button:disabled,
+.overworld-options-row input:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .overworld-info {
@@ -839,7 +931,8 @@ h4 {
   right: 0;
   display: flex;
   align-items: center;
-  gap: 20px;
+  flex-wrap: wrap;
+  gap: 12px 20px;
   padding: 14px 22px calc(14px + env(safe-area-inset-bottom, 0px));
   background: rgba(9, 31, 43, 0.92);
   border-top: 1px solid #467880;
@@ -891,8 +984,6 @@ h4 {
 @media (max-width: 600px) {
   .overworld-header { padding-inline: 12px; gap: 8px; }
   .overworld-header h2 { font-size: 0.75rem; }
-  .overworld-seed-control label { display: none; }
-  .overworld-seed-control input { width: 85px; }
   .overworld-toggle {
     right: 80px;
     bottom: calc(90px + env(safe-area-inset-bottom, 0px));

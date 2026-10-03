@@ -33,7 +33,9 @@ class GameApp {
     localStorage.setItem('simconquer_world_seed', this.worldSeed);
     this.homeSeed = this.grid.seed;
     this.currentCellId = null;
+    this.selectedCellId = null;
     this.cityStates = new Map();
+    this.overworldSeedOverrides = new Map();
     this.planet = null;
     this.overworldView = null;
     this.terrainPreviewCache = new Map();
@@ -87,6 +89,7 @@ class GameApp {
     this.audioManager = new AudioManager();
     this.initAudioUI();
     this.tutorialManager = new TutorialManager(this, { showWelcome: false });
+    this.syncWorldOptionsAvailability();
 
     this.setSpeed(0);
     this.startRenderLoop();
@@ -283,33 +286,53 @@ class GameApp {
     }
   }
 
-  resetMapWithSeed(seed) {
-    const validSeed = parseInt(seed, 10) || this.grid.seed;
-    this.grid.randomizeGrid(validSeed);
-    if (this.currentCellId && this.planet) this.planet.getCell(this.currentCellId).seed = this.grid.seed;
-    if (!this.currentCellId || this.currentCellId === this.homeCellId) {
-      this.homeSeed = this.grid.seed;
-      localStorage.setItem('simconquer_home_seed', this.grid.seed);
-    }
-
-    const seedInput = document.getElementById('seed-input');
-    if (seedInput) seedInput.value = this.grid.seed;
-
-    if (typeof localStorage !== 'undefined') {
-      localStorage.setItem(MAP_SEED_STORAGE_KEY, this.grid.seed);
-    }
-    if (typeof window !== 'undefined' && window.history) {
+  resetMapWithSeed(seed, cellId = this.selectedCellId) {
+    const cell = this.planet?.getCell(cellId);
+    if (!cell || cell.ocean) return;
+    const validSeed = parseInt(seed, 10) || cell.seed;
+    cell.seed = validSeed;
+    this.terrainPreviewCache.delete(cellId);
+    const isCurrentCity = cellId === this.currentCellId;
+    if (isCurrentCity) {
+      this.grid.randomizeGrid(validSeed);
+      if (cellId === this.homeCellId) {
+        this.homeSeed = validSeed;
+        localStorage.setItem('simconquer_home_seed', validSeed);
+      }
+      localStorage.setItem(MAP_SEED_STORAGE_KEY, validSeed);
       const url = new URL(window.location.href);
-      url.searchParams.set('seed', this.grid.seed);
+      url.searchParams.set('seed', validSeed);
       window.history.replaceState({}, '', url.toString());
+      this.simulation.tickCount = 0;
+      this.simulation.computeStats();
+      this.renderer.selectedTile = null;
+      this.renderer.hoverTile = null;
+      this.updateHUD({ force: true });
+      this.renderer.render(this.simulation);
+    } else {
+      this.cityStates.delete(cellId);
+      if (cellId === this.homeCellId) {
+        this.homeSeed = validSeed;
+        localStorage.setItem('simconquer_home_seed', validSeed);
+      }
     }
+    const seedInput = document.getElementById('seed-input');
+    if (seedInput) seedInput.value = validSeed;
+    this.overworldView?.select(cell);
+  }
 
-    this.simulation.tickCount = 0;
-    this.simulation.computeStats();
-    this.renderer.selectedTile = null;
-    this.renderer.hoverTile = null;
-    this.updateHUD({ force: true });
-    this.renderer.render(this.simulation);
+  syncWorldOptionsAvailability() {
+    const cell = this.planet?.getCell(this.selectedCellId);
+    const disabled = !cell || cell.ocean;
+    const seedInput = document.getElementById('seed-input');
+    if (seedInput) {
+      seedInput.disabled = disabled;
+      seedInput.value = disabled ? '' : cell.seed;
+    }
+    for (const id of ['seed-input', 'btn-reset-map', 'btn-regen-map']) {
+      const control = document.getElementById(id);
+      if (control) control.disabled = disabled;
+    }
   }
 
   captureCity() {
@@ -334,6 +357,10 @@ class GameApp {
           import('./engine/OverworldMap.js'), import('./engine/OverworldView.js'),
         ]);
         this.planet = new OverworldMap(this.worldSeed, this.homeSeed);
+        for (const [id, seed] of this.overworldSeedOverrides) {
+          const cell = this.planet.getCell(id);
+          if (cell && !cell.ocean) cell.seed = seed;
+        }
         this.homeCellId = this.planet.homeCellId;
         if (this.currentCellId) {
           if (this.planet.getCell(this.currentCellId)?.ocean) this.currentCellId = this.homeCellId;
@@ -344,12 +371,17 @@ class GameApp {
           onEnter: (id) => this.enterOverworldCell(id),
           onClose: () => this.renderer.render(this.simulation),
           onRegenerate: (seed) => this.regenerateOverworld(seed),
+          onSelect: (cell) => {
+            this.selectedCellId = cell?.id ?? null;
+            this.syncWorldOptionsAvailability();
+          },
           isVisited: (id) => this.cityStates.has(id),
           hasCity: (id) => (this.cityStates.get(id)?.grid.activeRoadTiles.size ?? 0) > 0,
           getTerrainStats: (id) => this.getOverworldTerrainStats(id),
         });
       }
       if (this.currentCellId) this.cityStates.set(this.currentCellId, this.captureCity());
+      this.syncWorldOptionsAvailability();
       this.overworldView.open(this.currentCellId);
     } catch (error) {
       console.error(error);
@@ -381,6 +413,7 @@ class GameApp {
     localStorage.setItem('simconquer_home_seed', this.homeSeed);
     this.cityStates.clear();
     this.terrainPreviewCache.clear();
+    this.overworldSeedOverrides.clear();
     if (this.currentCellId) {
       const { OverworldMap } = await import('./engine/OverworldMap.js');
       this.currentCellId = new OverworldMap(seed, this.homeSeed).homeCellId;
@@ -405,6 +438,7 @@ class GameApp {
       })();
       this.currentCellId = id;
       this.cityStates.set(id, city);
+      this.syncWorldOptionsAvailability();
       this.grid = city.grid;
       this.simulation = city.simulation;
       this.treasury = city.treasury;
@@ -426,6 +460,7 @@ class GameApp {
       this.syncBudgetControls();
       this.updateHUD({ force: true });
     }
+    document.getElementById('overworld-options').open = false;
     this.overworldView.currentId = id;
     this.overworldView.close();
   }
@@ -463,7 +498,9 @@ class GameApp {
       this.overworldView?.dispose();
       this.overworldView = null;
       this.planet = null;
+      this.selectedCellId = null;
       this.worldSeed = imported.overworld?.seed ?? imported.grid.seed;
+      this.overworldSeedOverrides = new Map(imported.overworld?.cellSeeds || []);
       this.currentCellId = imported.overworld?.cellId ?? null;
       this.homeSeed = imported.overworld?.homeSeed ?? imported.grid.seed;
       localStorage.setItem('simconquer_world_seed', this.worldSeed);
@@ -492,6 +529,8 @@ class GameApp {
       this.syncBudgetControls();
       this.updateHUD({ force: true });
       this.renderer.render(this.simulation);
+      this.syncWorldOptionsAvailability();
+      if (imported.overworld) await this.openOverworld();
     } catch (error) {
       window.alert(`Unable to load save: ${error.message}`);
     }
@@ -545,6 +584,7 @@ class GameApp {
     if (speed === 0) {
       document.getElementById('btn-pause').classList.add('active');
       this.simulation.isPaused = true;
+      this.simulation.speed = 0;
       if (this.simInterval) clearInterval(this.simInterval);
       this.simInterval = null;
     } else {

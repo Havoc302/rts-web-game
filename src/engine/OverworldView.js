@@ -61,11 +61,12 @@ function outline(cell, color, boundary = cell.boundary) {
 }
 
 export class OverworldView {
-  constructor(element, planet, { onEnter, onClose, onRegenerate, isVisited, hasCity, getTerrainStats }) {
+  constructor(element, planet, { onEnter, onClose, onRegenerate, onSelect, isVisited, hasCity, getTerrainStats }) {
     this.element = element;
     this.planet = planet;
     this.onEnter = onEnter;
     this.onClose = onClose;
+    this.onSelect = onSelect;
     this.isVisited = isVisited;
     this.hasCity = hasCity;
     this.getTerrainStats = getTerrainStats;
@@ -193,6 +194,7 @@ export class OverworldView {
 
   select(cell) {
     this.selected = cell?.ocean ? null : cell;
+    this.onSelect?.(this.selected);
     const info = this.element.querySelector('#overworld-info');
     info.hidden = !this.selected;
     if (this.selected) {

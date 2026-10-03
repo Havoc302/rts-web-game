@@ -28,6 +28,30 @@ function flatten(grid) {
   for (const row of grid.tiles) for (const tile of row) tile.terrain = TERRAIN.FLAT;
 }
 
+{
+  const grid = new Grid(8, 8, 12345);
+  const app = makeApp(grid, new Simulation(grid));
+  const cells = new Map([
+    ['home-hex', { id: 'home-hex', seed: 12345, ocean: false }],
+    ['remote-hex', { id: 'remote-hex', seed: 54321, ocean: false }],
+    ['ocean-hex', { id: 'ocean-hex', seed: undefined, ocean: true }],
+  ]);
+  app.planet = { cells, getCell: (id) => cells.get(id) };
+  app.worldSeed = 98765;
+  app.homeCellId = 'home-hex';
+  app.currentCellId = null;
+  app.cityStates = new Map();
+  const saved = serializeGame(app);
+  assert.deepStrictEqual(saved.overworld, {
+    seed: 98765,
+    cellId: null,
+    homeSeed: 12345,
+    cellSeeds: [['home-hex', 12345], ['remote-hex', 54321]],
+    visited: [],
+  }, 'A save from the startup globe should retain the planet even without an active city');
+  assert.strictEqual(deserializeGame(saved).overworld.cellId, null);
+}
+
 for (const biome of Object.values(BIOME_TYPES)) {
   for (const profile of [1, 2, 3]) {
     const grid = new Grid(40, 40, 424242, biome, GENERATION_VERSION, profile);
