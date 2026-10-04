@@ -21,40 +21,60 @@ console.log('=== weather-manager.test.js ===');
   assert.strictEqual(wm.windIntensity, 0.5, 'Default wind intensity should be 0.5');
   assert.strictEqual(wm.cloudCover, 0.2, 'Default cloud cover should be 0.2');
   assert.strictEqual(wm.temperature, TEMPERATURE_CONFIG.BASE_TEMP, 'Default temp should be BASE_TEMP (20°C)');
+  assert.strictEqual(wm.weatherTargetCloud, 0.2, 'Default weather target should be sunny');
   assert.strictEqual(wm.extremeWindTicks, 0, 'Extreme wind ticks should start at 0');
 }
 
-// 2. Temperature Drift
 {
   const wm = new WeatherManager();
-
-  // Test cooling under heavy rain/clouds (cloudCover >= 0.8)
-  wm.cloudCover = 0.9;
-  wm.temperature = 10;
-  // Override stepMetric to keep values constant during update
-  const origStep = wm.stepMetric;
-  wm.stepMetric = (val) => val;
-  wm.update();
-  assert.strictEqual(wm.temperature, 9, 'Rain/heavy clouds should cool temperature by 1°C per tick');
-
-  // Test floor at MIN_TEMP
-  wm.temperature = 0;
-  wm.update();
-  assert.strictEqual(wm.temperature, TEMPERATURE_CONFIG.MIN_TEMP, 'Temperature should not drop below MIN_TEMP');
-
-  // Test warming under clear skies (cloudCover <= 0.4)
-  wm.cloudCover = 0.1;
-  wm.temperature = 39;
-  wm.update();
-  assert.strictEqual(wm.temperature, 40, 'Clear skies should warm temperature by 1°C per tick');
-
-  // Test ceiling at MAX_TEMP
-  wm.update();
-  assert.strictEqual(wm.temperature, TEMPERATURE_CONFIG.MAX_TEMP, 'Temperature should not exceed MAX_TEMP');
-  wm.stepMetric = origStep;
+  wm.temperature = 38;
+  wm.setClimate({ temperatureMean: -10, temperatureStdDev: 4, temperatureMin: -20, temperatureMax: 0,
+    weatherChances: { sunny: 0.4, cloudy: 0.3, rainy: 0.3 } });
+  assert.strictEqual(wm.temperature, 0, 'Applying a colder cell climate should immediately clamp the existing temperature');
 }
 
-// 3. Extreme Wind Tracking
+// 2. Climate-Bounded Temperature
+{
+  const climate = {
+    temperatureMean: 10,
+    temperatureStdDev: 0,
+    temperatureMin: 5,
+    temperatureMax: 15,
+    weatherChances: { sunny: 1, cloudy: 0, rainy: 0 },
+  };
+  const wm = new WeatherManager(climate);
+  wm.cloudCover = 0.5;
+  wm.temperature = 14;
+  wm.stepMetric = (val) => val;
+  wm.sampleNormal = () => 0;
+  wm.update();
+  assert.ok(wm.temperature < 14 && wm.temperature > 10, 'Temperature should drift toward its seeded climate mean');
+  wm.temperature = 100;
+  wm.sampleNormal = () => 0;
+  wm.update();
+  assert.strictEqual(wm.temperature, 15, 'Temperature should remain within its climate range');
+}
+
+// 3. Climate-Weighted Weather Selection
+{
+  const wm = new WeatherManager({
+    temperatureMean: 20,
+    temperatureStdDev: 4,
+    temperatureMin: 10,
+    temperatureMax: 30,
+    weatherChances: { sunny: 0.1, cloudy: 0.2, rainy: 0.7 },
+  });
+  const originalRandom = Math.random;
+  Math.random = () => 0.95;
+  wm.sampleNormal = () => 0;
+  wm.stepMetric = (value) => value;
+  wm.update();
+  Math.random = originalRandom;
+  assert.strictEqual(wm.weatherTargetCloud, 0.9, 'Weather conditions should be sampled using the cell rain probability');
+  assert.ok(wm.weatherTicksRemaining >= 3, 'Selected weather conditions should persist for an interval');
+}
+
+// 4. Extreme Wind Tracking
 {
   const wm = new WeatherManager();
   wm.stepMetric = (val) => val;
@@ -69,7 +89,7 @@ console.log('=== weather-manager.test.js ===');
   assert.strictEqual(wm.extremeWindTicks, 0, 'Normal wind should reset extremeWindTicks');
 }
 
-// 4. Solar Efficiency Curve
+// 5. Solar Efficiency Curve
 {
   const wm = new WeatherManager();
   wm.cloudCover = 0.0;
@@ -82,7 +102,7 @@ console.log('=== weather-manager.test.js ===');
   assert.strictEqual(Math.round(wm.getSolarEfficiency() * 100) / 100, 0.10, '1.0 cloud cover should yield 10% solar efficiency');
 }
 
-// 5. Weather Label
+// 6. Weather Label
 {
   const wm = new WeatherManager();
   wm.cloudCover = 0.2;
@@ -99,7 +119,7 @@ console.log('=== weather-manager.test.js ===');
   assert.strictEqual(wm.getWeatherLabel(), 'Raining, Gale Force (22°C)');
 }
 
-// 6. Simulation Extreme Temperature Patient Demand
+// 7. Simulation Extreme Temperature Patient Demand
 {
   const grid = new Grid(8, 8, 1);
   for (const row of grid.tiles) for (const tile of row) tile.terrain = TERRAIN.FLAT;
@@ -130,7 +150,7 @@ console.log('=== weather-manager.test.js ===');
   assert.strictEqual(sim.stats.patientDemand, 9, 'Heatwave should add extreme weather patient demand');
 }
 
-// 7. Spontaneous fire risk with full rain or extreme heat
+// 8. Spontaneous fire risk with full rain or extreme heat
 {
   assert.strictEqual(FIRE_CONFIG.BASE_IGNITION_CHANCE, 0.00001);
   assert.strictEqual(FIRE_CONFIG.FOREST_IGNITION_CHANCE, 0.000001);

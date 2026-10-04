@@ -1,25 +1,42 @@
-import { WEATHER_CONFIG, TEMPERATURE_CONFIG } from '../config.js';
+import { CLIMATE_CONFIG, WEATHER_CONFIG, TEMPERATURE_CONFIG } from '../config.js';
+
+const DEFAULT_CLIMATE = {
+  temperatureMean: TEMPERATURE_CONFIG.BASE_TEMP,
+  temperatureStdDev: 5,
+  temperatureMin: TEMPERATURE_CONFIG.MIN_TEMP,
+  temperatureMax: TEMPERATURE_CONFIG.MAX_TEMP,
+  weatherChances: { sunny: 0.45, cloudy: 0.35, rainy: 0.2 },
+};
 
 export class WeatherManager {
-  constructor() {
+  constructor(climate = null) {
+    this.climate = climate || DEFAULT_CLIMATE;
     this.windIntensity = 0.5;       // 0.0 (Calm) -> 1.0 (Gale Force)
     this.cloudCover = 0.2;          // 0.0 (Sunny) -> 0.5 (Cloudy) -> 1.0 (Raining)
-    this.temperature = TEMPERATURE_CONFIG.BASE_TEMP; // Degrees C
+    this.temperature = this.climate.temperatureMean;
+    this.weatherTargetCloud = 0.2;
+    this.weatherTicksRemaining = 0;
     this.extremeWindTicks = 0;
+  }
+
+  setClimate(climate) {
+    if (climate) this.climate = climate;
+      if (!climate) return;
+      this.climate = climate;
+      this.temperature = Math.min(climate.temperatureMax, Math.max(climate.temperatureMin, this.temperature));
   }
 
   update() {
     this.windIntensity = this.stepMetric(this.windIntensity);
-    this.cloudCover = this.stepMetric(this.cloudCover);
+    if (this.weatherTicksRemaining <= 0) this.chooseWeatherTarget();
+    this.cloudCover = this.stepMetric(this.cloudCover, this.weatherTargetCloud);
+    this.weatherTicksRemaining--;
 
-    // Temperature drift based on precipitation/cloudiness
-    if (this.cloudCover >= 0.8) {
-      // Raining: cools down by 1°C per tick toward MIN_TEMP
-      this.temperature = Math.max(TEMPERATURE_CONFIG.MIN_TEMP, this.temperature - 1);
-    } else if (this.cloudCover <= 0.4) {
-      // Clear/Sunny: warms up by 1°C per tick toward MAX_TEMP
-      this.temperature = Math.min(TEMPERATURE_CONFIG.MAX_TEMP, this.temperature + 1);
-    }
+    const temperatureTarget = this.climate.temperatureMean + (0.5 - this.cloudCover) * 2;
+    const noiseScale = this.climate.temperatureStdDev * Math.sqrt(2 * CLIMATE_CONFIG.TEMP_REVERSION);
+    this.temperature += (temperatureTarget - this.temperature) * CLIMATE_CONFIG.TEMP_REVERSION +
+      this.sampleNormal() * noiseScale;
+    this.temperature = Math.min(this.climate.temperatureMax, Math.max(this.climate.temperatureMin, this.temperature));
 
     // Over-speed wind tracking
     if (this.windIntensity >= WEATHER_CONFIG.WIND_HAZARD_THRESHOLD) {
@@ -29,8 +46,22 @@ export class WeatherManager {
     }
   }
 
-  stepMetric(currentVal) {
-    const pull = (0.5 - currentVal) * WEATHER_CONFIG.MEAN_REVERSION_STRENGTH;
+  chooseWeatherTarget() {
+    const chance = Math.random();
+    const { sunny, cloudy, rainy } = this.climate.weatherChances;
+    this.weatherTargetCloud = chance < sunny ? 0.2 : chance < sunny + cloudy ? 0.55 : 0.9;
+    this.weatherTicksRemaining = CLIMATE_CONFIG.WEATHER_MIN_DURATION + Math.floor(
+      Math.random() * (CLIMATE_CONFIG.WEATHER_MAX_DURATION - CLIMATE_CONFIG.WEATHER_MIN_DURATION + 1)
+    );
+  }
+
+  sampleNormal() {
+    const first = Math.max(Number.EPSILON, Math.random());
+    return Math.sqrt(-2 * Math.log(first)) * Math.cos(2 * Math.PI * Math.random());
+  }
+
+  stepMetric(currentVal, target = 0.5) {
+    const pull = (target - currentVal) * WEATHER_CONFIG.MEAN_REVERSION_STRENGTH;
     const rawNoise = (Math.random() - 0.5) * 0.3;
     const clampedDelta = Math.min(
       WEATHER_CONFIG.MAX_TICK_DELTA,

@@ -1,5 +1,5 @@
-import { cellToBoundary, cellToChildren, cellToLatLng, getRes0Cells, latLngToCell } from 'h3-js';
-import { BIOME_TYPES } from '../config.js';
+import { cellToBoundary, cellToChildren, cellToLatLng, getRes0Cells, gridDisk, latLngToCell } from 'h3-js';
+import { BIOME_TYPES, CLIMATE_CONFIG } from '../config.js';
 import { createPRNG } from './Grid.js';
 
 export const OVERWORLD_RESOLUTION = 1;
@@ -8,6 +8,64 @@ function hashSeed(seed, id) {
   let hash = (Number(seed) || 1) >>> 0;
   for (const character of id) hash = Math.imul(hash ^ character.charCodeAt(0), 16777619) >>> 0;
   return 100000 + hash % 9000000;
+}
+
+const BIOME_CLIMATE = {
+  [BIOME_TYPES.PLAINS]: { temperature: 0, moisture: 0.5 },
+  [BIOME_TYPES.TEMPERATE]: { temperature: -1, moisture: 0.58 },
+  [BIOME_TYPES.HILLY]: { temperature: -4, moisture: 0.46 },
+  [BIOME_TYPES.MOUNTAINOUS]: { temperature: -8, moisture: 0.52 },
+  [BIOME_TYPES.SWAMP]: { temperature: 1, moisture: 0.82 },
+  [BIOME_TYPES.DESERT]: { temperature: 5, moisture: 0.1 },
+};
+
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function baseClimate(cell) {
+  const latitude = clamp(Math.abs(cell.lat) / 90, 0, 1);
+  const biome = BIOME_CLIMATE[cell.biome] || BIOME_CLIMATE[BIOME_TYPES.PLAINS];
+  const temperature = CLIMATE_CONFIG.EQUATOR_TEMP +
+    (CLIMATE_CONFIG.POLE_TEMP - CLIMATE_CONFIG.EQUATOR_TEMP) * Math.pow(latitude, 1.15) + biome.temperature;
+  const moisture = cell.ocean ? 0.86 : biome.moisture + (1 - latitude) * 0.08;
+  return { temperature, moisture };
+}
+
+export function buildClimateProfile(worldSeed, cell, neighbors = []) {
+  const random = createPRNG(hashSeed(worldSeed, `${cell.id}:climate`));
+  const local = baseClimate(cell);
+  const neighborClimate = neighbors.filter(Boolean).map(baseClimate);
+  const neighborTemperature = neighborClimate.length
+    ? neighborClimate.reduce((sum, climate) => sum + climate.temperature, 0) / neighborClimate.length
+    : local.temperature;
+  const neighborMoisture = neighborClimate.length
+    ? neighborClimate.reduce((sum, climate) => sum + climate.moisture, 0) / neighborClimate.length
+    : local.moisture;
+  const temperatureMean = clamp(
+    local.temperature + (neighborTemperature - local.temperature) * CLIMATE_CONFIG.TEMP_NEIGHBOR_INFLUENCE +
+      (random() - 0.5) * 2 * CLIMATE_CONFIG.TEMP_SEED_VARIATION,
+    CLIMATE_CONFIG.TEMP_MIN,
+    CLIMATE_CONFIG.TEMP_MAX
+  );
+  const moisture = clamp(
+    local.moisture + (neighborMoisture - local.moisture) * CLIMATE_CONFIG.MOISTURE_NEIGHBOR_INFLUENCE +
+      (random() - 0.5) * 0.12,
+    0,
+    1
+  );
+  const rainy = clamp(0.04 + moisture * 0.48, 0.04, 0.52);
+  const cloudy = clamp(0.18 + moisture * 0.18, 0.18, 0.36);
+  const temperatureStdDev = CLIMATE_CONFIG.TEMP_STDDEV_MIN +
+    random() * (CLIMATE_CONFIG.TEMP_STDDEV_MAX - CLIMATE_CONFIG.TEMP_STDDEV_MIN);
+
+  return {
+    temperatureMean,
+    temperatureStdDev,
+    temperatureMin: Math.max(CLIMATE_CONFIG.TEMP_MIN, temperatureMean - temperatureStdDev * 2.5),
+    temperatureMax: Math.min(CLIMATE_CONFIG.TEMP_MAX, temperatureMean + temperatureStdDev * 2.5),
+    weatherChances: { sunny: 1 - rainy - cloudy, cloudy, rainy },
+  };
 }
 
 function longitudeOffset(lng, center) {
@@ -83,6 +141,17 @@ export class OverworldMap {
         }
         this.cells.set(id, cell);
       }
+    }
+    this.refreshClimateProfiles();
+  }
+
+  refreshClimateProfiles() {
+    for (const cell of this.cells.values()) {
+      if (cell.ocean) continue;
+      const neighbors = gridDisk(cell.id, 1)
+        .filter((id) => id !== cell.id)
+        .map((id) => this.cells.get(id));
+      cell.climate = buildClimateProfile(this.seed, cell, neighbors);
     }
   }
 

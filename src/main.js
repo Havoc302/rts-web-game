@@ -366,6 +366,7 @@ class GameApp {
           if (this.planet.getCell(this.currentCellId)?.ocean) this.currentCellId = this.homeCellId;
           this.planet.getCell(this.currentCellId).seed = this.grid.seed;
           this.planet.getCell(this.currentCellId).biome = this.grid.biome || 'mixed';
+          this.planet.refreshClimateProfiles();
         }
         this.overworldView = new OverworldView(document.getElementById('overworld-view'), this.planet, {
           onEnter: (id) => this.enterOverworldCell(id),
@@ -381,6 +382,10 @@ class GameApp {
         });
       }
       if (this.currentCellId) this.cityStates.set(this.currentCellId, this.captureCity());
+      for (const [id, city] of this.cityStates) {
+        const climate = this.planet.getCell(id)?.climate;
+        if (climate) city.simulation.weatherManager.setClimate(climate);
+      }
       this.syncWorldOptionsAvailability();
       this.overworldView.open(this.currentCellId);
     } catch (error) {
@@ -432,10 +437,11 @@ class GameApp {
       const saved = this.cityStates.get(id);
       const city = saved || (() => {
         const grid = new Grid(this.grid.width, this.grid.height, cell.seed, cell.biome);
-        const simulation = new Simulation(grid);
+        const simulation = new Simulation(grid, cell.climate);
         simulation.isPaused = true;
         return { grid, simulation, treasury: STARTING_TREASURY, camera: { x: 0, y: 0, zoom: 1 }, activeTool: 'pan', overlayMode: 'normal' };
       })();
+      city.simulation.weatherManager.setClimate(cell.climate);
       this.currentCellId = id;
       this.cityStates.set(id, city);
       this.syncWorldOptionsAvailability();

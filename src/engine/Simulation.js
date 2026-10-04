@@ -10,7 +10,7 @@ import { WeatherManager } from './WeatherManager.js';
 const now = typeof performance !== 'undefined' ? () => performance.now() : () => Date.now();
 
 export class Simulation {
-  constructor(grid) {
+  constructor(grid, climate = null) {
     this.grid = grid;
     this.tickCount = 0;
     this.isPaused = false;
@@ -18,7 +18,7 @@ export class Simulation {
     this.taxRate = 0;
     this.pensionBudget = SERVICE_GLOBAL_CONFIG.BUDGET_MAX_VALUE;
     this.resourceManager = new ResourceManager();
-    this.weatherManager = new WeatherManager();
+    this.weatherManager = new WeatherManager(climate);
     this.enableTiming = false;
     this.lastStageTimings = null;
     this.accumulatedStageTimings = null;

@@ -185,7 +185,7 @@ function restoredSimulation(simulation) {
   };
 }
 
-const WEATHER_KEYS = ['windIntensity', 'cloudCover', 'temperature', 'extremeWindTicks'];
+const WEATHER_KEYS = ['windIntensity', 'cloudCover', 'temperature', 'weatherTargetCloud', 'weatherTicksRemaining', 'extremeWindTicks'];
 
 function restoredWeather(weather) {
   if (!weather || typeof weather !== 'object') return null;
@@ -251,6 +251,8 @@ export function serializeGame(app) {
         windIntensity: app.simulation.weatherManager.windIntensity,
         cloudCover: app.simulation.weatherManager.cloudCover,
         temperature: app.simulation.weatherManager.temperature,
+        weatherTargetCloud: app.simulation.weatherManager.weatherTargetCloud,
+        weatherTicksRemaining: app.simulation.weatherManager.weatherTicksRemaining,
         extremeWindTicks: app.simulation.weatherManager.extremeWindTicks,
       } : null,
     },

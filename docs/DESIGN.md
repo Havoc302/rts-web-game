@@ -4,9 +4,9 @@
 | --- | --- |
 | Title | SimConquer 2000 — Architecture & Product Design |
 | Author | TBD |
-| Date | 2026-09-25 |
-| Status | Living draft (rev 8) |
-| Version covered | `APP_VERSION` `0.2.2` (`src/version.js`); current working tree |
+| Date | 2026-10-04 |
+| Status | Living draft (rev 9) |
+| Version covered | `APP_VERSION` `0.2.3` (`src/version.js`); current working tree |
 | Intended in-repo path | `docs/DESIGN.md` |
 | Repo | `g:\Repos\rts-web-game` (`origin`: `https://github.com/Havoc302/rts-web-game.git`) |
 | Working tree at inventory | Documentation is checked against the current implementation; uncommitted changes may exist. |
@@ -42,7 +42,7 @@ This document exists to make the following boundaries explicit:
 
 B&C2000 is a **single-player, client-only, paused-by-default city builder**. A session is: pick a seed, build a city, open the planet globe, and visit other seeded cities. Paused cities can be exported to JSON and imported later; refreshing without exporting still loses the session. Food, consumer goods, oil/fuel, agriculture, crime, fire, services, and military stockpile display are implemented; military production has no unit sink yet.
 
-### Seeded Planet (0.2.2)
+### Seeded Planet (0.2.3)
 
 `OverworldMap` uses H3 resolution-one cells to cover the spherical planet with 842 connected hexes. The planet seed independently places six irregular continents and island chains; no Earth coastlines or fixed continent coordinates are used. Ocean hexes have no biome or city seed. Land biomes form regional temperate lowlands, plains, hills, mountains, swamps, and deserts, and each land hex has a deterministic city seed. The first seeded continent supplies the home hex for moving an existing city when regenerating a planet.
 
@@ -57,6 +57,8 @@ Displayed tile boundaries are spherical Voronoi polygons derived from the existi
 New biome cities use biome profile 3: plains have sparse rocks, hills have larger rocky clusters, and mountains have large formations with less forest cover. Swamps generate 10-16 lakes with a 3.2x radius scale, up from 4-6 lakes with a 1.6x scale in profiles 1 and 2. Other biomes retain their profile-2 settings. The hex seed and biome both reach `Grid` on first entry. Saves record `map.biomeGenerationVersion` separately from the unchanged terrain generation version 2. Saves without that field regenerate using the original biome profile 1, and profile-2 saves retain the previous swamp settings, preserving terrain and hidden ore. Already-visited cities are not regenerated automatically. Resetting a city adopts the current biome profile.
 
 Desert regions occupy seeded dry areas of continents and use sand-colored globe hexes. Desert cities have fewer rock clusters than plains, almost no forest, one or two small lakes, and no rivers. Desert changes do not alter the generation settings of other city biomes; existing visited cities retain their terrain.
+
+Every land hex has a deterministic climate profile keyed by the planet seed and H3 cell ID, independently of its editable city-map seed. Latitude sets the broad temperature gradient (warm near the equator, cold near either pole); biome and small seeded variation tune the local mean, range, and sunny/cloudy/rainy chances. The immediate six-cell neighborhood gently blends base temperature and moisture tendencies, so neighboring deserts make temperate hexes slightly hotter and drier without changing their biome. Ocean neighbors contribute moisture. When a city is active, its single weather manager samples persistent condition intervals using those chances and temperature fluctuates around the cell's mean with a bounded bell-shaped distribution. Only active cities advance weather; saves retain current conditions and the remaining weather interval. Climate profiles regenerate from the world seed and cell identity.
 
 Temperate is the explicit unmodified base biome: normal forest and rock cluster counts and sizes, 0-5 lakes at normal size, and mixed river layouts. For the same seed and generation profile, Temperate produces exactly the same terrain, river flow, and hidden ore as the biome-unspecified base generator. A seeded direction splits available cooler continental lowlands into grouped Temperate and Plains regions, rather than assigning all cooler lowlands to Temperate and confining Plains to the equator. Plains remains a separate, more open biome, shown in light green; Temperate uses darker green. Existing visited cities retain their generated terrain.
 
@@ -208,7 +210,7 @@ flowchart TB
 | Terrain chunk size | 64 tiles (2048 px, under a 4096 GPU cap) | `RENDERER_CONFIG.TERRAIN_CHUNK_TILES` |
 | Mobile HUD cadence | 500 ms on coarse-pointer layouts | `RENDERER_CONFIG.HUD_MOBILE_CADENCE_MS` |
 | Dev | `"dev": "npx serve ."` | `package.json` |
-| Version | `0.1.6` from `src/version.js`, synchronized with `package.json` and cache-busting consumers | `tests/version-sync.test.js` |
+| Version | `0.2.3` from `src/version.js`, synchronized with `package.json` and cache-busting consumers | `tests/version-sync.test.js` |
 | `config.js` | 690 lines total (~637 non-blank) | file |
 | `Renderer.js` | 897 lines | file |
 
@@ -339,7 +341,7 @@ Zone utility demand is `USAGE_RATES[zone][density] * occupancyRatio`. Occupancy 
 
 Windmills and Solar Panels are passive generators. They require an adjacent Battery Storage tile at placement and that battery must be road-connected to contribute to the grid; neither the renewable nor the battery's own utility status gates renewable generation. Connected renewable output passes through the battery to live grid demand without the battery's stored-energy discharge cap; the cap applies only when stored energy covers a deficit. Renewables produce no direct utility demand, staffing, water, or sewage usage. The Tile Inspector reports this as a battery-mediated connection rather than a missing local road.
 
-Renewable output is weather-driven: `UtilityManager.allocateAll(grid, hour, weatherManager, { preview })` sets Windmill capacity to `round(WIND_CONFIG.MAX_CAPACITY (65) * windIntensity)` and Solar capacity to `round(PEAK_CAPACITY * solarOutputFactor(hour) * getSolarEfficiency())`. Without a weather manager, wind defaults to 0.5 and solar efficiency to 1.0. When `extremeWindTicks > 1`, each operational Windmill ignites with `WEATHER_CONFIG.WIND_IGNITION_CHANCE` (tile `onFire`, `fireDamage` 10, added to `activeFireTiles`). Saves store weather (`windIntensity`, `cloudCover`, `temperature`, `extremeWindTicks`) under `simulation.weather`; import restores only those finite numeric fields. **Rain puts out fires:** while `cloudCover > WEATHER_CONFIG.RAIN_CLOUD_THRESHOLD` (0.7), each burning tile has a per-tick chance to go out, scaling linearly from `RAIN_EXTINGUISH_MIN_CHANCE` (10%) in light rain to `RAIN_EXTINGUISH_MAX_CHANCE` (40%) at full cloud cover (`WeatherManager.getRainExtinguishChance()`). This is checked before fire-station suppression; rain-extinguished damaged tiles start the normal gradual repair.
+Renewable output is weather-driven: `UtilityManager.allocateAll(grid, hour, weatherManager, { preview })` sets Windmill capacity to `round(WIND_CONFIG.MAX_CAPACITY (65) * windIntensity)` and Solar capacity to `round(PEAK_CAPACITY * solarOutputFactor(hour) * getSolarEfficiency())`. Without a weather manager, wind defaults to 0.5 and solar efficiency to 1.0. When `extremeWindTicks > 1`, each operational Windmill ignites with `WEATHER_CONFIG.WIND_IGNITION_CHANCE` (tile `onFire`, `fireDamage` 10, added to `activeFireTiles`). Saves store weather (`windIntensity`, `cloudCover`, `temperature`, `weatherTargetCloud`, `weatherTicksRemaining`, `extremeWindTicks`) under `simulation.weather`; import restores only those finite numeric fields. **Rain puts out fires:** while `cloudCover > WEATHER_CONFIG.RAIN_CLOUD_THRESHOLD` (0.7), each burning tile has a per-tick chance to go out, scaling linearly from `RAIN_EXTINGUISH_MIN_CHANCE` (10%) in light rain to `RAIN_EXTINGUISH_MAX_CHANCE` (40%) at full cloud cover (`WeatherManager.getRainExtinguishChance()`). This is checked before fire-station suppression; rain-extinguished damaged tiles start the normal gradual repair.
 
 Background music is a single looping HTML5 `<audio>` track (`AUDIO_CONFIG.MUSIC_FILE_PATH`, default volume `AUDIO_CONFIG.DEFAULT_VOLUME`); playback rejections (autoplay policy, missing file) are ignored.
 

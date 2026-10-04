@@ -1220,3 +1220,15 @@ Firefox appears to have a weird issue where the selected square is offset to the
 Check happiness calculations. Once a city is established it seems to stay stuck at 100 with 100% taxation. They should not be happy, it should start moving to below 50 happiness above 50% tax, only able to be offset by a lot of things which improve happiness.
 Check population to tax calculations. With a larger city of 20,000 people setting tax to 100% only causes a very gradual drain to population.
 Check the hard cap for percentage of population change per tick from growth or loss works.
+
+Current task: Add seeded, latitude-aware climate to world-map hexes.
+
+- [done] Generate deterministic per-cell temperature distributions and weather chances from planet seed, latitude, biome, and immediate neighbors.
+- [done] Apply each active hex's climate to its city weather without changing terrain-seed behavior; preserve active weather intervals in saves.
+- [done] Add focused climate/weather/save tests and document the system.
+- [done] Bump synchronized app version to 0.2.3.
+
+Validation:
+- Focused overworld, weather-manager, save-game, and version-sync tests pass.
+- Final `npm test` passed all 43 test files, including the climate-assignment regression test.
+- Changed-file diagnostics report no errors; `git diff --check` reports no whitespace errors (Git notes LF-to-CRLF conversion warnings).
