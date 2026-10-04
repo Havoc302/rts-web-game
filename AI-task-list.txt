@@ -1232,3 +1232,25 @@ Validation:
 - Focused overworld, weather-manager, save-game, and version-sync tests pass.
 - Final `npm test` passed all 43 test files, including the climate-assignment regression test.
 - Changed-file diagnostics report no errors; `git diff --check` reports no whitespace errors (Git notes LF-to-CRLF conversion warnings).
+
+Current task: Review and correct weather, rendering, and canvas-coordinate issues.
+
+- [done] Remove duplicate climate assignment, make solar efficiency continuous, and align rain rendering with the configured threshold.
+- [done] Scale cloud movement by elapsed render time and normalize CSS-to-canvas coordinates for hover, click, and zoom.
+- [done] Verify review claims about startup map reset and module imports; fix only confirmed defects.
+- [done] Add focused regression tests, update design notes, and bump synchronized app version.
+
+Validation:
+- Focused weather-manager, weather-overlay, and version-sync tests pass.
+- `npm test` passes all 44 test files.
+- Startup reset fallback was not added: selected-tile controls are disabled before a land hex is selected. `../config.js` is the correct engine-module import path.
+- Changed-file diagnostics report no errors; `git diff --check` reports no whitespace errors (Git notes LF-to-CRLF conversion warnings).
+
+Current task: Release climate and weather review fixes as 0.2.5.
+
+- [done] Synchronize `src/version.js`, `package.json`, and `package-lock.json` at 0.2.5.
+- [done] Update the design revision and release coverage to 0.2.5.
+- [done] Verify version synchronization and all 44 test files before release.
+
+Validation:
+- Release validation and publication requested; final commit and push outcome reported in session.

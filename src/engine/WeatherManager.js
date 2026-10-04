@@ -20,10 +20,9 @@ export class WeatherManager {
   }
 
   setClimate(climate) {
-    if (climate) this.climate = climate;
-      if (!climate) return;
-      this.climate = climate;
-      this.temperature = Math.min(climate.temperatureMax, Math.max(climate.temperatureMin, this.temperature));
+    if (!climate) return;
+    this.climate = climate;
+    this.temperature = Math.min(climate.temperatureMax, Math.max(climate.temperatureMin, this.temperature));
   }
 
   update() {
@@ -73,8 +72,8 @@ export class WeatherManager {
   getSolarEfficiency() {
     const c = this.cloudCover;
     if (c <= 0.4) return 1.0 - (c / 0.4) * 0.10;
-    if (c <= 0.7) return 0.85 - ((c - 0.4) / 0.3) * 0.35;
-    return 0.40 - ((c - 0.7) / 0.3) * 0.30;
+    if (c <= 0.7) return 0.90 - ((c - 0.4) / 0.3) * 0.40;
+    return 0.50 - ((c - 0.7) / 0.3) * 0.40;
   }
 
   // 0 when not raining, 0..1 from light rain to a downpour.

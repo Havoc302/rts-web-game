@@ -5,8 +5,8 @@
 | Title | SimConquer 2000 — Architecture & Product Design |
 | Author | TBD |
 | Date | 2026-10-04 |
-| Status | Living draft (rev 9) |
-| Version covered | `APP_VERSION` `0.2.3` (`src/version.js`); current working tree |
+| Status | Living draft (rev 11) |
+| Version covered | `APP_VERSION` `0.2.5` (`src/version.js`); current working tree |
 | Intended in-repo path | `docs/DESIGN.md` |
 | Repo | `g:\Repos\rts-web-game` (`origin`: `https://github.com/Havoc302/rts-web-game.git`) |
 | Working tree at inventory | Documentation is checked against the current implementation; uncommitted changes may exist. |
@@ -42,7 +42,7 @@ This document exists to make the following boundaries explicit:
 
 B&C2000 is a **single-player, client-only, paused-by-default city builder**. A session is: pick a seed, build a city, open the planet globe, and visit other seeded cities. Paused cities can be exported to JSON and imported later; refreshing without exporting still loses the session. Food, consumer goods, oil/fuel, agriculture, crime, fire, services, and military stockpile display are implemented; military production has no unit sink yet.
 
-### Seeded Planet (0.2.3)
+### Seeded Planet (0.2.5)
 
 `OverworldMap` uses H3 resolution-one cells to cover the spherical planet with 842 connected hexes. The planet seed independently places six irregular continents and island chains; no Earth coastlines or fixed continent coordinates are used. Ocean hexes have no biome or city seed. Land biomes form regional temperate lowlands, plains, hills, mountains, swamps, and deserts, and each land hex has a deterministic city seed. The first seeded continent supplies the home hex for moving an existing city when regenerating a planet.
 
@@ -210,7 +210,7 @@ flowchart TB
 | Terrain chunk size | 64 tiles (2048 px, under a 4096 GPU cap) | `RENDERER_CONFIG.TERRAIN_CHUNK_TILES` |
 | Mobile HUD cadence | 500 ms on coarse-pointer layouts | `RENDERER_CONFIG.HUD_MOBILE_CADENCE_MS` |
 | Dev | `"dev": "npx serve ."` | `package.json` |
-| Version | `0.2.3` from `src/version.js`, synchronized with `package.json` and cache-busting consumers | `tests/version-sync.test.js` |
+| Version | `0.2.5` from `src/version.js`, synchronized with `package.json` and cache-busting consumers | `tests/version-sync.test.js` |
 | `config.js` | 690 lines total (~637 non-blank) | file |
 | `Renderer.js` | 897 lines | file |
 
@@ -353,7 +353,7 @@ Background music is a single looping HTML5 `<audio>` track (`AUDIO_CONFIG.MUSIC_
 
 **Storage:** each operational Silo adds `SILO_CAPACITY = 1000` for its storage type (oil or fuel). The Tile Inspector shows city stored/capacity for that type. Oil beyond operational oil-silo capacity is discarded each tick (`clampToCapacity`), so the Oil Derrick inspector shows its live output (`100 × staff fill` oil/tick) and warns when it is offline, has no powered oil Silo, or storage is full (`formatDerrickOutput`).
 
-**Weather rendering:** cloud shadows are world-space blobs drawn under the camera transform (fixed to the map while panning); rain is a screen-space effect. Touch devices support two-finger pinch zoom around the pinch midpoint.
+**Weather rendering:** cloud shadows are world-space blobs drawn under the camera transform (fixed to the map while panning) and advance by elapsed render time; rain is a screen-space effect and begins at the shared `RAIN_CLOUD_THRESHOLD`. Solar efficiency transitions continuously at 0.4 and 0.7 cloud cover. Canvas pointer positions are converted from CSS pixels to backing-canvas pixels consistently for hover, clicks, and wheel-zoom anchoring. Touch devices support two-finger pinch zoom around the pinch midpoint.
 
 **Map reset:** Reset Map and Random Seed ask for confirmation first.
 

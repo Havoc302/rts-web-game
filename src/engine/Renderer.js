@@ -199,7 +199,7 @@ export class Renderer {
 
     if (this.weatherOverlay && simulation?.weatherManager) {
       const view = { left: visibleLeft, top: visibleTop, right: visibleRight, bottom: visibleBottom };
-      this.weatherOverlay.drawClouds(ctx, startX, startY, mapPixelWidth, mapPixelHeight, view, simulation.weatherManager);
+      this.weatherOverlay.drawClouds(ctx, startX, startY, mapPixelWidth, mapPixelHeight, view, simulation.weatherManager, elapsed);
     }
 
     ctx.restore();

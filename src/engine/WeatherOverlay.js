@@ -1,3 +1,5 @@
+import { WEATHER_CONFIG } from '../config.js';
+
 const CLOUD_WORLD_AREA_PER_BLOB = 700 * 700;
 const CLOUD_MARGIN = 400;
 
@@ -29,10 +31,10 @@ export class WeatherOverlay {
   }
 
   // Draw in world space (camera transform applied) so shadows stay fixed to the map while panning.
-  drawClouds(ctx, mapLeft, mapTop, worldW, worldH, view, weatherManager) {
+  drawClouds(ctx, mapLeft, mapTop, worldW, worldH, view, weatherManager, elapsedSeconds = 0) {
     if (!ctx || !weatherManager || weatherManager.cloudCover < 0.4) return;
     this.ensureCloudBlobs(worldW, worldH);
-    this.cloudOffset += 0.3;
+    this.cloudOffset += Math.max(0, elapsedSeconds) * 18;
     const alpha = Math.min(0.25, (weatherManager.cloudCover - 0.3) * 0.35);
     const wrapW = worldW + CLOUD_MARGIN * 2;
 
@@ -54,10 +56,11 @@ export class WeatherOverlay {
   }
 
   drawRain(ctx, canvasWidth, canvasHeight, weatherManager) {
-    if (!ctx || !weatherManager || weatherManager.cloudCover < 0.75) return;
+    if (!ctx || !weatherManager || weatherManager.cloudCover <= WEATHER_CONFIG.RAIN_CLOUD_THRESHOLD) return;
 
     ctx.save();
-    const rainIntensity = (weatherManager.cloudCover - 0.7) / 0.3; // 0.0 -> 1.0
+    const rainIntensity = (weatherManager.cloudCover - WEATHER_CONFIG.RAIN_CLOUD_THRESHOLD) /
+      (1 - WEATHER_CONFIG.RAIN_CLOUD_THRESHOLD);
     ctx.strokeStyle = 'rgba(180, 210, 240, 0.45)';
     ctx.lineWidth = 1.2;
 

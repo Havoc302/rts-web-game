@@ -775,10 +775,6 @@ class GameApp {
     });
 
     this.canvas.addEventListener('mousemove', (e) => {
-      const rect = this.canvas.getBoundingClientRect();
-      const mouseX = e.clientX - rect.left;
-      const mouseY = e.clientY - rect.top;
-
       if (this.isRightMouseDown || (this.isMouseDown && this.activeTool === 'pan')) {
         const dx = e.clientX - this.lastMouseX;
         const dy = e.clientY - this.lastMouseY;
@@ -787,7 +783,8 @@ class GameApp {
           this.mouseHasDragged = true;
         }
       } else {
-        const tile = this.screenToTile(mouseX, mouseY);
+        const point = this.canvasPoint(e.clientX, e.clientY);
+        const tile = this.screenToTile(point.x, point.y);
         this.renderer.hoverTile = tile;
         if (this.isMouseDown && REPEATABLE_DRAG_TOOLS.has(this.activeTool)) {
           this.handleCanvasClick(e);
@@ -874,10 +871,16 @@ class GameApp {
     }, { passive: false });
   }
 
-  zoomAt(clientX, clientY, targetZoom) {
+  canvasPoint(clientX, clientY) {
     const rect = this.canvas.getBoundingClientRect();
-    const screenX = clientX - rect.left;
-    const screenY = clientY - rect.top;
+    return {
+      x: (clientX - rect.left) * this.canvas.width / rect.width,
+      y: (clientY - rect.top) * this.canvas.height / rect.height,
+    };
+  }
+
+  zoomAt(clientX, clientY, targetZoom) {
+    const { x: screenX, y: screenY } = this.canvasPoint(clientX, clientY);
     const oldZoom = this.renderer.zoom;
     const worldX = (screenX - this.canvas.width / 2 - this.renderer.cameraX) / oldZoom;
     const worldY = (screenY - this.canvas.height / 2 - this.renderer.cameraY) / oldZoom;
@@ -905,12 +908,8 @@ class GameApp {
   }
 
   handleCanvasClick(e) {
-    const rect = this.canvas.getBoundingClientRect();
-    const mouseX = e.clientX - rect.left;
-    const mouseY = e.clientY - rect.top;
-    const scaleX = this.canvas.width / rect.width;
-    const scaleY = this.canvas.height / rect.height;
-    const tile = this.screenToTile(mouseX * scaleX, mouseY * scaleY);
+    const point = this.canvasPoint(e.clientX, e.clientY);
+    const tile = this.screenToTile(point.x, point.y);
 
     if (!tile) {
       this.renderer.selectedTile = null;

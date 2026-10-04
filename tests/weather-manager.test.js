@@ -97,6 +97,14 @@ console.log('=== weather-manager.test.js ===');
 
   wm.cloudCover = 0.4;
   assert.strictEqual(Math.round(wm.getSolarEfficiency() * 100) / 100, 0.90, '0.4 cloud cover should yield 90% solar efficiency');
+  const atFirstBoundary = wm.getSolarEfficiency();
+  wm.cloudCover = 0.400001;
+  assert.ok(Math.abs(wm.getSolarEfficiency() - atFirstBoundary) < 0.00001, 'Solar efficiency should be continuous above 0.4 cloud cover');
+
+  wm.cloudCover = 0.7;
+  const atSecondBoundary = wm.getSolarEfficiency();
+  wm.cloudCover = 0.700001;
+  assert.ok(Math.abs(wm.getSolarEfficiency() - atSecondBoundary) < 0.00001, 'Solar efficiency should be continuous above 0.7 cloud cover');
 
   wm.cloudCover = 1.0;
   assert.strictEqual(Math.round(wm.getSolarEfficiency() * 100) / 100, 0.10, '1.0 cloud cover should yield 10% solar efficiency');
