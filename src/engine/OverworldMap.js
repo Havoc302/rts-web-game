@@ -2,7 +2,7 @@ import { cellToBoundary, cellToChildren, cellToLatLng, getRes0Cells, gridDisk, l
 import { BIOME_TYPES, CLIMATE_CONFIG } from '../config.js';
 import { createPRNG } from './Grid.js';
 
-export const OVERWORLD_RESOLUTION = 1;
+export const OVERWORLD_RESOLUTION = 2;
 
 function hashSeed(seed, id) {
   let hash = (Number(seed) || 1) >>> 0;

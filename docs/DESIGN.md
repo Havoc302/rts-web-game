@@ -4,20 +4,20 @@
 | --- | --- |
 | Title | SimConquer 2000 — Architecture & Product Design |
 | Author | TBD |
-| Date | 2026-10-04 |
-| Status | Living draft (rev 11) |
+| Date | 2026-10-06 |
+| Status | Living draft (rev 12) |
 | Version covered | `APP_VERSION` `0.2.5` (`src/version.js`); current working tree |
 | Intended in-repo path | `docs/DESIGN.md` |
 | Repo | `g:\Repos\rts-web-game` (`origin`: `https://github.com/Havoc302/rts-web-game.git`) |
 | Working tree at inventory | Documentation is checked against the current implementation; uncommitted changes may exist. |
 
-This is a **living** architecture + product document. It records the current implementation, the outstanding Phase 1 work, and the end-state product decisions: a hybrid of SimCity 2000, Command & Conquer, and a RimWorld-style world map, with Google identity and Firebase as the eventual online stack. Phase 1 remains a local city-builder slice. Full combined arms, world-map conquest, multiplayer, and Firebase are a **multi-year** roadmap, not the next two months of PRs.
+This is a **living** architecture + product document. It records the current implementation, outstanding Phase 1 work, and end-state product decisions: a hybrid of SimCity 2000, Command & Conquer, and a RimWorld-style world map, with Google identity and Firebase as the eventual online stack. Phase 1 remains a local city-builder slice. Full combined arms, world-map conquest, multiplayer, and Firebase are a **multi-year** roadmap, not the next two months of PRs. The `Current Phase 1 status` section below is the implementation-status authority; later roadmap/API sections describe intended design and are not evidence that a feature exists.
 
 ---
 
 ## Overview
 
-Build & Conquer 2000 is a browser city-builder written in vanilla ES modules and Canvas 2D. The player zones a seeded 200×200 map, connects power/water/sewage over a road graph, funds civic services, and runs a tick-based economy of tax, labor, pollution, crime, fire, food, and industry. The current public surface includes local JSON city saves and a seeded planet map, but no units, opponents, or victory condition.
+Build & Conquer 2000 is a browser city-builder written in vanilla ES modules and Canvas 2D. The player zones a seeded 200×200 map, connects power/water/sewage over a road graph, funds civic services, and runs a tick-based economy of tax, labor, pollution, crime, fire, food, and industry. The current public surface includes paused-only JSON file save/load and a seeded planet map, but no city autosave, units, opponents, or victory condition.
 
 The **product** is a hybrid of **SimCity 2000** (the city), **Command & Conquer** (the army fighting across a map), and a **RimWorld-style world map** (the strategic layer). The city acts like a real city: it provides the **money, industrial base, and people to supply its army**. That army is then used **across the world map** to conquer enemies. Online matches use **Google login and Google Firebase**. Two City Halls on one 200×200 city grid is **not** the end-state.
 
@@ -40,7 +40,7 @@ This document exists to make the following boundaries explicit:
 
 ### Current state (honest)
 
-B&C2000 is a **single-player, client-only, paused-by-default city builder**. A session is: pick a seed, build a city, open the planet globe, and visit other seeded cities. Paused cities can be exported to JSON and imported later; refreshing without exporting still loses the session. Food, consumer goods, oil/fuel, agriculture, crime, fire, services, and military stockpile display are implemented; military production has no unit sink yet.
+B&C2000 is a **single-player, client-only, paused-by-default city builder**. A session is: pick a seed, build a city, open the planet globe, and visit other seeded cities. Paused cities can be exported to JSON and imported later; there is no localStorage city autosave, so refreshing without exporting still loses the session. Food, consumer goods, oil/fuel, agriculture, crime, fire, services, and military stockpile display are implemented; military production has no unit sink yet.
 
 ### Seeded Planet (0.2.5)
 
@@ -71,10 +71,9 @@ The land-tile action is labeled `Open Map` for current, visited, and unexplored 
 1. **Standalone JSON save/load is sparse and seed-regenerated.** Saving is available only while paused and importing restores the game paused. `SAVE_VERSION` 2 stores seed, dimensions, biome, and a terrain generation version, then sparse tile overrides and producers. Legacy full-tile and sparse version-1 maps regenerate with the original circular cluster algorithm; new version-2 maps use irregular clusters. Re-saving a legacy map retains version 1 until the map is reset, which adopts version 2. Unsupported future generation versions are refused rather than rebuilding the wrong map.
 2. **`Simulation.tick` remains a large orchestrator.** Its pause/preview semantics are now explicit and tested, but named stage extraction is still outstanding.
 3. **Military production has no unit sink.** Arms and tanks are visible stockpiles, but barracks, vehicle depots, units, and world-map deployment are later phases.
-4. **Emergency coverage now uses cached direct/road/road-side sets.** Survey work remains incomplete.
-5. **Survey work is incomplete.** The survey overlay, per-tick cost deduction, cancellation rules, and treasury integration remain outstanding.
-6. **Canvas 2D on a 200×200 / 32px map** uses active tile registries, pollution dirty gating, cached stats aggregates, chunked terrain, and bounded HUD/inspector updates. A reporting-phone run at 1x, 2x, and 5x confirmed the city stays responsive after those stages.
-7. **UI and renderer behavior has limited automated coverage.** HUD snapshots, inspector signatures, and terrain-chunk invalidation now have Node tests; browser interaction and visual behavior remain mostly manual checks.
+4. **Emergency coverage now uses cached direct/road/road-side sets.** Browser-level interaction and visual validation remain limited; see the test gaps below.
+5. **Canvas 2D on a 200×200 / 32px map** uses active tile registries, pollution dirty gating, cached stats aggregates, chunked terrain, and bounded HUD/inspector updates. A reporting-phone run at 1x, 2x, and 5x confirmed the city stays responsive after those stages.
+6. **UI and renderer behavior has limited automated coverage.** HUD snapshots, inspector signatures, and terrain-chunk invalidation now have Node tests; browser interaction and visual behavior remain mostly manual checks.
 
 ---
 
@@ -94,17 +93,19 @@ The land-tile action is labeled `Open Map` for current, visited, and unexplored 
 
 - Keep a **playable city-builder** on the 200×200 grid with the current stack (`npx serve .`, vanilla ES modules, Canvas 2D, Node assert tests).
 - Treat `src/config.js` as the **balance source of truth**.
-- **Persist cities** as versioned JSON (localStorage autosave + file export/import).
+- **Persist cities** as versioned JSON. Paused-only file export/import is implemented; localStorage autosave and its boot precedence remain outstanding.
 - **Close civilian resource loops** so food, goods, coal, oil/fuel, and bars have producers and sinks. Arms/tanks stay stockpiled and **visible**.
 - **Decompose the tick** into named stages (extract-method).
 - Procedural canvas art through city-complete; sprites optional later.
 
 ### Current Phase 1 status
 
-Implemented and covered by the current test runner:
+Implemented; automated coverage is listed below, with browser-level gaps called out separately:
 
 - Pause-safe placement previews, treasury accounting, famine recovery, agriculture occupancy, resource consumption, fuel/refining, crime, fire, civic staffing, mobile input/layout, wind/solar/battery connectivity, version synchronization, chunked terrain rendering, and bounded HUD/inspector updates.
-- Unified test execution through `npm test`; the current baseline is 29 passing test files.
+- Unified test execution through `npm test`; the current baseline is 44 passing test files.
+- Versioned sparse city JSON export/import, seeded planet/world saves, the survey overlay and survey expense/cancellation flow, and School/University education tax bonuses are implemented.
+- City saves are manual file export/import only. A city autosave and autosave-based startup/restore flow are not implemented.
 
 ### Simulation performance
 
@@ -137,10 +138,9 @@ Correctness remains the constraint: river direction, utility shortfalls, fire re
 
 Outstanding implementation work:
 
+- LocalStorage city autosave, autosave boot precedence, and a confirmed New Game flow, as specified in the persistence design below.
 - Browser-level validation of JSON save download/import.
-- Stacked education tax bonuses from School capacity (staffed Schools only) and University capacity. Ratios: 15% school demand and 5% university demand; full coverage gives +15% and +20% tax yield respectively, with linear partial coverage. Libraries are decoupled from student capacity and growth scores (`LIBRARY_DESIRABILITY_BONUS: 0`), contributing exclusively to public happiness.
 - Named tick-stage extraction (`stagePrepare` / `stageUtilities` / …).
-- Survey overlay, survey cost/cancellation, and treasury integration.
 - Stronger browser-level UI/touch validation.
 - Military unit production and world-map systems remain later phases, not Phase 1 blockers.
 
@@ -151,7 +151,7 @@ Outstanding implementation work:
 - **No React / bundler / TypeScript / engine rewrite** as a prerequisite.
 - **No Starcraft-style free-moving RTS micro** on the city grid.
 - **No rewrite of the road BFS** as a condition of later combat.
-- **Do not treat `AI-task-list.txt` as current or complete.**
+- Treat historical `Current task` entries in `AI-task-list.txt` as log records, not active work; use its `Open handoff` section and this document's current-status section.
 - **Do not put two City Halls on one 200×200 city grid.** Each city is one faction’s grid; armies meet on the world map. Invasion of a city grid is a later mode.
 
 ---
@@ -222,7 +222,7 @@ flowchart TB
 flowchart TD
   T["tick(advanceWorld)"] --> INC{"advanceWorld?"}
   INC -->|yes| TC["tickCount++"]
-  INC -->|no| PREP
+  INC -->|no| S1
   TC --> PREP["ResourceManager.prepareTick — reset coal-plant capacity"]
   PREP --> S1["computeStats() #1 — pop, jobs, demand, income"]
   S1 --> U["UtilityManager.allocateAll(hour)"]
@@ -245,18 +245,17 @@ flowchart TD
 `GameApp.simTick()` (interval, only while unpaused) applies treasury:
 
 ```text
-treasury += incomePerTick - serviceExpenses - roadExpenses
+treasury += incomePerTick - serviceExpenses - roadExpenses - utilityExpenses - surveyExpenses
 ```
 
 Placement success (`handleCanvasClick`) currently:
 
 ```js
-this.treasury -= cost;                                    // construction purchase — keep
-const income = this.simulation.tick(!this.simulation.isPaused);
-this.treasury += income;                                  // bug: extra income, no expenses
+this.treasury -= cost;             // construction purchase
+this.simulation.tick(false);       // refresh preview state; no economic/world tick
 ```
 
-While paused, `advanceWorld` is false, so crime/fire/surveys/growth/`tickCount` freeze — but `ResourceManager.update` **still runs**, so placing a tile while paused can extract ore, smelt, grow food, and apply famine `populationLoss`. That is a current correctness bug.
+While paused, placement uses `tick(false)`: world state, resource production/consumption, famine loss, and `tickCount` do not advance, while preview utility allocation and stats refresh the HUD.
 
 **Intended pause/treasury semantics (Phase 1, decided):**
 
@@ -322,7 +321,7 @@ City-wide `employmentRate = jobsFilled / totalJobsProvided` (a **vacancy-fill ra
 income = ((population/100) + (jobsFilled/100)) * $10 * (taxRate/100) - crimeTaxLoss
 ```
 
-`BASE_INCOME` still exists and is tested by `industrial-economics.test.js`, but **`computeStats` does not use it**. **Decision: delete `BASE_INCOME`** and retarget that test at the live tax formula (industrial tiles still yield more than commercial at equal fill because they provide the same jobs table — assert the live `incomePerTick` relationship, or drop the I>C income assertion if it no longer holds). Growth modifier is continuous: bonus below 40%, negative at 50%, quadratic outflow toward 100%. Residential growth **stalls** (`delta = 0`) if any workers are unemployed or if the city has zero workplaces.
+`BASE_INCOME` was removed. `industrial-economics.test.js` checks industrial/agricultural zone cost and equality of industrial/commercial job tables; it does not assert tax revenue. Growth modifier is continuous: bonus below 40%, negative at 50%, quadratic outflow toward 100%. Residential growth **stalls** (`delta = 0`) if any workers are unemployed or if the city has zero workplaces.
 
 **Treasury** lives on `GameApp`, not `Simulation`. Road maintenance is `$1` per road/bridge/tunnel tile per tick (`ROAD_MAINTENANCE_COST = 1`). Every power generator, battery, water pump, and sewage plant costs `UTILITY_OPERATING_COST = $2` per tick (`stats.utilityExpenses`, ⚡ HUD chip), whether or not it is connected. Monetary values are pre-scaled constants. Pensions are folded into `serviceExpenses`.
 
@@ -445,7 +444,7 @@ Node `assert` scripts; `package.json` `"test"` runs `tests/run-all.js`, which di
 
 | Suite | Covers | Gaps |
 | --- | --- | --- |
-| `simulation.test.js` | Roads/BFS, wind+battery, fire destroy/relocate/risk, occupancy-scaled utilities, allocation order, growth, tax, pollution, water-adjacent, labor, stall, tax pressure, disconnected producers, map gen | No agriculture in core tests; uses leftover `POWER_PLANT` |
+| `simulation.test.js` | Roads/BFS, wind+battery, fire destroy/relocate/risk, occupancy-scaled utilities, allocation order, growth, tax, pollution, water-adjacent, labor, stall, tax pressure, disconnected producers, map gen | Agriculture has focused coverage in other suites; uses generic `POWER_PLANT` test scaffolding |
 | `ore-survey.test.js` | Ore rates, survey duration, active power | — |
 | `river-pollution.test.js` | Idle plant, falloff 10, combined discharge | — |
 | `service-buildings.test.js` | Utilities, min staff 2, grace ticks, fire suppression, pop scaling, budget | Full-tick staffing ownership coverage should continue to expand |
@@ -453,7 +452,7 @@ Node `assert` scripts; `package.json` `"test"` runs `tests/run-all.js`, which di
 | `tax-revenue.test.js` | $10/100 residents+jobs × rate | — |
 | `road-maintenance.test.js` | $1/tile; tunnels | Cost not 10× scaled |
 | `income-population.test.js` | Income tracks pop | — |
-| `industrial-economics.test.js` | Zone cost $300; `BASE_INCOME` I > C | Tests a table the sim no longer uses — delete the table |
+| `industrial-economics.test.js` | Industrial/agricultural zone costs and industrial/commercial job-table parity | — |
 | `school-cost.test.js` / `service-expense-scale.test.js` | Job-based running costs | — |
 | `resource-management.test.js` | Agriculture, mines, smelter, food, goods, fuel, and famine behavior | More end-to-end production-chain assertions are useful |
 | `small-town-soak.test.js` | Deterministic 50-tick mixed-zone town, upstream water intake, utility chain, bounded medical demand, and finite stats | Device timing is recorded in `AI-task-list.txt`; phone check at 1x/2x/5x passed |
@@ -462,7 +461,7 @@ Node `assert` scripts; `package.json` `"test"` runs `tests/run-all.js`, which di
 | `renderer-cache.test.js` | Terrain-chunk identity on stable ticks, overlay non-invalidation, incremental bulldoze, full regen | — |
 | `demographics.test.js` | 40/40/20 jobs, split, pensions, retiree patients | — |
 
-**Still lightly tested:** `main.js` input and treasury wiring, CSS/HTML, visual HUD behavior, browser touch interaction, and JSON file download/import in a real browser. Sparse-save size and version-1 migration are covered by `tests/save-game.test.js`. Full-map mobile responsiveness was verified on the reporting phone after Stage 5.
+This is a representative coverage map, not an exhaustive test inventory; `npm test` currently runs 44 test files. **Still lightly tested:** `main.js` input and treasury wiring, CSS/HTML, visual HUD behavior, browser touch interaction, and JSON file download/import in a real browser. Sparse-save size and version-1 migration are covered by `tests/save-game.test.js`. Full-map mobile responsiveness was verified on the reporting phone after Stage 5.
 
 ---
 
@@ -483,9 +482,11 @@ flowchart LR
 
 ### Phase 0 — what is already playable
 
-A player can generate a map, build a powered/watered/sewered city, grow R/C/I/A, fight crime and fire, survey mountains, mine, farm, and go broke on roads and pensions. That is a real Phase 0 game loop. It is **not** city-complete: refresh still loses the city, emergency coverage caching and survey cost/cancellation are unfinished, the tick still needs named-stage extraction, and military stockpiles do not yet produce units.
+A player can generate a map, build a powered/watered/sewered city, grow R/C/I/A, fight crime and fire, survey mountains, mine, farm, and go broke on roads and pensions. That is a real Phase 0 game loop. It is **not** city-complete: refresh still loses the city because city autosave is not implemented, the tick still needs named-stage extraction, browser-level validation remains limited, and military stockpiles do not yet produce units. Emergency coverage caching and survey cost/cancellation are implemented.
 
-### Phase 1 — City Complete (next, required, single-faction)
+### Phase 1 — City Complete (target, required, single-faction)
+
+This is the original Phase 1 scope breakdown, not a current task checklist. Consult `Current Phase 1 status` and `Outstanding implementation work` above for implementation state.
 
 Ship a city-builder you can put down and pick up. Still one treasury on `GameApp`, one `ResourceManager`.
 
@@ -676,20 +677,20 @@ Rules:
 
 | Risk | Severity | Mitigation |
 | --- | --- | --- |
-| `Simulation.tick` god-loop + pause leak into `ResourceManager` | High | Gate world mutation on `advanceWorld`; extract-method later |
-| Placement `treasury += income` and bonus `tick(true)` | High | Placement only `tick(false)`; `simTick` unique economic mutation |
+| `Simulation.tick` remains a large orchestrator | Medium | Named tick-stage extraction remains outstanding; pause/preview mutation is gated |
+| Placement economic tick | Resolved | Placement uses `tick(false)`; `simTick` is the only recurring income/expense path |
 | Sticky `populationLoss` | Resolved | Clear on food restored; apply only when `advanceWorld` |
-| `updateProducerJobs` clobbers civic staffing | High | `category` allow-list; full-`tick()` regression |
-| 6400×6400 terrain cache (~164 MB; > 4096 canvas cap on some GPUs) | High | **PR 8b required** before city-complete shipped |
-| Incomplete civilian resource loops | High | Key Decision 12 in Phase 1 |
+| Civic staffing ownership | Resolved | Resource staffing is category-limited; covered by full-tick regression tests |
+| 6400×6400 terrain cache (~164 MB; > 4096 canvas cap on some GPUs) | Resolved | 64×64 terrain chunks are implemented and covered by renderer-cache tests |
+| Civilian resource loops | Low | Core food, goods, oil/fuel, and agriculture loops are implemented; continue regression coverage |
 | Multi-year product mistaken for next-month PRs | High | Phase 1 = PRs 1–8b only; world map / Firebase / nukes are later slices |
 | Two halls on one city grid | High | Rejected; one city grid per civilisation |
-| Save/load format size and evolution | High | Regenerate seed base, apply sparse overrides, include generation version and migration tests |
+| Save/load format size and evolution | Medium | Sparse saves and version-1 migration are tested; browser file-flow validation and autosave remain |
 | Canvas 2D + world map + mobile | Medium | Chunked cache; world map is a simpler region renderer |
 | `config.js` kitchen sink | Medium | Keep through Phase 1; split combat/world later |
-| Leftover `POWER_PLANT`, `BASE_INCOME`, seed key, version drift | Low | Hygiene PRs |
-| Fire spread vs inhabited tiles | Medium | Key Decision 19: inhabited/forest/mountain burn; roads/empty flat do not |
-| Agricultural occupancy = 0 | Medium | Phase 1 agriculture PR |
+| Generic `POWER_PLANT` test fixture / simulation RNG save state | Low | Keep the generic producer out of the toolbar; RNG-state persistence remains future cleanup |
+| Fire spread rules | Resolved | Roads and empty flat tiles do not burn; inhabited zones and forests can burn |
+| Agricultural occupancy | Resolved | Occupancy participates in utilities, staffing, fire, crime, and zone stats |
 
 ---
 
@@ -700,22 +701,18 @@ Phase 1 is client-only. Firebase APIs appear in Phase 4, not in PRs 1–8b.
 ### Persistence
 
 ```js
-// src/engine/persistence/SaveGame.js
+// Implemented: src/engine/SaveGame.js
 export const SAVE_VERSION = 2;
 export const SAVE_VERSION_V1 = 1;
 export const GENERATION_VERSION = TERRAIN_GENERATION_CONFIG.GENERATION_VERSION;
-export const AUTOSAVE_KEY = 'bc2000_save';
-export const AUTOSAVE_EVERY_TICKS = 24; // one in-game day
 
-export function serialize(app) { /* → SaveDocument */ }
-export function deserialize(data) { /* validate, migrate, return { grid, simulation, camera, ui } */ }
-export function saveToLocalStorage(app) { /* JSON.stringify; catch QuotaExceededError */ }
-export function loadFromLocalStorage() { /* null if missing/invalid */ }
-export function exportFile(app) { /* Blob download `bc2000-YYYYMMDD.json` */ }
-export function importFile(file) { /* FileReader; same validate path */ }
+export function serializeGame(app) { /* → versioned SaveDocument */ }
+export function serializeGameToJson(app) { /* JSON string for file export */ }
+export function deserializeGame(data) { /* validate, migrate, restore */ }
+export function deserializeGameFromJson(json) { /* parse then validate/restore */ }
 ```
 
-`GameApp` gains New / Save / Load / Export / Import in the header (desktop) and the stats drawer (mobile).
+These APIs and paused-only JSON file export/import are implemented. LocalStorage autosave, autosave boot precedence, and the confirmed New Game flow described below are planned requirements, not current behavior. The UI currently provides Save/Export and Load/Import file controls.
 
 **Boot precedence (decided):**
 

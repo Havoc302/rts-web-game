@@ -2,9 +2,16 @@ RTS Web Game - AI Work Log
 
 Agent handoff protocol:
 - This file is the resumable implementation log used by different AI agents.
-- At the start of a generation, add or update a `Current task` block with the intended work and checklist.
-- At the end of a generation, mark completed items `[done]`, record validation, and leave unfinished items unchecked with enough context for another agent to continue.
-- Do not erase historical entries. The current task at the bottom is the active handoff; `docs/DESIGN.md` is the architecture and product source of truth.
+- Append each new `Current task` entry and its validation to the end of this chronological running log; do not prepend task details near the handoff summary.
+- Keep the `Open handoff` section below this protocol as a concise current-status pointer and update it when work starts or finishes.
+- At the end of a generation, mark completed checklist items `[done]`, record validation, and leave unfinished work with enough context for another agent to continue.
+- Do not erase historical entries. `docs/DESIGN.md` is the architecture, product, and implementation-status source of truth; distinguish planned work from implemented behavior.
+
+Open handoff (2026-10-06):
+- Active follow-up: complete the review verification checks in the latest task entry at the end of this log.
+- Latest completed task: release climate and weather review fixes as 0.2.5.
+- Verified baseline: `npm test` passes all 44 test files.
+- Phase 1 follow-ups are tracked in `docs/DESIGN.md`; in particular, localStorage autosave and named tick-stage extraction are not implemented. Do not treat historical `Current task` headings below as active.
 
 Current task: Add standalone JSON game save export/import.
 
@@ -232,7 +239,11 @@ Validation:
 
 Current task: Correct excessive tiny-city service expenses.
 
-- [in progress] Base every service running cost on actual staffed jobs instead of multiplying fixed costs by total population.
+- [done] Base service running costs on actual staffed jobs rather than total city population.
+
+Validation:
+- `npm run test:service-expenses` passes, including tiny-city staffing and build-info/live-cost parity.
+- `npm test` passes all 44 test files.
 
 Current task: Move Bulldoze into the General tools group.
 
@@ -1254,3 +1265,8 @@ Current task: Release climate and weather review fixes as 0.2.5.
 
 Validation:
 - Release validation and publication requested; final commit and push outcome reported in session.
+
+Current task: Complete remaining code-review verification checks.
+
+- [ ] Browser-smoke-test seed/reset/regenerate controls during startup and after selecting a land hex. The review confirmed controls are disabled until a valid cell is selected and found no startup reset bug; this follow-up checks the UI behavior in a browser.
+- [ ] Evaluate city-wide economic balance for small and established cities by comparing tax revenue against utility and staffed-service expenses. Existing focused tests cover local cost formulas, not whether representative cities are sustainable; record intended balance expectations and results. Do not rebalance unless the check identifies a real issue.
