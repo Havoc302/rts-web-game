@@ -717,9 +717,10 @@ export class Simulation {
   }
 
   applyPopulationChange(populationAtStart) {
-    const maxShift = Math.max(
+    const maxGrowth = this.getMaxPopulationGrowth(populationAtStart);
+    const maxOutflow = Math.max(
       POPULATION_STABILIZATION_CONFIG.MIN_POPULATION_SHIFT_FLOOR,
-      Math.floor(populationAtStart * POPULATION_STABILIZATION_CONFIG.MAX_POPULATION_SHIFT_PER_TICK),
+      Math.floor(populationAtStart * POPULATION_STABILIZATION_CONFIG.MAX_POPULATION_OUTFLOW_PER_TICK),
     );
     const incoming = [];
     const outgoing = [];
@@ -736,7 +737,7 @@ export class Simulation {
       if (delta > 0) incoming.push({ tile, amount: delta });
       else if (delta < 0) outgoing.push({ tile, amount: -delta });
     }
-    const distribute = (candidates, direction) => {
+    const distribute = (candidates, direction, maxShift) => {
       const total = candidates.reduce((sum, entry) => sum + entry.amount, 0);
       if (!total) return;
       const budget = Math.min(maxShift, total);
@@ -751,23 +752,36 @@ export class Simulation {
       }
       for (const entry of allocations) entry.tile.population += direction * entry.count;
     };
-    distribute(incoming, 1);
-    distribute(outgoing, -1);
+    distribute(incoming, 1, maxGrowth);
+    distribute(outgoing, -1, maxOutflow);
   }
 
   processPopulationTick(rawCalculatedDelta) {
     if (rawCalculatedDelta === 0) return 0;
 
     const currentPopulation = this.stats?.population || 0;
-    const maxShift = Math.max(
-      POPULATION_STABILIZATION_CONFIG.MIN_POPULATION_SHIFT_FLOOR,
-      Math.floor(currentPopulation * POPULATION_STABILIZATION_CONFIG.MAX_POPULATION_SHIFT_PER_TICK),
-    );
+    const maxShift = rawCalculatedDelta > 0
+      ? this.getMaxPopulationGrowth(currentPopulation)
+      : Math.max(
+        POPULATION_STABILIZATION_CONFIG.MIN_POPULATION_SHIFT_FLOOR,
+        Math.floor(currentPopulation * POPULATION_STABILIZATION_CONFIG.MAX_POPULATION_OUTFLOW_PER_TICK),
+      );
 
     const clampedDelta = Math.min(Math.max(rawCalculatedDelta, -maxShift), maxShift);
     if (this.stats) {
       this.stats.population = Math.max(0, currentPopulation + clampedDelta);
     }
     return clampedDelta;
+  }
+
+  getMaxPopulationGrowth(population) {
+    const capacity = this.stats?.maxPopulationCapacity || 0;
+    const { MAX_POPULATION_GROWTH_CAPACITY_RATIO, GROWTH_SATURATION_FACTOR, MIN_POPULATION_SHIFT_FLOOR } = POPULATION_STABILIZATION_CONFIG;
+    if (capacity <= 0) return MIN_POPULATION_SHIFT_FLOOR;
+    const occupancy = Math.max(0, population) / capacity;
+    return Math.max(
+      MIN_POPULATION_SHIFT_FLOOR,
+      Math.floor(capacity * MAX_POPULATION_GROWTH_CAPACITY_RATIO / (1 + GROWTH_SATURATION_FACTOR * occupancy)),
+    );
   }
 }
