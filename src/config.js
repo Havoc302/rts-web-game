@@ -630,6 +630,7 @@ export const COSTS = {
   ZONE: 200,
   INDUSTRIAL_ZONE: 300,
   AGRICULTURAL_ZONE: 300,
+  ZONE_UPGRADE_MULTIPLIER: 2,
   BULLDOZE: 50,
 };
 
@@ -731,6 +732,30 @@ export const JOBS_PROVIDED = {
     [DENSITY.HIGH]: jobsProvidedFor(ZONE.AGRICULTURAL, DENSITY.HIGH),
   },
 };
+
+export function getZonePlacementCost(zone) {
+  if (zone === ZONE.RESIDENTIAL || zone === ZONE.COMMERCIAL) return COSTS.ZONE;
+  if (zone === ZONE.INDUSTRIAL) return COSTS.INDUSTRIAL_ZONE;
+  if (zone === ZONE.AGRICULTURAL) return COSTS.AGRICULTURAL_ZONE;
+  return 0;
+}
+
+export function getZoneUpgradeCost(zone, density) {
+  const tier = [DENSITY.LIGHT, DENSITY.MEDIUM, DENSITY.HIGH].indexOf(density);
+  if (tier < 0 || tier >= 2) return 0;
+  return getZonePlacementCost(zone) * COSTS.ZONE_UPGRADE_MULTIPLIER ** (tier + 1);
+}
+
+export function isZoneAtCapacity(tile) {
+  if (!tile) return false;
+  if (tile.zone === ZONE.RESIDENTIAL) {
+    const capacity = RESIDENTIAL_CAPACITY[tile.density] || 0;
+    return capacity > 0 && (tile.population || 0) >= capacity;
+  }
+  if (![ZONE.COMMERCIAL, ZONE.INDUSTRIAL, ZONE.AGRICULTURAL].includes(tile.zone)) return false;
+  const jobs = tile.totalJobs ?? JOBS_PROVIDED[tile.zone]?.[tile.density] ?? 0;
+  return jobs > 0 && (tile.filledJobs || 0) >= jobs;
+}
 
 export const EMPLOYABLE_POPULATION = RESIDENTIAL_CAPACITY;
 

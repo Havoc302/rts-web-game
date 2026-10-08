@@ -7,10 +7,10 @@ Agent handoff protocol:
 - At the end of a generation, mark completed checklist items `[done]`, record validation, and leave unfinished work with enough context for another agent to continue.
 - Do not erase historical entries. `docs/DESIGN.md` is the architecture, product, and implementation-status source of truth; distinguish planned work from implemented behavior.
 
-Open handoff (2026-10-06):
-- Active follow-up: complete the review verification checks in the latest task entry at the end of this log.
-- Latest completed task: release climate and weather review fixes as 0.2.5.
-- Verified baseline: `npm test` passes all 44 test files.
+Open handoff (2026-10-08):
+- No active task.
+- Latest completed task: update overworld tests and design counts to match the 5,882-cell H3 resolution-two map.
+- Current verification note: `npm test` passes all 45 test files.
 - Phase 1 follow-ups are tracked in `docs/DESIGN.md`; in particular, localStorage autosave and named tick-stage extraction are not implemented. Do not treat historical `Current task` headings below as active.
 
 Current task: Add standalone JSON game save export/import.
@@ -931,7 +931,6 @@ Education validation:
 Current task: Tax slider 1% increments.
 
 - [done] `#tax-slider` step changed from 5 to 1.
-- [done] Bump the patch version to 0.1.43.
 
 Current task: Separate weather from the clock with a hover tooltip.
 
@@ -1270,3 +1269,40 @@ Current task: Complete remaining code-review verification checks.
 
 - [ ] Browser-smoke-test seed/reset/regenerate controls during startup and after selecting a land hex. The review confirmed controls are disabled until a valid cell is selected and found no startup reset bug; this follow-up checks the UI behavior in a browser.
 - [ ] Evaluate city-wide economic balance for small and established cities by comparing tax revenue against utility and staffed-service expenses. Existing focused tests cover local cost formulas, not whether representative cities are sustainable; record intended balance expectations and results. Do not rebalance unless the check identifies a real issue.
+
+Current task: Replace automatic zone density growth with paid manual upgrades.
+
+Part 1 - Simulation and upgrade rules:
+- [done] Stop residential/commercial/industrial/agricultural density from increasing automatically.
+- [done] Add full-capacity checks and tier upgrade pricing at 2x/4x the zone placement cost.
+- [done] Add focused tests for full checks, upgrade state/cost, and no automatic density change.
+
+Part 2 - Renderer and inspector:
+- [done] Draw a small corner marker on full zoned tiles at any tier.
+- [done] Add an inspector upgrade button with cost, insufficient-funds handling, and treasury charge.
+- [done] Add focused renderer coverage for full/under-capacity markers at normal and low detail.
+
+Part 3 - Documentation and validation:
+- [done] Keep `docs/DESIGN.md` and this log current between implementation parts.
+- [done] Run focused tests, full suite, diagnostics, and `git diff --check`.
+- [done] Record final behavior and any unrelated test failures.
+
+Assumptions:
+- Full residential means population equals capacity; full job zones mean filled jobs equal available slots.
+- Upgrade cost is zone placement cost × 2 for light-to-medium and × 4 for medium-to-high.
+
+Validation:
+- `node tests/zone-upgrades.test.js`, `node tests/renderer-cache.test.js`, `node tests/simulation.test.js`, and `node tests/job-attraction.test.js` pass.
+- Browser check confirmed Pan-mode selection opens the full-tile inspector, insufficient funds disables the action, and an affordable residential upgrade charges `$400` while preserving 25 residents.
+- Editor diagnostics report no errors; `git diff --check` passes (Windows line-ending notices only).
+- `npm test` passes all 45 test files.
+
+Current task: Match overworld tests to the resolution-two map.
+
+- [done] Update expected H3 cell and boundary counts from resolution one to 5,882 cells, 5,870 hexagons, and 12 pentagons.
+- [done] Replace the old land-count interval with a proportional assertion for substantial land regions and majority ocean.
+- [done] Update `docs/DESIGN.md` and this handoff to describe the current map resolution.
+
+Validation:
+- `node tests/overworld.test.js` passes.
+- `npm test` passes all 45 test files.

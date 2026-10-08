@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { Grid } from '../src/engine/Grid.js';
 import { Renderer } from '../src/engine/Renderer.js';
 import { Simulation } from '../src/engine/Simulation.js';
-import { PRODUCER_CONFIG, PRODUCER_TYPE, TERRAIN } from '../src/config.js';
+import { DENSITY, PRODUCER_CONFIG, PRODUCER_TYPE, RESIDENTIAL_CAPACITY, TERRAIN, ZONE } from '../src/config.js';
 
 function createMockCtx(canvas) {
   return new Proxy({
@@ -86,6 +86,38 @@ function makeRenderer(grid, width = 800, height = 600) {
   assert.ok(renderer.getRenderTimings().frameCount >= 1, 'Render-loop timing should record frames separately from simulation');
   assert.ok(Number.isFinite(renderer.getRenderTimings().lastMs), 'Render-loop timing should record a finite frame duration');
 
+
+{
+  const grid = new Grid(8, 8, 1);
+  const renderer = makeRenderer(grid);
+  const tile = {
+    x: 1,
+    y: 1,
+    zone: ZONE.RESIDENTIAL,
+    density: DENSITY.LIGHT,
+    population: RESIDENTIAL_CAPACITY[DENSITY.LIGHT],
+  };
+  const fullCtx = createMockCtx(new MockCanvas());
+  const fullFills = [];
+  fullCtx.fillRect = (x, y, width, height) => fullFills.push({ color: fullCtx.fillStyle, x, y, width, height });
+  renderer.renderZoneTile(fullCtx, tile, 32, 48);
+  assert.ok(fullFills.some(({ color, x, y, width, height }) => (
+    color === '#fde047' && x === 52 && y === 50 && width === 10 && height === 10
+  )), 'Full zone should draw the corner capacity marker');
+
+  const lowDetailCtx = createMockCtx(new MockCanvas());
+  const lowDetailFills = [];
+  lowDetailCtx.fillRect = (x, y, width, height) => lowDetailFills.push({ color: lowDetailCtx.fillStyle, x, y, width, height });
+  renderer.renderLowDetailTile(lowDetailCtx, tile, 32, 48);
+  assert.ok(lowDetailFills.some(({ color }) => color === '#fde047'), 'Full zone marker should remain visible at low detail');
+
+  tile.population--;
+  const partialCtx = createMockCtx(new MockCanvas());
+  const partialFills = [];
+  partialCtx.fillRect = (x, y, width, height) => partialFills.push({ color: partialCtx.fillStyle, x, y, width, height });
+  renderer.renderZoneTile(partialCtx, tile, 32, 48);
+  assert.ok(!partialFills.some(({ color }) => color === '#fde047'), 'Under-capacity zone should not draw the full marker');
+}
   const chunkCanvas = chunk.canvas;
   simulation.tick();
   renderer.render(simulation);

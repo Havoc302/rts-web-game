@@ -82,8 +82,11 @@ function setupTest() {
   sim.stats.totalJobsProvided = 50;
   sim.stats.employmentRate = 0;
   sim.updateGrowthAndDensity();
-  assert.strictEqual(residential.density, DENSITY.MEDIUM, 'The tile should upgrade at its medium threshold');
-  assert.ok(sim.computeTilePopulation(residential, 125) >= 23, 'The upgrade should preserve existing residents');
+  assert.strictEqual(residential.density, DENSITY.LIGHT, 'Growth score should not upgrade density automatically');
+  residential.population = 25;
+  assert.ok(sim.grid.upgradeZone(residential), 'A full residential tile can be upgraded manually');
+  assert.strictEqual(residential.density, DENSITY.MEDIUM, 'Manual upgrade should advance the tile');
+  assert.ok(sim.computeTilePopulation(residential, 125) >= 25, 'The upgrade should preserve existing residents');
 }
 
 // 6. Utility Gate: Shortfall disables job attraction bonus (shortfall delta -2 applies)

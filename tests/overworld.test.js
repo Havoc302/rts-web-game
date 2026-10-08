@@ -17,8 +17,8 @@ const { OverworldView, buildGlobeBoundaries } = await import('../src/engine/Over
 const planet = new OverworldMap(424242, 12345);
 const cells = Array.from(planet.cells.values());
 const land = cells.filter((cell) => !cell.ocean);
-assert.strictEqual(cells.length, 842, 'Resolution-one H3 should cover the sphere with 842 connected cells');
-assert.ok(land.length > 200 && land.length < 380, 'Most of the globe should be ocean');
+assert.strictEqual(cells.length, 5882, 'Resolution-two H3 should cover the sphere with 5,882 connected cells');
+assert.ok(land.length > cells.length * 0.3 && land.length < cells.length * 0.45, 'Land should form substantial regions while most of the globe remains ocean');
 assert.strictEqual(planet.getCell(planet.homeCellId).seed, 12345, 'The existing city is assigned to seeded land');
 assert.ok(land.every((cell) => Number.isInteger(cell.seed) && Object.values(BIOME_TYPES).includes(cell.biome)));
 assert.ok(land.every((cell) => Number.isFinite(cell.climate.temperatureMean) && cell.climate.weatherChances));
@@ -72,9 +72,9 @@ assert.ok(neighbors.filter(([a, b]) => a.biome === b.biome).length > neighbors.l
 	const before = JSON.stringify(Array.from(planet.cells.values()));
 	const boundaries = buildGlobeBoundaries(planet.cells);
 	assert.strictEqual(JSON.stringify(Array.from(planet.cells.values())), before, 'Rendering should not change tile IDs, seeds, biomes or saved boundaries');
-	assert.strictEqual(boundaries.size, 842);
+	assert.strictEqual(boundaries.size, 5882);
 	assert.strictEqual(Array.from(boundaries.values()).filter((boundary) => boundary.length === 5).length, 12);
-	assert.strictEqual(Array.from(boundaries.values()).filter((boundary) => boundary.length === 6).length, 830);
+	assert.strictEqual(Array.from(boundaries.values()).filter((boundary) => boundary.length === 6).length, 5870);
 	const sharedEdges = new Map();
 	for (const boundary of boundaries.values()) {
 		const vertices = boundary.map(([lat, lng]) => {

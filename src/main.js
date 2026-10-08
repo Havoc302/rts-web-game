@@ -18,7 +18,7 @@ import {
 import { deserializeGame, deserializeGameFromJson, serializeGameToJson } from './engine/SaveGame.js';
 import { AudioManager } from './engine/AudioManager.js';
 import { TutorialManager } from './engine/TutorialManager.js';
-import { APP_VERSION, ZONE, TERRAIN, PRODUCER_TYPE, PRODUCER_CONFIG, SERVICE_CONFIG, FACTORY_RECIPES, COSTS, TILE_SIZE, STARTING_TREASURY, RESIDENTIAL_CAPACITY, JOBS_PROVIDED, FOREST_POLLUTION_ABSORPTION, FOREST_DESIRABILITY_RADIUS, CRIME_CONFIG, MEDICAL_CONFIG, POWER_PRODUCER_TYPES, POLLUTION_CONFIG, COAL_CONFIG, WIND_CONFIG, SOLAR_CONFIG, BATTERY_CONFIG, RESOURCE_CONFIG, UTILITY_OPERATING_COST, SURVEY_COST_PER_TICK, TICKS_PER_HOUR, DENSITY, RENDERER_CONFIG, TERRAIN_GENERATION_CONFIG, MAP_SEED_STORAGE_KEY, EDUCATION_CONFIG, splitDemographics } from './config.js';
+import { APP_VERSION, ZONE, TERRAIN, PRODUCER_TYPE, PRODUCER_CONFIG, SERVICE_CONFIG, FACTORY_RECIPES, COSTS, TILE_SIZE, STARTING_TREASURY, RESIDENTIAL_CAPACITY, JOBS_PROVIDED, FOREST_POLLUTION_ABSORPTION, FOREST_DESIRABILITY_RADIUS, CRIME_CONFIG, MEDICAL_CONFIG, POWER_PRODUCER_TYPES, POLLUTION_CONFIG, COAL_CONFIG, WIND_CONFIG, SOLAR_CONFIG, BATTERY_CONFIG, RESOURCE_CONFIG, UTILITY_OPERATING_COST, SURVEY_COST_PER_TICK, TICKS_PER_HOUR, DENSITY, RENDERER_CONFIG, TERRAIN_GENERATION_CONFIG, MAP_SEED_STORAGE_KEY, EDUCATION_CONFIG, splitDemographics, getZoneUpgradeCost, isZoneAtCapacity } from './config.js';
 
 const nowMs = typeof performance !== 'undefined' ? () => performance.now() : () => Date.now();
 
@@ -240,6 +240,7 @@ class GameApp {
       this.renderer.selectedTile = null;
       document.getElementById('inspector-panel').classList.remove('visible');
     });
+    document.getElementById('btn-upgrade-zone')?.addEventListener('click', () => this.upgradeSelectedZone());
 
     document.addEventListener('pointerdown', (e) => {
       const canvas = document.getElementById('game-canvas');
@@ -925,6 +926,13 @@ class GameApp {
     }
     if (this.activeTool === 'pan') {
       this.renderer.selectedTile = tile;
+      const inspector = document.getElementById('inspector-panel');
+      if (!tile.destroyed && isZoneAtCapacity(tile)) {
+        inspector.classList.add('visible');
+        this.updateInspector(tile, { force: true });
+      } else {
+        inspector.classList.remove('visible');
+      }
       return;
     }
 
@@ -1008,6 +1016,18 @@ class GameApp {
 
   isMobileLayout() {
     return typeof window !== 'undefined' && window.matchMedia('(max-width: 820px) and (hover: none) and (pointer: coarse)').matches;
+  }
+
+  upgradeSelectedZone() {
+    const tile = this.renderer.selectedTile;
+    if (!this.grid.canUpgradeZone(tile)) return false;
+    const cost = getZoneUpgradeCost(tile.zone, tile.density);
+    if (cost <= 0 || this.treasury < cost || !this.grid.upgradeZone(tile)) return false;
+    this.treasury -= cost;
+    this.simulation.tick(false);
+    this.updateHUD({ force: true });
+    this.updateInspector(tile, { force: true });
+    return true;
   }
 
   updateBuildInfoPanel(tool) {
@@ -1142,7 +1162,7 @@ class GameApp {
   updateInspector(tile, { force = false } = {}) {
     if (!tile) return false;
     const started = this.enableUiTiming ? nowMs() : 0;
-    const signature = buildInspectorSignature(this.grid, tile, this.simulation.resourceManager);
+    const signature = buildInspectorSignature(this.grid, tile, this.simulation.resourceManager, this.treasury);
     const differentTile = this._inspectorTile !== tile;
     const changed = signature !== this._inspectorSignature;
     const cadenceMs = getHudCadenceMs(this.isMobileLayout());
@@ -1173,6 +1193,24 @@ class GameApp {
     document.getElementById('inspect-road').textContent = tile.hasBridge ? 'Bridge' : tile.hasRoad ? 'Yes' : 'No';
     document.getElementById('inspect-zone').textContent = tile.zone;
     document.getElementById('inspect-density').textContent = tile.zone !== ZONE.NONE ? tile.density : 'N/A';
+
+    const capacityRow = document.getElementById('zone-capacity-row');
+    const capacityStatus = document.getElementById('zone-capacity-status');
+    const upgradeButton = document.getElementById('btn-upgrade-zone');
+    const atCapacity = !tile.destroyed && isZoneAtCapacity(tile);
+    const upgradeCost = getZoneUpgradeCost(tile.zone, tile.density);
+    const canUpgrade = this.grid.canUpgradeZone(tile);
+    if (capacityRow && capacityStatus && upgradeButton) {
+      capacityRow.hidden = !atCapacity;
+      upgradeButton.hidden = !canUpgrade;
+      upgradeButton.disabled = !canUpgrade || this.treasury < upgradeCost;
+      upgradeButton.textContent = `Upgrade ($${upgradeCost.toLocaleString()})`;
+      capacityStatus.textContent = tile.density === DENSITY.HIGH
+        ? 'Full · maximum tier'
+        : this.treasury < upgradeCost
+          ? 'Full · insufficient funds'
+          : 'Full capacity';
+    }
 
     const popJobsEl = document.getElementById('inspect-pop-jobs');
     const recipeRow = document.getElementById('industrial-recipe-row');

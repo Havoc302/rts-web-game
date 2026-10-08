@@ -389,8 +389,6 @@ export class Simulation {
           delta += empBonus;
         }
 
-        const previousDensity = tile.density;
-        const previousGrowthScore = tile.growthScore;
         tile.growthScore = Math.round(
           Math.min(
             GROWTH_CONFIG.MAX_SCORE,
@@ -398,20 +396,6 @@ export class Simulation {
           ) * 100,
         ) / 100;
 
-        if (tile.density === DENSITY.LIGHT && tile.growthScore >= GROWTH_CONFIG.THRESHOLD_MEDIUM) {
-          tile.density = DENSITY.MEDIUM;
-        }
-        if (tile.density === DENSITY.MEDIUM && tile.growthScore >= GROWTH_CONFIG.THRESHOLD_HIGH) {
-          tile.density = DENSITY.HIGH;
-        }
-        if (tile.density !== previousDensity) {
-          this.grid.pollutionDirty = true;
-          if (tile.zone === ZONE.RESIDENTIAL) {
-            const growthDelta = tile.growthScore - previousGrowthScore;
-            this.syncGrowthScoreToPopulation(tile);
-            tile.growthScore = Math.min(GROWTH_CONFIG.MAX_SCORE, tile.growthScore + growthDelta);
-          }
-        }
     }
   }
 

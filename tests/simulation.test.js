@@ -311,7 +311,7 @@ console.log('Running Phase 1 Core Loop Automated Verification Tests...\n');
     sim.tick();
   }
 
-  assert.strictEqual(zTile.density, DENSITY.MEDIUM, 'Tile should upgrade to MEDIUM density at threshold');
+  assert.strictEqual(zTile.density, DENSITY.LIGHT, 'Growth should not upgrade density automatically');
   assert.ok(zTile.growthScore >= GROWTH_CONFIG.THRESHOLD_MEDIUM, 'Tile should reach the MEDIUM growth threshold');
 
   // Run simulation ticks up to THRESHOLD_HIGH
@@ -323,7 +323,13 @@ console.log('Running Phase 1 Core Loop Automated Verification Tests...\n');
   CRIME_CONFIG.BASE_CRIME_CHANCE = originalBaseCrimeChance;
   CRIME_CONFIG.JOB_SCARCITY_CRIME_SCALER = originalUnemploymentScaler;
 
-  assert.strictEqual(zTile.density, DENSITY.HIGH, 'Tile should upgrade to HIGH density at threshold');
+  assert.strictEqual(zTile.density, DENSITY.LIGHT, 'A full growth score should not upgrade density automatically');
+  zTile.population = 25;
+  assert.ok(grid.upgradeZone(zTile), 'A full residential tile should allow a manual upgrade');
+  assert.strictEqual(zTile.density, DENSITY.MEDIUM, 'Manual upgrade should advance the tile to MEDIUM density');
+  zTile.population = 125;
+  assert.ok(grid.upgradeZone(zTile), 'A full medium residential tile should allow a second manual upgrade');
+  assert.strictEqual(zTile.density, DENSITY.HIGH, 'Manual upgrade should advance the tile to HIGH density');
   zTile.growthScore = GROWTH_CONFIG.MAX_SCORE + 10;
   sim.updateGrowthAndDensity();
   assert.strictEqual(zTile.growthScore, GROWTH_CONFIG.MAX_SCORE, 'Growth score should cap at full population');

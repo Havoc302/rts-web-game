@@ -1,4 +1,4 @@
-import { TERRAIN, ZONE, DENSITY, PRODUCER_TYPE, PRODUCER_CONFIG, TILE_SIZE, ORE_CONFIG, NIGHT_TINT_ALPHA, RENDERER_CONFIG, POLLUTION_CONFIG } from '../config.js';
+import { TERRAIN, ZONE, DENSITY, PRODUCER_TYPE, PRODUCER_CONFIG, TILE_SIZE, ORE_CONFIG, NIGHT_TINT_ALPHA, RENDERER_CONFIG, POLLUTION_CONFIG, isZoneAtCapacity } from '../config.js';
 import { UtilityManager } from './UtilityManager.js';
 import { TrafficManager } from './TrafficManager.js';
 import { WeatherOverlay } from './WeatherOverlay.js';
@@ -369,6 +369,7 @@ export class Renderer {
         : tile.zone === ZONE.AGRICULTURAL ? '#84cc1688'
         : '#f59e0b88';
       ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+      if (!tile.destroyed && isZoneAtCapacity(tile)) this.renderZoneCapacityMarker(ctx, px, py);
     } else if (tile.hasRoad) {
       ctx.fillStyle = '#475569';
       ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
@@ -593,6 +594,23 @@ export class Renderer {
     } else if (tile.zone === ZONE.AGRICULTURAL) {
       this.renderAgriculturalArt(ctx, tile.density, px, py);
     }
+    if (!tile.destroyed && isZoneAtCapacity(tile)) this.renderZoneCapacityMarker(ctx, px, py);
+  }
+
+  renderZoneCapacityMarker(ctx, px, py) {
+    const x = px + TILE_SIZE - 13;
+    const y = py + 1;
+    ctx.fillStyle = '#0f172a';
+    ctx.fillRect(x, y, 12, 12);
+    ctx.fillStyle = '#fde047';
+    ctx.fillRect(x + 1, y + 1, 10, 10);
+    ctx.strokeStyle = '#422006';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(x + 3, y + 6);
+    ctx.lineTo(x + 5, y + 8);
+    ctx.lineTo(x + 9, y + 3);
+    ctx.stroke();
   }
 
   renderResidentialArt(ctx, density, px, py) {

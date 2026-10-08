@@ -171,7 +171,7 @@ export function applyHudSnapshot(snapshot, changedKeys, documentRef) {
   return wrote;
 }
 
-export function buildInspectorSignature(grid, tile, resources = null) {
+export function buildInspectorSignature(grid, tile, resources = null, treasury = 0) {
   if (!tile) return '';
   const producer = tile.producer;
   const connectionStatus = producer ? getProducerConnectionStatus(grid, producer) : null;
@@ -231,6 +231,7 @@ export function buildInspectorSignature(grid, tile, resources = null) {
     producerCap,
     connectionStatus?.message || '',
     tile.zone === ZONE.RESIDENTIAL ? 1 : 0,
+    treasury,
   ].join('|');
 }
 

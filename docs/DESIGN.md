@@ -5,7 +5,7 @@
 | Title | SimConquer 2000 — Architecture & Product Design |
 | Author | TBD |
 | Date | 2026-10-06 |
-| Status | Living draft (rev 12) |
+| Status | Living draft (rev 14) |
 | Version covered | `APP_VERSION` `0.2.5` (`src/version.js`); current working tree |
 | Intended in-repo path | `docs/DESIGN.md` |
 | Repo | `g:\Repos\rts-web-game` (`origin`: `https://github.com/Havoc302/rts-web-game.git`) |
@@ -44,13 +44,13 @@ B&C2000 is a **single-player, client-only, paused-by-default city builder**. A s
 
 ### Seeded Planet (0.2.5)
 
-`OverworldMap` uses H3 resolution-one cells to cover the spherical planet with 842 connected hexes. The planet seed independently places six irregular continents and island chains; no Earth coastlines or fixed continent coordinates are used. Ocean hexes have no biome or city seed. Land biomes form regional temperate lowlands, plains, hills, mountains, swamps, and deserts, and each land hex has a deterministic city seed. The first seeded continent supplies the home hex for moving an existing city when regenerating a planet.
+`OverworldMap` uses H3 resolution-two cells to cover the spherical planet with 5,882 connected hexes. The planet seed independently places six irregular continents and island chains; no Earth coastlines or fixed continent coordinates are used. Ocean hexes have no biome or city seed. Land biomes form regional temperate lowlands, plains, hills, mountains, swamps, and deserts, and each land hex has a deterministic city seed. The first seeded continent supplies the home hex for moving an existing city when regenerating a planet.
 
 Startup opens the globe, with the welcome popup above it once the globe is ready. No city is assigned, highlighted, or retained until the player selects a land tile and chooses `Open Map`; this generates that tile's seeded biome rather than starting in a mixed placeholder city. The tutorial begins with `Step 1: Select a map tile` and advances to roads after entering the selected map. The tutorial banner sits below the globe header so it does not overlap mobile tile details. Returning to a city is available only after selecting a map.
 
 The World Map header also displays SimConquer 2000 and the current `APP_VERSION`, matching the city header. The title and branding wrap on narrow screens without overlapping planet-seed controls.
 
-Displayed tile boundaries are spherical Voronoi polygons derived from the existing H3 cell centers using Three.js `ConvexHull`. This removes H3 projection-seam kinks and produces 830 convex hexagons and 12 convex pentagons with shared, gap-free edges. Surface fills, borders, selection outlines, and picking use the same displayed geometry. Logical H3 IDs, original boundaries, city seeds, biome assignments, and save data remain unchanged.
+Displayed tile boundaries are spherical Voronoi polygons derived from the existing H3 cell centers using Three.js `ConvexHull`. This removes H3 projection-seam kinks and produces 5,870 convex hexagons and 12 convex pentagons with shared, gap-free edges. Surface fills, borders, selection outlines, and picking use the same displayed geometry. Logical H3 IDs, original boundaries, city seeds, biome assignments, and save data remain unchanged.
 
 `OverworldView` renders the globe using Three.js and opens from the bottom-right city button. Players rotate and select land, enter a city generated on first visit, and return to visited cities with their state intact. Opening the globe pauses simulation and sets its speed to zero. A globe-only Options menu contains selected-tile and planet seed controls, reset/randomize actions, and Save World / Load World actions. The selected-tile seed field follows the highlighted land hex; changing or randomizing it clears that hex's previous city state and lazily regenerates the selected city's map from its new seed. Changing the planet seed asks for confirmation, moves the active city to the new home hex, and removes previously visited cities. Version-2 JSON world saves include the planet seed, nullable active hex, every land hex's city seed, home city seed, and every other visited city snapshot. World saves made before selecting a city are supported, and importing a world save returns to the globe. Older city-only saves remain importable. Terrain generation stays at version 2. Combat and world-map armies are still future work.
 
@@ -103,7 +103,8 @@ The land-tile action is labeled `Open Map` for current, visited, and unexplored 
 Implemented; automated coverage is listed below, with browser-level gaps called out separately:
 
 - Pause-safe placement previews, treasury accounting, famine recovery, agriculture occupancy, resource consumption, fuel/refining, crime, fire, civic staffing, mobile input/layout, wind/solar/battery connectivity, version synchronization, chunked terrain rendering, and bounded HUD/inspector updates.
-- Unified test execution through `npm test`; the current baseline is 44 passing test files.
+- Unified test execution through `npm test`; all 45 test files pass.
+- Residential, commercial, industrial, and agricultural zone tiers upgrade manually after reaching full occupancy; full tiles are marked and expose a costed Upgrade action in the inspector.
 - Versioned sparse city JSON export/import, seeded planet/world saves, the survey overlay and survey expense/cancellation flow, and School/University education tax bonuses are implemented.
 - City saves are manual file export/import only. A city autosave and autosave-based startup/restore flow are not implemented.
 
@@ -299,7 +300,9 @@ Art is 100% procedural canvas (houses, fields, spinning windmill blades, battery
 
 ### Zoning, growth, labor, tax
 
-**Zones** (`ZONE`): residential, commercial, industrial, agricultural. Densities light → medium at growth 10, medium → high at 25, cap 50 (`GROWTH_CONFIG`). Density never downgrades.
+**Zones** (`ZONE`): residential, commercial, industrial, agricultural. Densities are light, medium, and high. Growth-score thresholds 10 and 25 define residential occupancy bands, with a cap of 50; they no longer promote density automatically. Density never downgrades.
+
+**Manual zone tier upgrades (implemented):** A zone must reach its current tier's full occupancy (residential population equals capacity; commercial/industrial/agricultural filled jobs equal job slots) before it can be upgraded. Full zones display a small corner marker; clicking a full tile in Pan or Inspect mode opens the inspector, where non-high-density zones offer an Upgrade action. Upgrade prices are the zone's base placement cost ×2 for light → medium and ×4 for medium → high; the action is disabled when the treasury is insufficient. Base zone prices are residential/commercial `$200` and industrial/agricultural `$300`.
 
 **Residential population** (`computeTilePopulation`): linear in growth score within the current density band, capacity `25 / 125 / 500`. No free population at growth 0.
 

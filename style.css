@@ -669,6 +669,31 @@ span.stat-icon {
   font-weight: 500;
 }
 
+.zone-capacity-row {
+  display: grid;
+  gap: 6px;
+  margin: 10px 0;
+  padding: 8px;
+  border: 1px solid rgba(253, 224, 71, 0.45);
+  border-radius: 4px;
+  background: rgba(120, 95, 18, 0.22);
+}
+
+.zone-capacity-row[hidden],
+.zone-upgrade-button[hidden] {
+  display: none;
+}
+
+.zone-capacity-status {
+  color: #fde68a;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.zone-upgrade-button {
+  width: 100%;
+}
+
 hr {
   border: 0;
   height: 1px;

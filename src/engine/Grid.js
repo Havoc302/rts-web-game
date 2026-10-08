@@ -1,4 +1,4 @@
-import { TERRAIN, TERRAIN_TYPE, ZONE, DENSITY, MAP_WIDTH, MAP_HEIGHT, PRODUCER_CONFIG, PRODUCER_TYPE, ORE_CONFIG, ORE_GENERATION, SERVICE_GLOBAL_CONFIG, TERRAIN_GENERATION_CONFIG, MAP_SEED_STORAGE_KEY, MAP_SEED_STORAGE_KEY_LEGACY, BIOME_CONFIG, BIOME_TERRAIN_CONFIG, BIOME_LAKE_CONFIG, BIOME_GENERATION_VERSION } from '../config.js';
+import { TERRAIN, TERRAIN_TYPE, ZONE, DENSITY, GROWTH_CONFIG, RESIDENTIAL_CAPACITY, isZoneAtCapacity, MAP_WIDTH, MAP_HEIGHT, PRODUCER_CONFIG, PRODUCER_TYPE, ORE_CONFIG, ORE_GENERATION, SERVICE_GLOBAL_CONFIG, TERRAIN_GENERATION_CONFIG, MAP_SEED_STORAGE_KEY, MAP_SEED_STORAGE_KEY_LEGACY, BIOME_CONFIG, BIOME_TERRAIN_CONFIG, BIOME_LAKE_CONFIG, BIOME_GENERATION_VERSION } from '../config.js';
 
 export function producerTypeForTool(tool) {
   if (!tool?.startsWith('producer_')) return null;
@@ -687,6 +687,33 @@ export class Grid {
     tile.growthScore = 0;
     this.activeZonedTiles.add(tile);
     this.fireCandidateTiles.add(tile);
+    this.coverageVersion++;
+    this.pollutionDirty = true;
+    return true;
+  }
+
+  canUpgradeZone(tile) {
+    return Boolean(
+      tile &&
+      this.activeZonedTiles.has(tile) &&
+      !tile.destroyed &&
+      [ZONE.RESIDENTIAL, ZONE.COMMERCIAL, ZONE.INDUSTRIAL, ZONE.AGRICULTURAL].includes(tile.zone) &&
+      tile.density !== DENSITY.HIGH &&
+      isZoneAtCapacity(tile)
+    );
+  }
+
+  upgradeZone(tile) {
+    if (!this.canUpgradeZone(tile)) return false;
+    tile.density = tile.density === DENSITY.LIGHT ? DENSITY.MEDIUM : DENSITY.HIGH;
+    if (tile.zone === ZONE.RESIDENTIAL) {
+      const capacity = RESIDENTIAL_CAPACITY[tile.density] || 0;
+      const progress = Math.min(1, Math.max(0, (tile.population || 0) / capacity));
+      const score = tile.density === DENSITY.MEDIUM
+        ? GROWTH_CONFIG.THRESHOLD_MEDIUM + progress * (GROWTH_CONFIG.THRESHOLD_HIGH - GROWTH_CONFIG.THRESHOLD_MEDIUM)
+        : GROWTH_CONFIG.THRESHOLD_HIGH + progress * (GROWTH_CONFIG.MAX_SCORE - GROWTH_CONFIG.THRESHOLD_HIGH);
+      tile.growthScore = Math.round(score * 100) / 100;
+    }
     this.coverageVersion++;
     this.pollutionDirty = true;
     return true;
