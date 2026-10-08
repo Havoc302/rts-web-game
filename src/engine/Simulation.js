@@ -1,4 +1,4 @@
-import { GROWTH_CONFIG, DENSITY, ZONE, TERRAIN, USAGE_RATES, POLLUTION_CONFIG, JOBS_PROVIDED, RESIDENTIAL_CAPACITY, LABOR_TAX_GROWTH_CONFIG, FOREST_DESIRABILITY_RADIUS, PRODUCER_TYPE, PRODUCER_CONFIG, POWER_PRODUCER_TYPES, ROAD_MAINTENANCE_COST, UTILITY_OPERATING_COST, TAX_REVENUE_CONFIG, CRIME_CONFIG, MEDICAL_CONFIG, HAPPINESS_CONFIG, SERVICE_GLOBAL_CONFIG, TICKS_PER_HOUR, HOURS_PER_DAY, DAY_START_HOUR, NIGHT_START_HOUR, DEMOGRAPHICS_CONFIG, FUEL_CONFIG, SURVEY_COST_PER_TICK, POPULATION_STABILIZATION_CONFIG, TEMPERATURE_CONFIG, EDUCATION_CONFIG, splitDemographics } from '../config.js';
+import { GROWTH_CONFIG, DENSITY, ZONE, TERRAIN, USAGE_RATES, POLLUTION_CONFIG, JOBS_PROVIDED, RESIDENTIAL_CAPACITY, LABOR_TAX_GROWTH_CONFIG, FOREST_DESIRABILITY_RADIUS, PRODUCER_TYPE, PRODUCER_CONFIG, POWER_PRODUCER_TYPES, ROAD_MAINTENANCE_COST, ROAD_MAINTENANCE_CONFIG, UTILITY_OPERATING_COST, TAX_REVENUE_CONFIG, CRIME_CONFIG, MEDICAL_CONFIG, HAPPINESS_CONFIG, SERVICE_GLOBAL_CONFIG, TICKS_PER_HOUR, HOURS_PER_DAY, DAY_START_HOUR, NIGHT_START_HOUR, DEMOGRAPHICS_CONFIG, FUEL_CONFIG, SURVEY_COST_PER_TICK, POPULATION_STABILIZATION_CONFIG, TEMPERATURE_CONFIG, EDUCATION_CONFIG, splitDemographics } from '../config.js';
 import { UtilityManager } from './UtilityManager.js';
 import { PollutionManager } from './PollutionManager.js';
 import { ServiceManager } from './ServiceManager.js';
@@ -17,6 +17,7 @@ export class Simulation {
     this.speed = 1;
     this.taxRate = 0;
     this.pensionBudget = SERVICE_GLOBAL_CONFIG.BUDGET_MAX_VALUE;
+    this.roadMaintenanceBudget = ROAD_MAINTENANCE_CONFIG.DEFAULT_BUDGET;
     this.resourceManager = new ResourceManager();
     this.weatherManager = new WeatherManager(climate);
     this.enableTiming = false;
@@ -93,6 +94,7 @@ export class Simulation {
     if (advanceWorld) {
       this.tickCount++;
       this.resourceManager.prepareTick(this.grid);
+      this.updateRoadMaintenance();
     }
     if (timing) {
       t1 = now();
@@ -489,7 +491,7 @@ export class Simulation {
       }
     }
 
-    stats.roadExpenses = this.grid.activeRoadTiles.size * ROAD_MAINTENANCE_COST;
+    stats.roadExpenses = this.grid.activeRoadTiles.size * ROAD_MAINTENANCE_COST * this.roadMaintenanceBudget / SERVICE_GLOBAL_CONFIG.BUDGET_MAX_VALUE;
 
     const tileCount = this.grid.width * this.grid.height;
     stats.maxPollution = this.grid.pollutionMax || 0;
@@ -702,10 +704,7 @@ export class Simulation {
 
   applyPopulationChange(populationAtStart) {
     const maxGrowth = this.getMaxPopulationGrowth(populationAtStart);
-    const maxOutflow = Math.max(
-      POPULATION_STABILIZATION_CONFIG.MIN_POPULATION_SHIFT_FLOOR,
-      Math.floor(populationAtStart * POPULATION_STABILIZATION_CONFIG.MAX_POPULATION_OUTFLOW_PER_TICK),
-    );
+    const maxOutflow = this.getMaxPopulationOutflow(populationAtStart);
     const incoming = [];
     const outgoing = [];
     for (const tile of this.grid.getActiveZonedTiles()) {
@@ -746,10 +745,7 @@ export class Simulation {
     const currentPopulation = this.stats?.population || 0;
     const maxShift = rawCalculatedDelta > 0
       ? this.getMaxPopulationGrowth(currentPopulation)
-      : Math.max(
-        POPULATION_STABILIZATION_CONFIG.MIN_POPULATION_SHIFT_FLOOR,
-        Math.floor(currentPopulation * POPULATION_STABILIZATION_CONFIG.MAX_POPULATION_OUTFLOW_PER_TICK),
-      );
+      : this.getMaxPopulationOutflow(currentPopulation);
 
     const clampedDelta = Math.min(Math.max(rawCalculatedDelta, -maxShift), maxShift);
     if (this.stats) {
@@ -767,5 +763,37 @@ export class Simulation {
       MIN_POPULATION_SHIFT_FLOOR,
       Math.floor(capacity * MAX_POPULATION_GROWTH_CAPACITY_RATIO / (1 + GROWTH_SATURATION_FACTOR * occupancy)),
     );
+  }
+
+  getMaxPopulationOutflow(population) {
+    const { MAX_POPULATION_OUTFLOW_PER_TICK, MAX_POPULATION_OUTFLOW_CAPACITY_RATIO, GROWTH_SATURATION_FACTOR, MIN_POPULATION_SHIFT_FLOOR } = POPULATION_STABILIZATION_CONFIG;
+    const populationCap = Math.max(
+      MIN_POPULATION_SHIFT_FLOOR,
+      Math.floor(Math.max(0, population) * MAX_POPULATION_OUTFLOW_PER_TICK),
+    );
+    const capacity = this.stats?.maxPopulationCapacity || 0;
+    if (capacity <= 0) return populationCap;
+    const occupancy = Math.max(0, population) / capacity;
+    const capacityCap = Math.max(
+      MIN_POPULATION_SHIFT_FLOOR,
+      Math.floor(capacity * MAX_POPULATION_OUTFLOW_CAPACITY_RATIO / (1 + GROWTH_SATURATION_FACTOR * occupancy)),
+    );
+    return Math.min(populationCap, capacityCap);
+  }
+
+  updateRoadMaintenance() {
+    const roadTiles = Array.from(this.grid.activeRoadTiles).filter((tile) => tile.hasRoad && !tile.destroyed);
+    if (roadTiles.length === 0 || this.roadMaintenanceBudget >= SERVICE_GLOBAL_CONFIG.BUDGET_MAX_VALUE) return;
+
+    const fundedExact = roadTiles.length * Math.max(0, Math.min(SERVICE_GLOBAL_CONFIG.BUDGET_MAX_VALUE, this.roadMaintenanceBudget)) / SERVICE_GLOBAL_CONFIG.BUDGET_MAX_VALUE;
+    let fundedCount = Math.floor(fundedExact);
+    if (fundedExact - fundedCount > 0 && Math.random() < fundedExact - fundedCount) fundedCount++;
+    const unfundedCount = roadTiles.length - fundedCount;
+
+    for (let index = 0; index < unfundedCount; index++) {
+      const swapIndex = index + Math.floor(Math.random() * (roadTiles.length - index));
+      [roadTiles[index], roadTiles[swapIndex]] = [roadTiles[swapIndex], roadTiles[index]];
+      this.grid.damageRoad(roadTiles[index], ROAD_MAINTENANCE_CONFIG.DAMAGE_PER_UNFUNDED_TICK);
+    }
   }
 }

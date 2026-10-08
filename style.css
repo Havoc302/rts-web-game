@@ -754,19 +754,6 @@ h4 {
 .mobile-toggle-tools { left: 16px; }
 .mobile-toggle-hud { right: 16px; }
 
-.overworld-toggle {
-  position: absolute;
-  bottom: 16px;
-  right: 16px;
-  z-index: 21;
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  color: var(--text-main);
-  font-size: 1.5rem;
-  cursor: pointer;
-}
-
 .overworld-view {
   position: fixed;
   inset: 0;
@@ -1009,10 +996,6 @@ h4 {
 @media (max-width: 600px) {
   .overworld-header { padding-inline: 12px; gap: 8px; }
   .overworld-header h2 { font-size: 0.75rem; }
-  .overworld-toggle {
-    right: 80px;
-    bottom: calc(90px + env(safe-area-inset-bottom, 0px));
-  }
   .overworld-info {
     flex-wrap: wrap;
     gap: 8px 14px;

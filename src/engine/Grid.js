@@ -151,6 +151,7 @@ export class Grid {
       hasRoad: false,
       hasBridge: false,
       hasTunnel: false,
+      roadDamage: 0,
       zone: ZONE.NONE,
       density: DENSITY.LIGHT,
       growthScore: 0,
@@ -656,6 +657,7 @@ export class Grid {
     if (!this.canPlaceRoad(x, y)) return false;
     const tile = this.getTile(x, y);
     tile.hasRoad = true;
+    tile.roadDamage = 0;
     this.activeRoadTiles.add(tile);
     this.coverageVersion++;
     this.pollutionDirty = true;
@@ -673,6 +675,7 @@ export class Grid {
     const tile = this.getTile(x, y);
     tile.hasTunnel = true;
     tile.hasRoad = true;
+    tile.roadDamage = 0;
     this.activeRoadTiles.add(tile);
     this.coverageVersion++;
     this.pollutionDirty = true;
@@ -814,6 +817,7 @@ export class Grid {
     const tile = this.getTile(x, y);
     tile.hasBridge = true;
     tile.hasRoad = true;
+    tile.roadDamage = 0;
     this.activeRoadTiles.add(tile);
     this.coverageVersion++;
     this.pollutionDirty = true;
@@ -827,6 +831,10 @@ export class Grid {
     let modified = false;
     if (tile.destroyed) {
       tile.destroyed = false;
+      modified = true;
+    }
+    if (tile.roadDamage) {
+      tile.roadDamage = 0;
       modified = true;
     }
     if (tile.hasBridge) {
@@ -885,5 +893,19 @@ export class Grid {
     }
     if (modified) this.coverageVersion++;
     return modified;
+  }
+
+  damageRoad(tile, amount) {
+    if (!tile || !tile.hasRoad || tile.destroyed || amount <= 0) return false;
+    tile.roadDamage = Math.min(100, (tile.roadDamage || 0) + amount);
+    if (tile.roadDamage < 100) return false;
+    tile.hasRoad = false;
+    tile.hasBridge = false;
+    tile.hasTunnel = false;
+    tile.destroyed = true;
+    this.activeRoadTiles.delete(tile);
+    this.coverageVersion++;
+    this.pollutionDirty = true;
+    return true;
   }
 }

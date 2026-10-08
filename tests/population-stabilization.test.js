@@ -6,7 +6,8 @@ import { DENSITY, GROWTH_CONFIG, POPULATION_STABILIZATION_CONFIG, TERRAIN, ZONE 
 console.log('=== population-stabilization.test.js ===');
 
 // 1. Config assertions
-assert.strictEqual(POPULATION_STABILIZATION_CONFIG.MAX_POPULATION_GROWTH_CAPACITY_RATIO, 0.01, 'Growth starts at 1% of residential capacity');
+assert.strictEqual(POPULATION_STABILIZATION_CONFIG.MAX_POPULATION_GROWTH_CAPACITY_RATIO, 0.02, 'Growth starts at 2% of residential capacity');
+assert.strictEqual(POPULATION_STABILIZATION_CONFIG.MAX_POPULATION_OUTFLOW_CAPACITY_RATIO, 0.01, 'Outflow also scales to residential capacity');
 assert.strictEqual(POPULATION_STABILIZATION_CONFIG.GROWTH_SATURATION_FACTOR, 4, 'Growth tapers with residential occupancy');
 assert.strictEqual(POPULATION_STABILIZATION_CONFIG.MAX_POPULATION_OUTFLOW_PER_TICK, 0.015, 'Outflow remains capped at 1.5%');
 assert.strictEqual(POPULATION_STABILIZATION_CONFIG.MIN_POPULATION_SHIFT_FLOOR, 1, 'Floor shift is 1');
@@ -27,10 +28,10 @@ assert.strictEqual(POPULATION_STABILIZATION_CONFIG.MIN_POPULATION_SHIFT_FLOOR, 1
   assert.strictEqual(clampedDrop, -15, 'Transient -3,000 drop at 1,000 pop clamps to 1.5%');
   assert.strictEqual(sim.stats.population, 985, 'Population drops to 985');
 
-  // Growth is relative to capacity and tapers as housing occupancy rises.
+  // The growth cap is relative to capacity and tapers as housing occupancy rises.
   const clampedSurge = sim.processPopulationTick(500);
-  assert.strictEqual(clampedSurge, 27, 'Surge at 985 population and 5,000 capacity clamps to 27');
-  assert.strictEqual(sim.stats.population, 1012, 'Population increases by the capacity-relative growth cap');
+  assert.strictEqual(clampedSurge, 55, 'Surge at 985 population and 5,000 capacity clamps to 55');
+  assert.strictEqual(sim.stats.population, 1040, 'Population increases by the capacity-relative growth cap');
 
   // Small delta within limits is uninhibited
   sim.stats.population = 1000;
@@ -41,16 +42,69 @@ assert.strictEqual(POPULATION_STABILIZATION_CONFIG.MIN_POPULATION_SHIFT_FLOOR, 1
   // Early growth uses a larger cap, which tapers as the city fills.
   sim.stats.population = 0;
   const earlyGrowth = sim.processPopulationTick(100);
-  assert.strictEqual(earlyGrowth, 50, 'Zero population uses 1% of the 5,000 residential capacity');
-  assert.strictEqual(sim.stats.population, 50, 'Population increases by the capacity-relative cap');
-  assert.strictEqual(sim.getMaxPopulationGrowth(1000), 27, 'Growth cap is 27 at 1,000 of 5,000 capacity');
-  assert.strictEqual(sim.getMaxPopulationGrowth(5000), 10, 'Growth cap tapers to 10 at full occupancy');
+  assert.strictEqual(earlyGrowth, 100, 'Zero population uses 2% of the 5,000 residential capacity');
+  assert.strictEqual(sim.stats.population, 100, 'Population increases by the capacity-relative cap');
+  assert.strictEqual(sim.getMaxPopulationGrowth(1000), 55, 'Growth cap is 55 at 1,000 of 5,000 capacity');
+  assert.strictEqual(sim.getMaxPopulationGrowth(5000), 20, 'Growth cap tapers to 20 at full occupancy');
+
+  sim.stats.maxPopulationCapacity = 1000;
+  assert.strictEqual(sim.getMaxPopulationGrowth(0), 20, 'A 1,000-capacity city can grow by 20 at zero population');
+  assert.strictEqual(sim.getMaxPopulationGrowth(500), 6, 'A half-full 1,000-capacity city tapers to six');
+  sim.stats.maxPopulationCapacity = 2000;
+  assert.strictEqual(sim.getMaxPopulationGrowth(1000), 13, 'Doubling capacity returns 1,000 residents to the curve midpoint');
+
+  sim.stats.maxPopulationCapacity = 1000;
+  assert.strictEqual(sim.getMaxPopulationOutflow(1000), 2, 'A full 1,000-capacity city is limited to two departures per tick');
+  assert.strictEqual(sim.getMaxPopulationOutflow(500), 3, 'Half-full housing applies the capacity-relative outflow cap');
+  sim.stats.maxPopulationCapacity = 2000;
+  assert.strictEqual(sim.getMaxPopulationOutflow(1000), 6, 'Doubling capacity also raises the outflow cap toward the curve midpoint');
+  sim.stats.maxPopulationCapacity = 200000;
+  assert.strictEqual(sim.getMaxPopulationOutflow(100000), 666, 'A large half-full city cannot lose thousands of residents in one tick');
 
   // Population never drops below 0
   sim.stats.population = 0;
   const negativeDrop = sim.processPopulationTick(-10);
   assert.strictEqual(negativeDrop, -1, 'Outflow floor allows a one-person drop');
   assert.strictEqual(sim.stats.population, 0, 'Population clamped at 0 lower bound');
+}
+
+{
+  const grid = new Grid(10, 10, 1);
+  for (const row of grid.tiles) for (const tile of row) tile.terrain = TERRAIN.FLAT;
+  for (let index = 0; index < 40; index++) {
+    const tile = grid.getTile(index % 10, Math.floor(index / 10));
+    tile.zone = ZONE.RESIDENTIAL;
+    tile.density = DENSITY.LIGHT;
+    tile.population = 25;
+    tile.growthScore = 0;
+    grid.activeZonedTiles.add(tile);
+  }
+  const sim = new Simulation(grid);
+  sim.stats.population = 1000;
+  sim.stats.maxPopulationCapacity = 1000;
+  sim.applyPopulationChange(1000);
+  assert.strictEqual(Array.from(grid.activeZonedTiles).reduce((sum, tile) => sum + tile.population, 0), 998, 'Tick-based outflow should use the same capacity-relative ceiling');
+}
+
+// Growth ceilings do not create demand when residential growth metrics target zero.
+{
+  const grid = new Grid(10, 10, 1);
+  for (const row of grid.tiles) for (const tile of row) tile.terrain = TERRAIN.FLAT;
+  for (let index = 0; index < 40; index++) {
+    const tile = grid.getTile(index % 10, Math.floor(index / 10));
+    tile.zone = ZONE.RESIDENTIAL;
+    tile.density = DENSITY.LIGHT;
+    tile.growthScore = 0;
+    grid.activeZonedTiles.add(tile);
+  }
+  const sim = new Simulation(grid);
+  sim.stats.maxPopulationCapacity = 1000;
+  sim.applyPopulationChange(0);
+  assert.strictEqual(Array.from(grid.activeZonedTiles).reduce((sum, tile) => sum + tile.population, 0), 0, 'A zero growth-score target should attract no residents');
+
+  for (const tile of grid.activeZonedTiles) tile.growthScore = 1;
+  sim.applyPopulationChange(0);
+  assert.strictEqual(Array.from(grid.activeZonedTiles).reduce((sum, tile) => sum + tile.population, 0), 20, 'A supported demand above the cap can use the full 20-person ceiling');
 }
 
 // 3. Sustained crisis compound drain (~26% loss over 20 ticks)

@@ -169,6 +169,17 @@ class GameApp {
       });
     });
 
+    const roadBudgetSlider = document.getElementById('road-maintenance-budget-slider');
+    if (roadBudgetSlider) {
+      roadBudgetSlider.addEventListener('input', (e) => {
+        this.simulation.roadMaintenanceBudget = parseInt(e.target.value, 10);
+        const value = document.getElementById('road-maintenance-budget-value');
+        if (value) value.textContent = `${this.simulation.roadMaintenanceBudget}%`;
+        this.simulation.computeStats({ preservePopulation: true });
+        this.updateHUD({ force: true });
+      });
+    }
+
     const pensionSlider = document.getElementById('pension-budget-slider');
     if (pensionSlider) {
       pensionSlider.addEventListener('input', (e) => {
@@ -550,6 +561,7 @@ class GameApp {
     simulation.isPaused = true;
     simulation.taxRate = imported.simulation.taxRate;
     simulation.pensionBudget = imported.simulation.pensionBudget;
+    simulation.roadMaintenanceBudget = imported.simulation.roadMaintenanceBudget ?? 100;
     simulation.resourceManager.stockpile = imported.simulation.stockpile;
     simulation.resourceManager.capacity = imported.simulation.capacity;
     if (imported.simulation.weather) Object.assign(simulation.weatherManager, imported.simulation.weather);
@@ -575,6 +587,11 @@ class GameApp {
     const pensionVal = document.getElementById('pension-budget-value');
     if (pensionSlider) pensionSlider.value = this.simulation.pensionBudget;
     if (pensionVal) pensionVal.textContent = `${this.simulation.pensionBudget}%`;
+
+    const roadBudgetSlider = document.getElementById('road-maintenance-budget-slider');
+    const roadBudgetValue = document.getElementById('road-maintenance-budget-value');
+    if (roadBudgetSlider) roadBudgetSlider.value = this.simulation.roadMaintenanceBudget;
+    if (roadBudgetValue) roadBudgetValue.textContent = `${this.simulation.roadMaintenanceBudget}%`;
 
     document.querySelectorAll('[data-service-budget]').forEach((slider) => {
       const type = slider.dataset.serviceBudget;

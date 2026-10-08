@@ -60,6 +60,10 @@ function makeRenderer(grid, width = 800, height = 600) {
   const grid = new Grid(8, 8, 1);
   const renderer = makeRenderer(grid);
   const markup = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  const speedControls = markup.match(/<div class="speed-controls">([\s\S]*?)<\/div>/)?.[1] || '';
+  assert.ok(speedControls.indexOf('id="btn-toggle-audio"') < speedControls.indexOf('id="btn-overworld"'), 'World button should sit at the end beside Mute');
+  assert.strictEqual((markup.match(/id="btn-overworld"/g) || []).length, 1, 'There should be one World button in the top bar');
+  assert.ok(!markup.includes('class="overworld-toggle glass"'), 'World button should no longer float over the map');
   for (const type of [PRODUCER_TYPE.WAREHOUSE_ORE, PRODUCER_TYPE.WAREHOUSE_BAR, PRODUCER_TYPE.WAREHOUSE_GOODS]) {
     const ctx = createMockCtx(new MockCanvas());
     const painted = [];
@@ -150,6 +154,20 @@ function makeRenderer(grid, width = 800, height = 600) {
   grid.randomizeGrid(2);
   renderer.render(simulation);
   assert.strictEqual(renderer.lastTerrainRebuild.kind, 'full', 'Map regeneration should rebuild the whole terrain cache');
+}
+
+{
+  const grid = new Grid(8, 8, 1);
+  flatten(grid);
+  const road = grid.getTile(3, 3);
+  road.hasRoad = true;
+  road.roadDamage = 40;
+  grid.activeRoadTiles.add(road);
+  const renderer = makeRenderer(grid);
+  const damageBars = [];
+  renderer.renderDamageBar = (_ctx, _x, _y, damage, color) => damageBars.push({ damage, color });
+  renderer.render(new Simulation(grid));
+  assert.ok(damageBars.some(({ damage, color }) => damage === 40 && color === '#f59e0b'), 'Roads should reuse the health bar with a road-damage color');
 }
 
 console.log('Renderer cache tests passed.');

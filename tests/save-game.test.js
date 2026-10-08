@@ -109,6 +109,8 @@ for (const biome of Object.values(BIOME_TYPES)) {
   simulation.tickCount = 17;
   simulation.taxRate = 35;
   simulation.pensionBudget = 80;
+  simulation.roadMaintenanceBudget = 65;
+  grid.getTile(2, 2).roadDamage = 40;
   simulation.resourceManager.stockpile.food = 42;
   Object.assign(simulation.weatherManager, {
     windIntensity: 0.99, cloudCover: 0.75, temperature: 33,
@@ -134,11 +136,16 @@ for (const biome of Object.values(BIOME_TYPES)) {
   assert.strictEqual(restored.grid.producers[0].storedEnergy, 123);
   assert.strictEqual(restored.simulation.tickCount, 17);
   assert.strictEqual(restored.simulation.taxRate, 35);
+  assert.strictEqual(restored.simulation.roadMaintenanceBudget, 65, 'Road maintenance budget should round-trip');
+  assert.strictEqual(restored.grid.getTile(2, 2).roadDamage, 40, 'Road damage should round-trip');
   assert.strictEqual(restored.simulation.stockpile.food, 42);
   assert.deepStrictEqual(restored.simulation.weather, {
     windIntensity: 0.99, cloudCover: 0.75, temperature: 33,
     weatherTargetCloud: 0.9, weatherTicksRemaining: 4, extremeWindTicks: 3,
   }, 'Weather state should round-trip');
+  const oldSave = JSON.parse(JSON.stringify(document));
+  delete oldSave.simulation.roadMaintenanceBudget;
+  assert.strictEqual(deserializeGame(oldSave).simulation.roadMaintenanceBudget, 100, 'Older saves should default to full road funding');
   assert.strictEqual(restored.treasury, 9876);
   assert.deepStrictEqual(restored.camera, { x: 12, y: -8, zoom: 1.4 });
   assert.strictEqual(restored.ui.overlayMode, 'survey');

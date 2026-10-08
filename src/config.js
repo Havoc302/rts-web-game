@@ -635,6 +635,10 @@ export const COSTS = {
 };
 
 export const ROAD_MAINTENANCE_COST = 1; // Maintenance cost per road or bridge tile per tick
+export const ROAD_MAINTENANCE_CONFIG = {
+  DEFAULT_BUDGET: 100,
+  DAMAGE_PER_UNFUNDED_TICK: 10,
+};
 export const UTILITY_OPERATING_COST = 2; // Per power generator, battery, water pump, or sewage plant per tick
 
 export const TAX_REVENUE_CONFIG = {
@@ -912,7 +916,8 @@ export const TRAFFIC_CONFIG = {
 };
 
 export const POPULATION_STABILIZATION_CONFIG = {
-  MAX_POPULATION_GROWTH_CAPACITY_RATIO: 0.01,
+  MAX_POPULATION_GROWTH_CAPACITY_RATIO: 0.02,
+  MAX_POPULATION_OUTFLOW_CAPACITY_RATIO: 0.01,
   GROWTH_SATURATION_FACTOR: 4,
   MAX_POPULATION_OUTFLOW_PER_TICK: 0.015,
   MIN_POPULATION_SHIFT_FLOOR: 1,

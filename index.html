@@ -184,6 +184,7 @@
         <button class="btn-icon" id="btn-speed-5" title="5x Speed">⚡</button>
 
         <button class="btn-icon" id="btn-toggle-audio" title="Toggle Audio (Mute/Unmute)">🔇</button>
+        <button class="btn-icon" id="btn-overworld" type="button" title="Open world map" aria-label="Open world map">🌐</button>
       </div>
 
     </header>
@@ -195,7 +196,6 @@
       <!-- Mobile drawer toggles (hidden on desktop) -->
       <button class="mobile-toggle mobile-toggle-tools glass" id="btn-toggle-tools" aria-label="Toggle Tools">🛠️</button>
       <button class="mobile-toggle mobile-toggle-hud glass" id="btn-toggle-hud" aria-label="Toggle Stats">📊</button>
-      <button class="overworld-toggle glass" id="btn-overworld" type="button" title="Open world map" aria-label="Open world map">🌐</button>
 
       <!-- Overlay View Selector -->
       <div class="view-overlay-picker glass">
@@ -285,6 +285,7 @@
         <section class="utility-hud-tab" data-hud-panel="budgets">
         <div class="service-budgets">
           <h3>Service Budgets</h3>
+          <label>Road Maintenance <input type="range" min="0" max="100" step="5" value="100" id="road-maintenance-budget-slider"><span id="road-maintenance-budget-value">100%</span></label>
           <label>Police <input type="range" min="0" max="100" step="5" value="100" data-service-budget="police_station"><span id="police_station-budget-value">100%</span></label>
           <label>Fire <input type="range" min="0" max="100" step="5" value="100" data-service-budget="fire_station"><span id="fire_station-budget-value">100%</span></label>
           <label>Hospital <input type="range" min="0" max="100" step="5" value="100" data-service-budget="hospital"><span id="hospital-budget-value">100%</span></label>

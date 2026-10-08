@@ -1,4 +1,4 @@
-import { APP_VERSION, BIOME_GENERATION_VERSION, DENSITY, MAP_HEIGHT, MAP_WIDTH, PRODUCER_TYPE, TERRAIN_GENERATION_CONFIG, ZONE } from '../config.js';
+import { APP_VERSION, BIOME_GENERATION_VERSION, DENSITY, MAP_HEIGHT, MAP_WIDTH, PRODUCER_TYPE, ROAD_MAINTENANCE_CONFIG, TERRAIN_GENERATION_CONFIG, ZONE } from '../config.js';
 import { Grid } from './Grid.js';
 
 export const SAVE_VERSION = 2;
@@ -46,6 +46,7 @@ function collectTileOverride(tile, base) {
   if (tile.hasRoad) add('hasRoad', true);
   if (tile.hasBridge) add('hasBridge', true);
   if (tile.hasTunnel) add('hasTunnel', true);
+  if (tile.roadDamage) add('roadDamage', tile.roadDamage);
   if (tile.destroyed) add('destroyed', true);
   if (tile.zone && tile.zone !== ZONE.NONE) {
     add('zone', tile.zone);
@@ -90,6 +91,7 @@ function applyTileOverride(tile, override) {
   if (override.hasRoad) tile.hasRoad = true;
   if (override.hasBridge) tile.hasBridge = true;
   if (override.hasTunnel) tile.hasTunnel = true;
+  if (override.roadDamage != null) tile.roadDamage = override.roadDamage;
   if (override.destroyed) tile.destroyed = true;
   if (override.zone) tile.zone = override.zone;
   if (override.density) tile.density = override.density;
@@ -142,6 +144,9 @@ function validateSimulation(simulation) {
   if (![0, 1, 2, 5].includes(simulation.speed)) throw new Error('Invalid simulation speed');
   assertNumber(simulation.taxRate, 'simulation.taxRate', { min: 0 });
   assertNumber(simulation.pensionBudget, 'simulation.pensionBudget', { min: 0 });
+  const roadBudget = simulation.roadMaintenanceBudget ?? ROAD_MAINTENANCE_CONFIG.DEFAULT_BUDGET;
+  assertNumber(roadBudget, 'simulation.roadMaintenanceBudget', { min: 0 });
+  if (roadBudget > 100) throw new Error('Invalid save field: simulation.roadMaintenanceBudget');
   if (!simulation.stockpile || REQUIRED_STOCKPILE_KEYS.some((key) => typeof simulation.stockpile[key] !== 'number' || !Number.isFinite(simulation.stockpile[key]))) {
     throw new Error('Invalid save stockpile');
   }
@@ -178,6 +183,7 @@ function restoredSimulation(simulation) {
     speed: 0,
     taxRate: simulation.taxRate,
     pensionBudget: simulation.pensionBudget,
+    roadMaintenanceBudget: simulation.roadMaintenanceBudget ?? ROAD_MAINTENANCE_CONFIG.DEFAULT_BUDGET,
     stockpile: clone(simulation.stockpile),
     capacity: clone(simulation.capacity || { ore: 0, bar: 0, goods: 0, oil: 0, fuel: 0 }),
     stats: clone(simulation.stats || {}),
@@ -244,6 +250,7 @@ export function serializeGame(app) {
       speed: app.simulation.speed,
       taxRate: app.simulation.taxRate,
       pensionBudget: app.simulation.pensionBudget,
+      roadMaintenanceBudget: app.simulation.roadMaintenanceBudget,
       stockpile: clone(app.simulation.resourceManager.stockpile),
       capacity: clone(app.simulation.resourceManager.capacity),
       stats: clone(app.simulation.stats),
@@ -316,6 +323,7 @@ export function serializeGameV1(app) {
       speed: app.simulation.speed,
       taxRate: app.simulation.taxRate,
       pensionBudget: app.simulation.pensionBudget,
+      roadMaintenanceBudget: app.simulation.roadMaintenanceBudget,
       stockpile: clone(app.simulation.resourceManager.stockpile),
       capacity: clone(app.simulation.resourceManager.capacity),
       stats: clone(app.simulation.stats),

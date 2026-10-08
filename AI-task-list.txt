@@ -9,8 +9,8 @@ Agent handoff protocol:
 
 Open handoff (2026-10-08):
 - No active task.
-- Latest completed task: update overworld tests and design counts to match the 5,882-cell H3 resolution-two map.
-- Current verification note: `npm test` passes all 45 test files.
+- Latest completed task: smooth capacity-relative population inflow/outflow and move the World button into the top bar beside Mute.
+- Verified baseline: `npm test` passes all 45 test files.
 - Phase 1 follow-ups are tracked in `docs/DESIGN.md`; in particular, localStorage autosave and named tick-stage extraction are not implemented. Do not treat historical `Current task` headings below as active.
 
 Current task: Add standalone JSON game save export/import.
@@ -1270,6 +1270,20 @@ Current task: Complete remaining code-review verification checks.
 - [ ] Browser-smoke-test seed/reset/regenerate controls during startup and after selecting a land hex. The review confirmed controls are disabled until a valid cell is selected and found no startup reset bug; this follow-up checks the UI behavior in a browser.
 - [ ] Evaluate city-wide economic balance for small and established cities by comparing tax revenue against utility and staffed-service expenses. Existing focused tests cover local cost formulas, not whether representative cities are sustainable; record intended balance expectations and results. Do not rebalance unless the check identifies a real issue.
 
+Current task: Add road maintenance budgeting and deterioration.
+
+- [done] Add a persisted 0-100% road maintenance budget and scale expenses by the funded share.
+- [done] Each tick, randomly select the uncovered share of active roads and apply 10% damage per selection.
+- [done] Render road damage with the existing fire-damage health-bar treatment.
+- [done] On destruction, remove road/bridge/tunnel connectivity, invalidate road and coverage caches, and leave alternate routes usable.
+- [done] Add deterministic tests for budget cost, damage, destruction, connectivity loss, alternate paths, and save/load compatibility.
+- [done] Run focused tests, browser check, `npm test`, diagnostics, and `git diff --check`; record final validation.
+
+Validation:
+- `node tests/road-maintenance.test.js`, `node tests/save-game.test.js`, `node tests/renderer-cache.test.js`, and `node tests/active-tile-registry.test.js` pass.
+- Browser check confirms the slider starts at 100%; at 50%, three roads cost `$1.50` per tick and the displayed value updates to `50%`.
+- `npm test` passes all 45 test files; editor diagnostics are clean and `git diff --check` passes (Windows line-ending notices only).
+
 Current task: Replace automatic zone density growth with paid manual upgrades.
 
 Part 1 - Simulation and upgrade rules:
@@ -1306,3 +1320,30 @@ Current task: Match overworld tests to the resolution-two map.
 Validation:
 - `node tests/overworld.test.js` passes.
 - `npm test` passes all 45 test files.
+
+Current task: Increase early population growth relative to residential capacity.
+
+- [done] Set the empty-capacity ceiling to about 20 people per 1,000 residential capacity per tick.
+- [done] Preserve a diminishing curve tied to current population / total capacity so doubling capacity returns a filled city to the midpoint.
+- [done] Verify growth-score targets still gate actual arrivals below the maximum ceiling.
+- [done] Run focused and full tests, diagnostics, and `git diff --check`; record final results.
+
+Validation:
+- `node tests/population-stabilization.test.js` passes the 1,000-capacity zero/half-full cases, doubled-capacity midpoint, and growth-score demand gate.
+- `npm test` passes all 45 test files.
+- Editor diagnostics are clean; `git diff --check` passes (Windows line-ending notices only).
+
+Current task: Smooth population outflow and move World control to the top bar.
+
+- [done] Keep the current 1.5% population-based cap as an upper bound.
+- [done] Add a second outflow ceiling based on total residential capacity and occupancy.
+- [done] Test that population loss cannot drop large cities by thousands in one tick while ordinary small-city outflow remains bounded.
+- [done] Move the World button into the top-bar speed controls after Mute and remove the floating viewport button.
+- [done] Verify the controls fit at desktop and narrow mobile widths.
+- [done] Run focused/full tests, diagnostics, and `git diff --check`; record final results.
+
+Validation:
+- `node tests/population-stabilization.test.js` passes small-city, large-city, capacity-doubling, and growth-metric gating cases.
+- `node tests/renderer-cache.test.js` confirms the World button is in the speed controls after Mute, with no floating duplicate.
+- Browser checks confirm the World button is visible beside Mute at desktop and 390px mobile widths.
+- `npm test` passes all 45 test files; diagnostics are clean and `git diff --check` passes (Windows line-ending notices only).

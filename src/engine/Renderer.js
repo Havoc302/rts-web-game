@@ -128,6 +128,7 @@ export class Renderer {
         if (tile.hasRoad && !tile.hasBridge) {
           this.renderRoadTile(ctx, tile, px, py);
         }
+        if (tile.hasRoad && tile.roadDamage > 0) this.renderDamageBar(ctx, px, py, tile.roadDamage, '#f59e0b');
 
         if (tile.zone !== ZONE.NONE) {
           this.renderZoneTile(ctx, tile, px, py);
@@ -377,6 +378,8 @@ export class Renderer {
       ctx.fillStyle = '#f59e0b';
       ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
     }
+
+    if (tile.hasRoad && tile.roadDamage > 0) this.renderDamageBar(ctx, px, py, tile.roadDamage, '#f59e0b');
 
     if (tile.destroyed) {
       this.renderDestroyedTile(ctx, px, py);
@@ -1136,13 +1139,17 @@ export class Renderer {
     }
 
     if (tile.fireDamage > 0) {
-      const pct = Math.min(1, tile.fireDamage / 100);
-      const barWidth = TILE_SIZE - 6;
-      ctx.fillStyle = 'rgba(15, 23, 42, 0.7)';
-      ctx.fillRect(px + 3, py + TILE_SIZE - 6, barWidth, 3);
-      ctx.fillStyle = '#ef4444';
-      ctx.fillRect(px + 3, py + TILE_SIZE - 6, barWidth * pct, 3);
+      this.renderDamageBar(ctx, px, py, tile.fireDamage, '#ef4444');
     }
+  }
+
+  renderDamageBar(ctx, px, py, damage, color) {
+    const pct = Math.min(1, Math.max(0, damage / 100));
+    const barWidth = TILE_SIZE - 6;
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.7)';
+    ctx.fillRect(px + 3, py + TILE_SIZE - 6, barWidth, 3);
+    ctx.fillStyle = color;
+    ctx.fillRect(px + 3, py + TILE_SIZE - 6, barWidth * pct, 3);
   }
 
   renderShortfallIndicators(ctx, tile, px, py) {
