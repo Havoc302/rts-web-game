@@ -1,4 +1,4 @@
-import { APP_VERSION, BIOME_GENERATION_VERSION, DENSITY, MAP_HEIGHT, MAP_WIDTH, PRODUCER_TYPE, ROAD_MAINTENANCE_CONFIG, TERRAIN_GENERATION_CONFIG, ZONE } from '../config.js';
+import { APP_VERSION, BIOME_GENERATION_VERSION, DENSITY, LOAN_CONFIG, MAP_HEIGHT, MAP_WIDTH, PRODUCER_TYPE, ROAD_MAINTENANCE_CONFIG, TERRAIN_GENERATION_CONFIG, ZONE } from '../config.js';
 import { Grid } from './Grid.js';
 
 export const SAVE_VERSION = 2;
@@ -152,6 +152,37 @@ function validateSimulation(simulation) {
   }
 }
 
+function validateFinance(finance) {
+  if (finance == null) return;
+  if (!finance || typeof finance !== 'object' || !Array.isArray(finance.loans)) throw new Error('Invalid save finance data');
+  assertNumber(finance.nextLoanId, 'finance.nextLoanId', { integer: true, min: 1 });
+  if (typeof finance.gameOver !== 'boolean' || typeof finance.hasEverHadPopulation !== 'boolean') {
+    throw new Error('Invalid save finance state');
+  }
+  const ids = new Set();
+  for (const loan of finance.loans) {
+    if (!loan || typeof loan !== 'object') throw new Error('Invalid saved loan');
+    assertNumber(loan.id, 'finance.loan.id', { integer: true, min: 1 });
+    if (ids.has(loan.id) || !LOAN_CONFIG.PRINCIPAL_OPTIONS.includes(loan.principal)) throw new Error('Invalid saved loan identity or principal');
+    ids.add(loan.id);
+    assertNumber(loan.balance, 'finance.loan.balance', { min: 0 });
+    assertNumber(loan.interestRate, 'finance.loan.interestRate', { min: LOAN_CONFIG.MIN_INTEREST_RATE });
+    if (loan.interestRate > LOAN_CONFIG.MAX_INTEREST_RATE) throw new Error('Invalid saved loan interest rate');
+    assertNumber(loan.perTickRate, 'finance.loan.perTickRate', { min: 0 });
+    assertNumber(loan.scheduledPayment, 'finance.loan.scheduledPayment', { min: 0 });
+    assertNumber(loan.ticksRemaining, 'finance.loan.ticksRemaining', { integer: true, min: 0 });
+    assertNumber(loan.missedPayments, 'finance.loan.missedPayments', { integer: true, min: 0 });
+    if (loan.ticksRemaining > LOAN_CONFIG.TERM_TICKS) throw new Error('Invalid saved loan term');
+  }
+  if (ids.size > 0 && finance.nextLoanId <= Math.max(...ids)) throw new Error('Invalid next loan ID');
+}
+
+function restoredFinance(finance) {
+  return finance && typeof finance === 'object'
+    ? { nextLoanId: finance.nextLoanId, loans: clone(finance.loans), gameOver: finance.gameOver, hasEverHadPopulation: finance.hasEverHadPopulation }
+    : { nextLoanId: 1, loans: [], gameOver: false, hasEverHadPopulation: false };
+}
+
 function validateCamera(camera) {
   if (!camera || typeof camera !== 'object') throw new Error('Invalid save camera');
   assertNumber(camera.x, 'camera.x');
@@ -227,7 +258,7 @@ function finishGridRestore(grid, producers, nextProducerId) {
   grid.rebuildActiveTileSets();
 }
 
-export function serializeGame(app) {
+export function serializeGame(app, { includeFinance = true } = {}) {
   if (!app.simulation.isPaused) throw new Error('Pause the game before saving');
   return {
     saveVersion: SAVE_VERSION,
@@ -264,6 +295,13 @@ export function serializeGame(app) {
       } : null,
     },
     treasury: app.treasury,
+    ...(includeFinance ? {
+      finance: {
+        ...(app.loanManager?.snapshot?.() || { nextLoanId: 1, loans: [] }),
+        gameOver: Boolean(app.gameOver),
+        hasEverHadPopulation: Boolean(app.hasEverHadPopulation),
+      },
+    } : {}),
     camera: {
       x: app.renderer.cameraX,
       y: app.renderer.cameraY,
@@ -287,11 +325,11 @@ export function serializeGame(app) {
           city: serializeGame({
             grid: city.grid,
             simulation: city.simulation,
-            treasury: city.treasury,
+            treasury: app.treasury,
             activeTool: city.activeTool,
             autoSwitchToPan: app.autoSwitchToPan,
             renderer: { cameraX: city.camera.x, cameraY: city.camera.y, zoom: city.camera.zoom, overlayMode: city.overlayMode },
-          }),
+          }, { includeFinance: false }),
         })),
       },
     } : {}),
@@ -390,6 +428,7 @@ function deserializeV1(document) {
     grid,
     simulation: restoredSimulation(document.simulation),
     treasury: document.treasury,
+    finance: restoredFinance(document.finance),
     camera: { ...document.camera },
     ui: restoredUi(document.ui),
   };
@@ -414,6 +453,7 @@ function deserializeV2(document) {
   assertNumber(map.nextProducerId, 'map.nextProducerId', { integer: true, min: 1 });
   assertNumber(document.treasury, 'treasury');
   validateSimulation(document.simulation);
+  validateFinance(document.finance);
   validateCamera(document.camera);
   if (!Array.isArray(document.tiles)) throw new Error('Invalid save tile data');
   validateProducers(document.producers, map.width, map.height);
@@ -441,6 +481,7 @@ function deserializeV2(document) {
     grid,
     simulation: restoredSimulation(document.simulation),
     treasury: document.treasury,
+    finance: restoredFinance(document.finance),
     camera: { ...document.camera },
     ui: restoredUi(document.ui),
     overworld: document.overworld || null,

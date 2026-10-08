@@ -17,8 +17,10 @@ import {
 } from './engine/UiRefresh.js';
 import { deserializeGame, deserializeGameFromJson, serializeGameToJson } from './engine/SaveGame.js';
 import { AudioManager } from './engine/AudioManager.js';
+import { LoanManager, loanTerms, shouldEndGame } from './engine/LoanManager.js';
+import { advanceWorldEconomy } from './engine/WorldFinance.js';
 import { TutorialManager } from './engine/TutorialManager.js';
-import { APP_VERSION, ZONE, TERRAIN, PRODUCER_TYPE, PRODUCER_CONFIG, SERVICE_CONFIG, FACTORY_RECIPES, COSTS, TILE_SIZE, STARTING_TREASURY, RESIDENTIAL_CAPACITY, JOBS_PROVIDED, FOREST_POLLUTION_ABSORPTION, FOREST_DESIRABILITY_RADIUS, CRIME_CONFIG, MEDICAL_CONFIG, POWER_PRODUCER_TYPES, POLLUTION_CONFIG, COAL_CONFIG, WIND_CONFIG, SOLAR_CONFIG, BATTERY_CONFIG, RESOURCE_CONFIG, UTILITY_OPERATING_COST, SURVEY_COST_PER_TICK, TICKS_PER_HOUR, DENSITY, RENDERER_CONFIG, TERRAIN_GENERATION_CONFIG, MAP_SEED_STORAGE_KEY, EDUCATION_CONFIG, splitDemographics, getZoneUpgradeCost, isZoneAtCapacity } from './config.js';
+import { APP_VERSION, ZONE, TERRAIN, PRODUCER_TYPE, PRODUCER_CONFIG, SERVICE_CONFIG, FACTORY_RECIPES, COSTS, TILE_SIZE, STARTING_TREASURY, RESIDENTIAL_CAPACITY, JOBS_PROVIDED, FOREST_POLLUTION_ABSORPTION, FOREST_DESIRABILITY_RADIUS, CRIME_CONFIG, MEDICAL_CONFIG, POWER_PRODUCER_TYPES, POLLUTION_CONFIG, COAL_CONFIG, WIND_CONFIG, SOLAR_CONFIG, BATTERY_CONFIG, RESOURCE_CONFIG, UTILITY_OPERATING_COST, SURVEY_COST_PER_TICK, TICKS_PER_HOUR, DENSITY, RENDERER_CONFIG, TERRAIN_GENERATION_CONFIG, MAP_SEED_STORAGE_KEY, EDUCATION_CONFIG, LOAN_CONFIG, splitDemographics, getZoneUpgradeCost, isZoneAtCapacity } from './config.js';
 
 const nowMs = typeof performance !== 'undefined' ? () => performance.now() : () => Date.now();
 
@@ -53,6 +55,9 @@ class GameApp {
     }
 
     this.treasury = STARTING_TREASURY;
+    this.loanManager = new LoanManager();
+    this.gameOver = false;
+    this.hasEverHadPopulation = false;
     this.activeTool = 'pan';
     this.autoSwitchToPan = false;
     this.dismissedAlerts = new Set();
@@ -150,10 +155,14 @@ class GameApp {
       });
     });
 
+    document.getElementById('loan-principal-select')?.addEventListener('change', () => this.updateFinancePanel());
+    document.getElementById('btn-take-loan')?.addEventListener('click', () => this.takeSelectedLoan());
+
     document.getElementById('btn-pause').addEventListener('click', () => this.setSpeed(0));
     document.getElementById('btn-speed-1').addEventListener('click', () => this.setSpeed(1));
     document.getElementById('btn-speed-2').addEventListener('click', () => this.setSpeed(2));
     document.getElementById('btn-speed-5').addEventListener('click', () => this.setSpeed(5));
+    document.getElementById('btn-restart-game')?.addEventListener('click', () => window.location.reload());
 
     document.querySelectorAll('[data-service-budget]').forEach((slider) => {
       slider.addEventListener('input', (e) => {
@@ -351,7 +360,6 @@ class GameApp {
     return {
       grid: this.grid,
       simulation: this.simulation,
-      treasury: this.treasury,
       camera: { x: this.renderer.cameraX, y: this.renderer.cameraY, zoom: this.renderer.zoom },
       activeTool: this.activeTool,
       overlayMode: this.renderer.overlayMode,
@@ -359,6 +367,7 @@ class GameApp {
   }
 
   async openOverworld() {
+    if (this.gameOver) return;
     if (this.overworldView?.isOpen) return;
     const button = document.getElementById('btn-overworld');
     button.disabled = true;
@@ -442,6 +451,7 @@ class GameApp {
   }
 
   enterOverworldCell(id) {
+    if (this.gameOver) return;
     const cell = this.planet?.getCell(id);
     if (!cell || cell.ocean) return;
     if (id !== this.currentCellId) {
@@ -451,7 +461,7 @@ class GameApp {
         const grid = new Grid(this.grid.width, this.grid.height, cell.seed, cell.biome);
         const simulation = new Simulation(grid, cell.climate);
         simulation.isPaused = true;
-        return { grid, simulation, treasury: STARTING_TREASURY, camera: { x: 0, y: 0, zoom: 1 }, activeTool: 'pan', overlayMode: 'normal' };
+        return { grid, simulation, camera: { x: 0, y: 0, zoom: 1 }, activeTool: 'pan', overlayMode: 'normal' };
       })();
       city.simulation.weatherManager.setClimate(cell.climate);
       this.currentCellId = id;
@@ -459,7 +469,6 @@ class GameApp {
       this.syncWorldOptionsAvailability();
       this.grid = city.grid;
       this.simulation = city.simulation;
-      this.treasury = city.treasury;
       this.renderer.grid = city.grid;
       this.renderer.terrainChunks = [];
       this.renderer.terrainChunksVersion = -1;
@@ -531,7 +540,12 @@ class GameApp {
       const city = this.restoreImportedCity(imported);
       this.grid = city.grid;
       this.simulation = city.simulation;
-      this.treasury = city.treasury;
+      this.treasury = imported.treasury;
+      this.loanManager = new LoanManager(imported.finance);
+      this.gameOver = Boolean(imported.finance?.gameOver);
+      this.hasEverHadPopulation = Boolean(imported.finance?.hasEverHadPopulation) ||
+        this.simulation.stats.population > 0 ||
+        Array.from(this.cityStates.values()).some((visitedCity) => visitedCity.simulation.stats.population > 0);
       localStorage.setItem(MAP_SEED_STORAGE_KEY, this.grid.seed);
       this.renderer.grid = this.grid;
       this.renderer.terrainChunks = [];
@@ -548,6 +562,7 @@ class GameApp {
       this.updateHUD({ force: true });
       this.renderer.render(this.simulation);
       this.syncWorldOptionsAvailability();
+      if (this.gameOver) this.showGameOver();
       if (imported.overworld) await this.openOverworld();
     } catch (error) {
       window.alert(`Unable to load save: ${error.message}`);
@@ -570,7 +585,6 @@ class GameApp {
     return {
       grid: imported.grid,
       simulation,
-      treasury: imported.treasury,
       camera: imported.camera,
       activeTool: imported.ui.activeTool,
       overlayMode: imported.ui.overlayMode,
@@ -604,6 +618,7 @@ class GameApp {
   }
 
   setSpeed(speed) {
+    if (this.gameOver && speed !== 0) return false;
     document.querySelectorAll('.speed-controls .btn-icon').forEach((b) => b.classList.remove('active'));
     if (speed === 0) {
       document.getElementById('btn-pause').classList.add('active');
@@ -619,12 +634,16 @@ class GameApp {
       if (this.simInterval) clearInterval(this.simInterval);
       this.simInterval = setInterval(() => this.simTick(), 4000 / speed);
     }
+    return true;
   }
 
   simTick() {
     if (this.simulation.isPaused) return;
-    const income = this.simulation.tick(true, this.treasury);
-    this.treasury += income - this.simulation.stats.serviceExpenses - this.simulation.stats.roadExpenses - (this.simulation.stats.utilityExpenses || 0) - (this.simulation.surveyExpenses || 0);
+    if (this.getCombinedPopulation() > 0) this.hasEverHadPopulation = true;
+    const economy = advanceWorldEconomy(this.getWorldSimulations(), this.treasury, this.loanManager);
+    this.treasury = economy.treasury;
+    if (this.getWorldSimulations().some((simulation) => simulation.stats.population > 0)) this.hasEverHadPopulation = true;
+    this.checkDebtGameOver();
     this.audioManager?.updatePopulation(this.simulation.stats.population);
     this.updateHUD();
     if (this.renderer.selectedTile) {
@@ -633,6 +652,7 @@ class GameApp {
   }
 
   updateHUD({ force = false } = {}) {
+    this.updateFinancePanel();
     this.tutorialManager?.update(this.grid, this.simulation.stats);
     const started = this.enableUiTiming ? nowMs() : 0;
     const snapshot = buildHudSnapshot(this.simulation, this.treasury);
@@ -651,6 +671,95 @@ class GameApp {
     this._pendingHud = false;
     recordUiTiming(this.hudTiming, this.enableUiTiming ? nowMs() - started : 0, true);
     return true;
+  }
+
+  getAverageCityHappiness() {
+    const happiness = [this.simulation.stats.happiness ?? 50];
+    for (const [cellId, city] of this.cityStates) {
+      if (cellId === this.currentCellId) continue;
+      happiness.push(city.simulation.stats.happiness ?? 50);
+    }
+    return happiness.reduce((sum, value) => sum + value, 0) / happiness.length;
+  }
+
+  getWorldSimulations() {
+    const simulations = [];
+    for (const [cellId, city] of this.cityStates) {
+      if (cellId !== this.currentCellId) simulations.push(city.simulation);
+    }
+    simulations.push(this.simulation);
+    return simulations;
+  }
+
+  getCombinedPopulation() {
+    let population = this.simulation.stats.population || 0;
+    for (const [cellId, city] of this.cityStates) {
+      if (cellId === this.currentCellId) continue;
+      population += city.simulation.stats.population || 0;
+    }
+    return population;
+  }
+
+  takeSelectedLoan() {
+    if (this.gameOver) return false;
+    const principal = Number(document.getElementById('loan-principal-select')?.value);
+    const loan = this.loanManager.takeLoan(principal, this.getAverageCityHappiness());
+    if (!loan) return false;
+    this.treasury += principal;
+    this.updateHUD({ force: true });
+    return true;
+  }
+
+  updateFinancePanel() {
+    const treasuryText = `$${this.treasury.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+    const financeTreasury = document.getElementById('finance-treasury');
+    const overworldTreasury = document.getElementById('overworld-treasury');
+    if (financeTreasury) financeTreasury.textContent = treasuryText;
+    if (overworldTreasury) overworldTreasury.textContent = treasuryText;
+
+    const principalSelect = document.getElementById('loan-principal-select');
+    const rate = document.getElementById('loan-interest-rate');
+    const payment = document.getElementById('loan-estimated-payment');
+    const average = document.getElementById('loan-average-happiness');
+    const balance = document.getElementById('loan-outstanding-balance');
+    const due = document.getElementById('loan-next-payment');
+    const button = document.getElementById('btn-take-loan');
+    const list = document.getElementById('loan-list');
+    if (!principalSelect || !rate || !payment || !average || !balance || !due || !button || !list || !this.loanManager) return;
+
+    const happiness = this.getAverageCityHappiness();
+    const terms = loanTerms(Number(principalSelect.value), happiness);
+    average.textContent = `${happiness.toFixed(1)} / 100`;
+    rate.textContent = `${(terms.interestRate * 100).toFixed(1)}%`;
+    payment.textContent = `$${terms.scheduledPayment.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    balance.textContent = `$${this.loanManager.outstandingBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    due.textContent = `$${this.loanManager.scheduledPayment.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    button.disabled = this.gameOver;
+    list.replaceChildren();
+    for (const loan of this.loanManager.loans) {
+      const row = document.createElement('div');
+      row.className = 'storage-item';
+      const title = document.createElement('span');
+      title.textContent = `$${loan.principal.toLocaleString()} · ${(loan.interestRate * 100).toFixed(1)}%`;
+      const value = document.createElement('strong');
+      value.textContent = `$${loan.balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} · ${loan.ticksRemaining.toLocaleString()} ticks`;
+      row.append(title, value);
+      list.appendChild(row);
+    }
+  }
+
+  checkDebtGameOver() {
+    if (this.gameOver || !shouldEndGame(this.loanManager.outstandingBalance, this.getCombinedPopulation(), this.hasEverHadPopulation)) return false;
+    this.gameOver = true;
+    this.setSpeed(0);
+    this.showGameOver();
+    return true;
+  }
+
+  showGameOver() {
+    this.setSpeed(0);
+    const modal = document.getElementById('game-over-modal');
+    if (modal) modal.hidden = false;
   }
 
   renderAlerts(serializedAlerts) {

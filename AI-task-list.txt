@@ -9,8 +9,8 @@ Agent handoff protocol:
 
 Open handoff (2026-10-08):
 - No active task.
-- Latest completed task: smooth capacity-relative population inflow/outflow and move the World button into the top bar beside Mute.
-- Verified baseline: `npm test` passes all 45 test files.
+- Latest completed task: add a browser-reload Restart action to terminal game over in `0.2.7`.
+- Verified baseline: `npm test` passes all 46 test files.
 - Phase 1 follow-ups are tracked in `docs/DESIGN.md`; in particular, localStorage autosave and named tick-stage extraction are not implemented. Do not treat historical `Current task` headings below as active.
 
 Current task: Add standalone JSON game save export/import.
@@ -1347,3 +1347,34 @@ Validation:
 - `node tests/renderer-cache.test.js` confirms the World button is in the speed controls after Mute, with no floating duplicate.
 - Browser checks confirm the World button is visible beside Mute at desktop and 390px mobile widths.
 - `npm test` passes all 45 test files; diagnostics are clean and `git diff --check` passes (Windows line-ending notices only).
+
+Current task: Add global loans and terminal debt game-over (`0.2.6`).
+
+- [done] Share one treasury and loan ledger across all visited city tiles; tick every visited city's economy together while city simulation runs.
+- [done] Show the shared treasury while the world map is open (world map still pauses the global tick).
+- [done] Add the seven requested principal choices, 2%-20% origination rate based on average happiness across all visited cities, and 720-tick amortization.
+- [done] Capitalize per-tick interest when treasury cannot cover an installment.
+- [done] End the game permanently only when outstanding debt exists and combined population across all cities reaches zero.
+- [done] Persist global finance and terminal state; migrate old world saves to one root treasury with no loans.
+- [done] Add Finance UI and shared treasury display on the world map.
+- [done] Bump/synchronize `src/version.js`, `package.json`, and `package-lock.json` to `0.2.6` (`tests/version-sync.test.js` passes).
+- [done] Add focused tests for global settlement, terminal-state eligibility, save compatibility, and Finance markup.
+- [done] Verify in browser average-city happiness pricing, borrowing, shared balance, game-over dialog, and resume lock.
+- [done] Run full suite and diagnostics; record final results.
+
+Milestone validation:
+- `node tests/loan-manager.test.js` passes rate, amortization, missed-payment compounding, payoff, and snapshot checks.
+- `node tests/save-game.test.js` passes global finance round-trips and legacy defaults.
+- `npm test` passes all 46 test files; version sync, editor diagnostics, and `git diff --check` pass (Windows line-ending notices only).
+- Browser smoke check confirms average happiness (two-city mean 60 -> 9.2%), borrowing adds to the shared treasury, and zero combined population with debt displays the terminal message and rejects resume.
+
+Current task: Add a Restart action to terminal game over (`0.2.7`).
+
+- [done] Put a Restart button beneath the exact game-over message; clicking it reloads the browser into a fresh session.
+- [done] Bump and synchronize package, lockfile, and app version to `0.2.7`.
+- [done] Test the button markup and version sync, run the full suite, browser-check the reload, and record final validation.
+
+Validation:
+- `node tests/renderer-cache.test.js` and `node tests/version-sync.test.js` pass.
+- Browser check clicked Restart and confirmed a fresh `0.2.7` session with game-over hidden, `$25,000` treasury, and no loans.
+- `npm test` passes all 46 test files; editor diagnostics are clean and `git diff --check` passes.

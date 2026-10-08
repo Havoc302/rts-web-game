@@ -1,6 +1,7 @@
 import assert from 'assert';
 import { Grid } from '../src/engine/Grid.js';
 import { Simulation } from '../src/engine/Simulation.js';
+import { LoanManager } from '../src/engine/LoanManager.js';
 import {
   deserializeGame,
   deserializeGameFromJson,
@@ -93,7 +94,8 @@ for (const biome of Object.values(BIOME_TYPES)) {
   const visited = deserializeGame(restored.overworld.visited[0].city);
   assert.strictEqual(visited.grid.getTile(2, 2).hasRoad, true);
   assert.strictEqual(visited.simulation.tickCount, 7);
-  assert.strictEqual(visited.treasury, 4356);
+  assert.strictEqual(visited.treasury, 9876, 'Visited city snapshots should inherit the one shared world treasury');
+  assert.deepStrictEqual(visited.finance, { nextLoanId: 1, loans: [], gameOver: false, hasEverHadPopulation: false }, 'Nested city snapshots should not duplicate global finance');
 }
 
 {
@@ -111,6 +113,8 @@ for (const biome of Object.values(BIOME_TYPES)) {
   simulation.pensionBudget = 80;
   simulation.roadMaintenanceBudget = 65;
   grid.getTile(2, 2).roadDamage = 40;
+  const loanManager = new LoanManager();
+  loanManager.takeLoan(1000, 50);
   simulation.resourceManager.stockpile.food = 42;
   Object.assign(simulation.weatherManager, {
     windIntensity: 0.99, cloudCover: 0.75, temperature: 33,
@@ -118,6 +122,9 @@ for (const biome of Object.values(BIOME_TYPES)) {
   });
 
   const app = makeApp(grid, simulation);
+  app.loanManager = loanManager;
+  app.gameOver = true;
+  app.hasEverHadPopulation = true;
   const document = serializeGame(app);
   assert.strictEqual(document.saveVersion, SAVE_VERSION, 'New saves should use the sparse save version');
   assert.strictEqual(document.generationVersion, GENERATION_VERSION, 'New saves should record the terrain generation version');
@@ -129,6 +136,11 @@ for (const biome of Object.values(BIOME_TYPES)) {
   assert.equal(json.includes('\n  '), false, 'Exported save JSON should be compact');
 
   const restored = deserializeGameFromJson(json);
+  assert.strictEqual(restored.finance.loans.length, 1, 'Outstanding loans should round-trip at the world root');
+  assert.strictEqual(restored.finance.loans[0].principal, 1000);
+  assert.strictEqual(new LoanManager(restored.finance).outstandingBalance, restored.finance.loans[0].balance, 'The app should restore the full shared loan ledger snapshot');
+  assert.strictEqual(restored.finance.gameOver, true, 'Terminal game-over state must survive saves');
+  assert.strictEqual(restored.finance.hasEverHadPopulation, true);
   assert.strictEqual(restored.grid.width, 8);
   assert.strictEqual(restored.grid.getTile(2, 1).zone, ZONE.RESIDENTIAL);
   assert.strictEqual(restored.grid.getTile(2, 1).crime, 1.2);
@@ -146,6 +158,8 @@ for (const biome of Object.values(BIOME_TYPES)) {
   const oldSave = JSON.parse(JSON.stringify(document));
   delete oldSave.simulation.roadMaintenanceBudget;
   assert.strictEqual(deserializeGame(oldSave).simulation.roadMaintenanceBudget, 100, 'Older saves should default to full road funding');
+  delete oldSave.finance;
+  assert.deepStrictEqual(deserializeGame(oldSave).finance, { nextLoanId: 1, loans: [], gameOver: false, hasEverHadPopulation: false }, 'Legacy saves should restore a shared empty loan ledger and non-terminal state');
   assert.strictEqual(restored.treasury, 9876);
   assert.deepStrictEqual(restored.camera, { x: 12, y: -8, zoom: 1.4 });
   assert.strictEqual(restored.ui.overlayMode, 'survey');

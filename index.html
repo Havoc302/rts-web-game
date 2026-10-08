@@ -217,6 +217,7 @@
           <button class="utility-hud-tab-button active" type="button" data-hud-tab="utilities">Services</button>
           <button class="utility-hud-tab-button" type="button" data-hud-tab="storage">Storage</button>
           <button class="utility-hud-tab-button" type="button" data-hud-tab="budgets">Budgets</button>
+          <button class="utility-hud-tab-button" type="button" data-hud-tab="finance">Finance</button>
         </div>
         <section class="utility-hud-tab active" data-hud-panel="utilities">
         <h3>Utility Demand & Capacity</h3>
@@ -300,6 +301,27 @@
           <div class="storage-item" title="Staffed university seats / students needing university (5% of population)"><span>University Seats</span><strong id="stat-uni-seats">0 / 0</strong></div>
           <div class="storage-item" title="Tax multiplier: +15% at full school coverage, +20% at full university coverage"><span>Tax Multiplier</span><strong id="stat-education-multiplier">×1.00</strong></div>
         </div>
+        </section>
+        <section class="utility-hud-tab finance-panel" data-hud-panel="finance">
+          <h3>World Finance</h3>
+          <div class="storage-item"><span>Shared Treasury</span><strong id="finance-treasury">$25,000</strong></div>
+          <div class="storage-item"><span>Outstanding Loans</span><strong id="loan-outstanding-balance">$0.00</strong></div>
+          <div class="storage-item"><span>Next Tick Payment</span><strong id="loan-next-payment">$0.00</strong></div>
+          <label class="loan-amount-label" for="loan-principal-select">New loan amount</label>
+          <select id="loan-principal-select">
+            <option value="1000">$1,000</option>
+            <option value="2500">$2,500</option>
+            <option value="5000">$5,000</option>
+            <option value="7500">$7,500</option>
+            <option value="10000">$10,000</option>
+            <option value="15000">$15,000</option>
+            <option value="20000">$20,000</option>
+          </select>
+          <div class="storage-item"><span>Average City Happiness</span><strong id="loan-average-happiness">50 / 100</strong></div>
+          <div class="storage-item"><span>Interest Rate</span><strong id="loan-interest-rate">11.0%</strong></div>
+          <div class="storage-item"><span>Estimated Tick Payment</span><strong id="loan-estimated-payment">$0.00</strong></div>
+          <button class="btn-primary loan-action" id="btn-take-loan" type="button">Take Loan</button>
+          <div class="loan-list" id="loan-list"></div>
         </section>
       </div>
 
@@ -514,6 +536,7 @@
     <div id="overworld-scene" class="overworld-scene"></div>
     <div class="overworld-header">
       <button id="btn-close-overworld" type="button" hidden title="Return to city" aria-label="Return to city">←</button>
+      <div class="overworld-treasury">Treasury <strong id="overworld-treasury">$25,000</strong></div>
       <div class="overworld-title">
         <h2>WORLD MAP</h2>
         <span class="overworld-brand">SimConquer 2000 <span id="overworld-version"></span></span>
@@ -567,6 +590,13 @@
         <button id="btn-audio-yes" class="btn-primary">Enable Audio</button>
         <button id="btn-audio-no" class="btn-secondary">Keep Muted</button>
       </div>
+    </div>
+  </div>
+
+  <div id="game-over-modal" class="game-over-modal" hidden role="dialog" aria-modal="true" aria-labelledby="game-over-title">
+    <div class="game-over-panel">
+      <h2 id="game-over-title">Game over, all your people left</h2>
+      <button id="btn-restart-game" class="btn-primary" type="button">Restart</button>
     </div>
   </div>
 

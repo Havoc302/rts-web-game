@@ -1110,6 +1110,65 @@ h4 {
   justify-content: center;
   z-index: 1200;
 }
+.game-over-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(5, 12, 20, 0.92);
+  color: #f8fafc;
+}
+.game-over-modal[hidden] {
+  display: none;
+}
+.game-over-panel {
+  max-width: 520px;
+  padding: 28px;
+  border: 1px solid rgba(248, 113, 113, 0.6);
+  border-radius: 8px;
+  background: #1e293b;
+  text-align: center;
+}
+.game-over-panel h2 {
+  margin: 0;
+  color: #fecaca;
+  font-size: 1.35rem;
+}
+
+.game-over-panel .btn-primary {
+  margin-top: 18px;
+}
+.finance-panel {
+  display: grid;
+  gap: 8px;
+}
+.finance-panel h3 {
+  margin: 0 0 4px;
+}
+.loan-amount-label {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+#loan-principal-select {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  background: #123948;
+  color: var(--text-main);
+  font: 0.8rem var(--font-mono);
+}
+.loan-action {
+  width: 100%;
+}
+.loan-list {
+  display: grid;
+  gap: 4px;
+  max-height: 180px;
+  overflow-y: auto;
+}
 
 .modal-box {
   background: #1e293b;
@@ -1120,6 +1179,18 @@ h4 {
   width: calc(100% - 32px);
   box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5);
   text-align: center;
+}
+.overworld-treasury {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  color: #afc9c6;
+  font: 0.75rem var(--font-mono);
+}
+.overworld-treasury strong {
+  color: #fff;
 }
 
 .modal-box h3 {

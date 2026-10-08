@@ -5,8 +5,8 @@
 | Title | SimConquer 2000 — Architecture & Product Design |
 | Author | TBD |
 | Date | 2026-10-06 |
-| Status | Living draft (rev 16) |
-| Version covered | `APP_VERSION` `0.2.5` (`src/version.js`); current working tree |
+| Status | Living draft (rev 19) |
+| Version covered | `APP_VERSION` `0.2.7` (`src/version.js`); current working tree |
 | Intended in-repo path | `docs/DESIGN.md` |
 | Repo | `g:\Repos\rts-web-game` (`origin`: `https://github.com/Havoc302/rts-web-game.git`) |
 | Working tree at inventory | Documentation is checked against the current implementation; uncommitted changes may exist. |
@@ -105,6 +105,7 @@ Implemented; automated coverage is listed below, with browser-level gaps called 
 - Pause-safe placement previews, treasury accounting, famine recovery, agriculture occupancy, resource consumption, fuel/refining, crime, fire, civic staffing, mobile input/layout, wind/solar/battery connectivity, version synchronization, chunked terrain rendering, and bounded HUD/inspector updates.
 - Unified test execution through `npm test`; all 45 test files pass.
 - Residential, commercial, industrial, and agricultural zone tiers upgrade manually after reaching full occupancy; full tiles are marked and expose a costed Upgrade action in the inspector.
+- Planned Finance feature: treasury and loan ledger are shared across visited cities; loan-backed game over checks combined population across all cities.
 - Road maintenance budget and deterioration: underfunded road tiles are randomly selected for 10% damage per tick; destroyed roads leave the active network and sever utilities/pathing unless an alternate route exists.
 - Versioned sparse city JSON export/import, seeded planet/world saves, the survey overlay and survey expense/cancellation flow, and School/University education tax bonuses are implemented.
 - City saves are manual file export/import only. A city autosave and autosave-based startup/restore flow are not implemented.
@@ -195,7 +196,7 @@ flowchart TB
   REN --> CANVAS["#game-canvas 2D"]
 ```
 
-`GameApp` owns **treasury**, **active tool**, **input**, and the **sim interval**. `Simulation` owns tick count, tax rate, pension budget, stats, and `ResourceManager`. There is **one** cash pile, **one** stockpile, **one** stats struct. This split matters for save/load *and* is why dual-city Conquer is not a filter.
+`GameApp` owns one **world-wide treasury**, **loan ledger**, **game-over state**, active tool, input, and sim interval. Each visited city keeps its own grid, `Simulation`, stockpile, and stats; all visited city simulations advance together on each active world tick and settle income/expenses against the same treasury. Opening the globe pauses that shared clock but continues to show the world treasury. Switching cities never switches wallets or loans.
 
 ### Stack and numbers
 
@@ -328,6 +329,8 @@ income = ((population/100) + (jobsFilled/100)) * $10 * (taxRate/100) - crimeTaxL
 `BASE_INCOME` was removed. `industrial-economics.test.js` checks industrial/agricultural zone cost and equality of industrial/commercial job tables; it does not assert tax revenue. Growth modifier is continuous: bonus below 40%, negative at 50%, quadratic outflow toward 100%. Residential growth **stalls** (`delta = 0`) if any workers are unemployed or if the city has zero workplaces.
 
 **Treasury** lives on `GameApp`, not `Simulation`. Fully funded road maintenance is `$1` per active road/bridge/tunnel tile per tick (`ROAD_MAINTENANCE_COST = 1`). A road maintenance budget below 100% reduces expense proportionally and randomly assigns uncovered road tiles to deteriorate by 10% per tick; fully degraded roads are removed from active road and pathing registries. Every power generator, battery, water pump, and sewage plant costs `UTILITY_OPERATING_COST = $2` per tick (`stats.utilityExpenses`, ⚡ HUD chip), whether or not it is connected. Monetary values are pre-scaled constants. Pensions are folded into `serviceExpenses`.
+
+**Loans (implemented in `0.2.7`):** Players may borrow `$1,000`, `$2,500`, `$5,000`, `$7,500`, `$10,000`, `$15,000`, or `$20,000`. Each loan is amortized over 720 hourly ticks. Its fixed total-term interest rate is set at origination from the arithmetic mean happiness across all visited cities, including the active city: 2% at mean happiness 100, rising linearly to 20% at mean happiness 0; the equivalent per-tick rate compounds against the outstanding balance. A scheduled payment is deducted only when the shared treasury can cover it; missed payments capitalize that tick's interest. Treasury and loans are global across all visited cities, whose economies tick together and settle against one wallet; the globe pauses the shared clock while showing the same balance. Outstanding loan debt with zero combined population across cities pauses play permanently with `Game over, all your people left`; the game-over screen offers a Restart action that reloads into a fresh session.
 
 **Road maintenance budget (implemented):** The Service Budgets tab has a 0–100% Road Maintenance slider, persisted with city saves. Each world tick funds a percentage of active road tiles; randomly selected uncovered tiles gain 10% road damage. A road reaching 100% damage is destroyed, removed from `hasRoad` / bridge / tunnel state and the active-road registry, and increments `coverageVersion` so utilities and cached route/pathing queries stop using it. Alternative connected road routes remain usable. Road damage uses the existing tile health-bar treatment. Older saves default to 100% road funding and zero road damage.
 

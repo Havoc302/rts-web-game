@@ -64,6 +64,13 @@ function makeRenderer(grid, width = 800, height = 600) {
   assert.ok(speedControls.indexOf('id="btn-toggle-audio"') < speedControls.indexOf('id="btn-overworld"'), 'World button should sit at the end beside Mute');
   assert.strictEqual((markup.match(/id="btn-overworld"/g) || []).length, 1, 'There should be one World button in the top bar');
   assert.ok(!markup.includes('class="overworld-toggle glass"'), 'World button should no longer float over the map');
+  assert.ok(markup.includes('data-hud-tab="finance"'), 'Finance should have a HUD tab');
+  for (const principal of [1000, 2500, 5000, 7500, 10000, 15000, 20000]) {
+    assert.ok(markup.includes(`<option value="${principal}">`), `Finance should offer a $${principal.toLocaleString()} loan`);
+  }
+  assert.ok(markup.includes('id="overworld-treasury"'), 'The shared treasury should remain visible on the world map');
+  assert.ok(markup.includes('Game over, all your people left'), 'The terminal game-over text should be present');
+  assert.match(markup, /id="game-over-modal"[\s\S]*?<button id="btn-restart-game"[^>]*>Restart<\/button>/, 'Game over should offer a Restart button inside the terminal dialog');
   for (const type of [PRODUCER_TYPE.WAREHOUSE_ORE, PRODUCER_TYPE.WAREHOUSE_BAR, PRODUCER_TYPE.WAREHOUSE_GOODS]) {
     const ctx = createMockCtx(new MockCanvas());
     const painted = [];

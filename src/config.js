@@ -647,6 +647,15 @@ export const TAX_REVENUE_CONFIG = {
   MONEY_PER_TAX_UNIT: 10,
 };
 
+export const LOAN_CONFIG = {
+  PRINCIPAL_OPTIONS: [1000, 2500, 5000, 7500, 10000, 15000, 20000],
+  TERM_TICKS: 720,
+  MIN_INTEREST_RATE: 0.02,
+  MAX_INTEREST_RATE: 0.20,
+  HAPPINESS_MIN: 0,
+  HAPPINESS_MAX: 100,
+};
+
 export const POLLUTION_CONFIG = {
   // Industrial pollution footprint and strength by zone density.
   INDUSTRIAL_RADIUS: { light: 3, medium: 5, high: 7 },
