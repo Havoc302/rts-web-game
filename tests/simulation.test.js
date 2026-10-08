@@ -551,7 +551,7 @@ console.log('Running Phase 1 Core Loop Automated Verification Tests...\n');
   console.log('✔ Test 11 Passed: City-wide labor market aggregates correct');
 }
 
-// Test 12: Residential Growth Stalling When No Jobs Available
+// Test 12: Empty-town residential bootstrap before jobs are available
 {
   const grid = new Grid(10, 10);
   for (let y = 0; y < 10; y++) {
@@ -571,12 +571,14 @@ console.log('Running Phase 1 Core Loop Automated Verification Tests...\n');
   grid.placeZone(3, 2, ZONE.RESIDENTIAL);
   const rTile = grid.getTile(3, 2);
 
-  // No C or I zones built -> totalJobsProvided = 0, jobsAvailable = 0
+  // No C or I zones built -> the first residents must still be able to arrive.
   sim.tick();
 
   assert.strictEqual(sim.stats.jobsAvailable, 0, 'No jobs available');
-  assert.strictEqual(rTile.growthScore, 0, 'Residential growth stalls at 0 when jobsAvailable is 0');
-  console.log('✔ Test 12 Passed: Residential growth stalls when jobsAvailable === 0');
+  assert.ok(rTile.growthScore > 0, 'Residential growth should bootstrap an empty town');
+  sim.tick();
+  assert.ok(rTile.population > 0, 'The first residents should arrive before a job market exists');
+  console.log('✔ Test 12 Passed: Empty towns bootstrap their first residents');
 }
 
 // Test 13: Commercial / Industrial Growth Employment Rate Bonus

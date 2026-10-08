@@ -15,7 +15,7 @@ function setup() {
   grid.placeZone(3, 2, ZONE.RESIDENTIAL); // inland
   for (const tile of [grid.getTile(1, 2), grid.getTile(3, 2)]) {
     tile.shortfall = { power: false, water: false, sewage: false };
-    tile.growthScore = 10;
+    tile.growthScore = 5;
     tile.population = 10;
   }
   return grid;

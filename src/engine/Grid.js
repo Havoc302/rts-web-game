@@ -154,6 +154,7 @@ export class Grid {
       zone: ZONE.NONE,
       density: DENSITY.LIGHT,
       growthScore: 0,
+      population: 0,
       recipe: 'CONSUMER_GOODS',
       relocatedPopulation: 0,
       fireDisplacedPopulation: 0,

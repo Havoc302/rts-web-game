@@ -374,7 +374,7 @@ export class Simulation {
           // Residential growth stalls when workers cannot find matching jobs,
           // or when the city has no workplaces at all.
           const unemployed = this.stats.unemployedWorkers || 0;
-          const noJobMarket = totalJobs === 0;
+          const noJobMarket = totalJobs === 0 && (tile.population || 0) > 0;
           if ((unemployed > 0 || noJobMarket) && delta > 0) {
             delta = 0;
           }
@@ -390,6 +390,7 @@ export class Simulation {
         }
 
         const previousDensity = tile.density;
+        const previousGrowthScore = tile.growthScore;
         tile.growthScore = Math.round(
           Math.min(
             GROWTH_CONFIG.MAX_SCORE,
@@ -403,7 +404,14 @@ export class Simulation {
         if (tile.density === DENSITY.MEDIUM && tile.growthScore >= GROWTH_CONFIG.THRESHOLD_HIGH) {
           tile.density = DENSITY.HIGH;
         }
-        if (tile.density !== previousDensity) this.grid.pollutionDirty = true;
+        if (tile.density !== previousDensity) {
+          this.grid.pollutionDirty = true;
+          if (tile.zone === ZONE.RESIDENTIAL) {
+            const growthDelta = tile.growthScore - previousGrowthScore;
+            this.syncGrowthScoreToPopulation(tile);
+            tile.growthScore = Math.min(GROWTH_CONFIG.MAX_SCORE, tile.growthScore + growthDelta);
+          }
+        }
     }
   }
 

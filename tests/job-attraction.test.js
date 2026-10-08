@@ -51,16 +51,42 @@ function setupTest() {
   assert.strictEqual(residential.growthScore, GROWTH_CONFIG.SERVICED_DELTA + 2, '50% vacancy scales job attraction bonus (+3 total)');
 }
 
-// 4. Zero-Job Boundary Condition (totalJobs = 0) -> No bonus, growth hard-stopped at 0
+// 4. An empty town can attract its first residents without an established job market.
 {
   const { residential, sim } = setupTest();
   sim.stats.totalJobsProvided = 0;
   sim.stats.employmentRate = 0;
   sim.updateGrowthAndDensity();
-  assert.strictEqual(residential.growthScore, 0, 'Zero jobs hard-stops residential growth at 0');
+  assert.strictEqual(residential.growthScore, GROWTH_CONFIG.SERVICED_DELTA, 'An empty town can begin residential growth without jobs');
+  sim.applyPopulationChange(0);
+  assert.ok(residential.population > 0, 'Initial growth should attract residents who can establish a job market');
 }
 
-// 5. Utility Gate: Shortfall disables job attraction bonus (shortfall delta -2 applies)
+// A town that already has residents still needs a job market to grow further.
+{
+  const { residential, sim } = setupTest();
+  sim.stats.totalJobsProvided = 0;
+  sim.stats.population = 100;
+  residential.population = 100;
+  sim.stats.employmentRate = 0;
+  sim.updateGrowthAndDensity();
+  assert.strictEqual(residential.growthScore, 0, 'A town with residents and no jobs should not keep attracting population');
+}
+
+// 5. A residential density upgrade must preserve current occupancy.
+{
+  const { residential, sim } = setupTest();
+  residential.growthScore = GROWTH_CONFIG.THRESHOLD_MEDIUM - 1;
+  residential.population = 23;
+  sim.stats.population = 23;
+  sim.stats.totalJobsProvided = 50;
+  sim.stats.employmentRate = 0;
+  sim.updateGrowthAndDensity();
+  assert.strictEqual(residential.density, DENSITY.MEDIUM, 'The tile should upgrade at its medium threshold');
+  assert.ok(sim.computeTilePopulation(residential, 125) >= 23, 'The upgrade should preserve existing residents');
+}
+
+// 6. Utility Gate: Shortfall disables job attraction bonus (shortfall delta -2 applies)
 {
   const { residential, sim } = setupTest();
   residential.growthScore = 10;

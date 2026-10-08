@@ -55,6 +55,8 @@ try {
   Math.random = previousRandom;
 }
 
+assert.ok(simulation.stats.population > 0, 'A serviced town should attract residents within fifty ticks');
+assert.ok(simulation.stats.totalEmployablePopulation > 0, 'A developed town should have an employable population');
 assert.strictEqual(grid.getTile(2, 4).producer.contaminated, false, 'Upstream Water Pump should remain uncontaminated');
 assert.strictEqual(simulation.tickCount, 50, 'Soak simulation should advance exactly fifty ticks');
 
@@ -110,6 +112,8 @@ try {
   Math.random = previousRandom;
 }
 
+assert.ok(sim200.stats.population > 0, 'A serviced 200x200 town should attract residents within fifty ticks');
+assert.ok(sim200.stats.totalEmployablePopulation > 0, 'A developed 200x200 town should have an employable population');
 assert.strictEqual(grid200.getTile(2, 4).producer.contaminated, false, 'Upstream Water Pump on 200x200 should remain uncontaminated');
 assert.strictEqual(sim200.tickCount, 50, '200x200 soak simulation should advance exactly 50 ticks');
 
