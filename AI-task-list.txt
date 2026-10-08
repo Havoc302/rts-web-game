@@ -9,7 +9,7 @@ Agent handoff protocol:
 
 Open handoff (2026-10-08):
 - No active task.
-- Latest completed task: add a browser-reload Restart action to terminal game over in `0.2.7`.
+- Latest completed task: scope Finance panel visibility to active HUD tab in `0.2.10`.
 - Verified baseline: `npm test` passes all 46 test files.
 - Phase 1 follow-ups are tracked in `docs/DESIGN.md`; in particular, localStorage autosave and named tick-stage extraction are not implemented. Do not treat historical `Current task` headings below as active.
 
@@ -1377,4 +1377,40 @@ Current task: Add a Restart action to terminal game over (`0.2.7`).
 Validation:
 - `node tests/renderer-cache.test.js` and `node tests/version-sync.test.js` pass.
 - Browser check clicked Restart and confirmed a fresh `0.2.7` session with game-over hidden, `$25,000` treasury, and no loans.
+- `npm test` passes all 46 test files; editor diagnostics are clean and `git diff --check` passes.
+
+Current task: Move world-map treasury beside Options (`0.2.8`).
+
+- [done] Place the treasury readout on the right, immediately before the Options control.
+- [done] Keep the header legible and usable at desktop and mobile widths.
+- [done] Bump/synchronize app/package versions to `0.2.8`.
+- [done] Add/adjust markup checks, run full suite, browser-check both widths, and record final validation.
+
+Validation:
+- `node tests/renderer-cache.test.js` and `node tests/version-sync.test.js` pass.
+- Browser checks confirm treasury sits to the left of Options with no wrapping or overlap at desktop and 390px/320px mobile widths.
+- `npm test` passes all 46 test files; editor diagnostics are clean and `git diff --check` passes.
+
+Current task: Gate population migration below 1,000 population to 20 and above to 2% (`0.2.9`).
+
+- [done] Set population shift limit to 20 below 1,000 population for arrivals and departures.
+- [done] Set population shift limit to no more than 2% of total population per tick at or above 1,000 population.
+- [done] Fix tile.population undefined initialization guard and account for relocatedPopulation in desired target calculation.
+- [done] Update tests in `tests/population-stabilization.test.js` to assert the 20 / 2% rules and fire evacuation invariants.
+- [done] Bump/synchronize `APP_VERSION`, `package.json`, and `package-lock.json` to `0.2.9` (`tests/version-sync.test.js` passes).
+- [done] Update `docs/DESIGN.md` documentation to reflect the new population stabilization rules.
+
+Validation:
+- `node tests/population-stabilization.test.js` and `node tests/version-sync.test.js` pass.
+- `npm test` passes all 46 test files; editor diagnostics are clean and `git diff --check` passes.
+
+Current task: Scope Finance panel display to active HUD tab (`0.2.10`).
+
+- [done] Fix `.finance-panel` CSS rule so it only displays when `.active` is present on the tab section.
+- [done] Add test assertion in `tests/renderer-cache.test.js` verifying scoped `.utility-hud-tab.finance-panel.active` rule.
+- [done] Bump/synchronize app, package, and design versions to `0.2.10`.
+- [done] Run full test suite and verify no whitespace errors.
+
+Validation:
+- `node tests/renderer-cache.test.js` and `node tests/version-sync.test.js` pass.
 - `npm test` passes all 46 test files; editor diagnostics are clean and `git diff --check` passes.

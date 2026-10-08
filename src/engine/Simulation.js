@@ -711,10 +711,10 @@ export class Simulation {
       if (tile.zone !== ZONE.RESIDENTIAL || tile.destroyed) continue;
       const capacity = RESIDENTIAL_CAPACITY[tile.density] || 0;
       const evacuated = Math.min(tile.population || 0, tile.fireDisplacedPopulation || 0);
-      tile.population -= evacuated;
+      tile.population = Math.max(0, (tile.population || 0) - evacuated);
       tile.population = Math.min(capacity, tile.population + (tile.relocatedPopulation || 0));
       const desired = Math.min(capacity, Math.max(0,
-        this.computeTilePopulation(tile, capacity) - (tile.populationLoss || 0),
+        this.computeTilePopulation(tile, capacity) + (tile.relocatedPopulation || 0) - (tile.fireDisplacedPopulation || 0) - (tile.populationLoss || 0),
       ));
       const delta = desired - (tile.population || 0);
       if (delta > 0) incoming.push({ tile, amount: delta });
@@ -754,31 +754,21 @@ export class Simulation {
     return clampedDelta;
   }
 
+  getMaxPopulationShift(population) {
+    const pop = Math.max(0, population);
+    const { POPULATION_THRESHOLD, LOW_POPULATION_MAX_SHIFT, HIGH_POPULATION_MAX_SHIFT_PERCENT } = POPULATION_STABILIZATION_CONFIG;
+    if (pop < POPULATION_THRESHOLD) {
+      return LOW_POPULATION_MAX_SHIFT;
+    }
+    return Math.floor(pop * HIGH_POPULATION_MAX_SHIFT_PERCENT);
+  }
+
   getMaxPopulationGrowth(population) {
-    const capacity = this.stats?.maxPopulationCapacity || 0;
-    const { MAX_POPULATION_GROWTH_CAPACITY_RATIO, GROWTH_SATURATION_FACTOR, MIN_POPULATION_SHIFT_FLOOR } = POPULATION_STABILIZATION_CONFIG;
-    if (capacity <= 0) return MIN_POPULATION_SHIFT_FLOOR;
-    const occupancy = Math.max(0, population) / capacity;
-    return Math.max(
-      MIN_POPULATION_SHIFT_FLOOR,
-      Math.floor(capacity * MAX_POPULATION_GROWTH_CAPACITY_RATIO / (1 + GROWTH_SATURATION_FACTOR * occupancy)),
-    );
+    return this.getMaxPopulationShift(population);
   }
 
   getMaxPopulationOutflow(population) {
-    const { MAX_POPULATION_OUTFLOW_PER_TICK, MAX_POPULATION_OUTFLOW_CAPACITY_RATIO, GROWTH_SATURATION_FACTOR, MIN_POPULATION_SHIFT_FLOOR } = POPULATION_STABILIZATION_CONFIG;
-    const populationCap = Math.max(
-      MIN_POPULATION_SHIFT_FLOOR,
-      Math.floor(Math.max(0, population) * MAX_POPULATION_OUTFLOW_PER_TICK),
-    );
-    const capacity = this.stats?.maxPopulationCapacity || 0;
-    if (capacity <= 0) return populationCap;
-    const occupancy = Math.max(0, population) / capacity;
-    const capacityCap = Math.max(
-      MIN_POPULATION_SHIFT_FLOOR,
-      Math.floor(capacity * MAX_POPULATION_OUTFLOW_CAPACITY_RATIO / (1 + GROWTH_SATURATION_FACTOR * occupancy)),
-    );
-    return Math.min(populationCap, capacityCap);
+    return this.getMaxPopulationShift(population);
   }
 
   updateRoadMaintenance() {

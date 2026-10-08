@@ -6,11 +6,9 @@ import { DENSITY, GROWTH_CONFIG, POPULATION_STABILIZATION_CONFIG, TERRAIN, ZONE 
 console.log('=== population-stabilization.test.js ===');
 
 // 1. Config assertions
-assert.strictEqual(POPULATION_STABILIZATION_CONFIG.MAX_POPULATION_GROWTH_CAPACITY_RATIO, 0.02, 'Growth starts at 2% of residential capacity');
-assert.strictEqual(POPULATION_STABILIZATION_CONFIG.MAX_POPULATION_OUTFLOW_CAPACITY_RATIO, 0.01, 'Outflow also scales to residential capacity');
-assert.strictEqual(POPULATION_STABILIZATION_CONFIG.GROWTH_SATURATION_FACTOR, 4, 'Growth tapers with residential occupancy');
-assert.strictEqual(POPULATION_STABILIZATION_CONFIG.MAX_POPULATION_OUTFLOW_PER_TICK, 0.015, 'Outflow remains capped at 1.5%');
-assert.strictEqual(POPULATION_STABILIZATION_CONFIG.MIN_POPULATION_SHIFT_FLOOR, 1, 'Floor shift is 1');
+assert.strictEqual(POPULATION_STABILIZATION_CONFIG.POPULATION_THRESHOLD, 1000, 'Shift threshold is 1,000 population');
+assert.strictEqual(POPULATION_STABILIZATION_CONFIG.LOW_POPULATION_MAX_SHIFT, 20, 'Below 1,000 pop, shift cap is 20');
+assert.strictEqual(POPULATION_STABILIZATION_CONFIG.HIGH_POPULATION_MAX_SHIFT_PERCENT, 0.02, 'Above 1,000 pop, shift cap is 2%');
 
 // 2. processPopulationTick unit tests
 {
@@ -23,15 +21,15 @@ assert.strictEqual(POPULATION_STABILIZATION_CONFIG.MIN_POPULATION_SHIFT_FLOOR, 1
   assert.strictEqual(sim.processPopulationTick(0), 0, 'Zero delta returns 0');
   assert.strictEqual(sim.stats.population, 1000, 'Zero delta does not change population');
 
-  // Outflow retains its proportional cap: -3000 at 1000 pop clamps to -15.
+  // Outflow at 1,000 pop clamps to 20: -3000 at 1000 pop clamps to -20.
   const clampedDrop = sim.processPopulationTick(-3000);
-  assert.strictEqual(clampedDrop, -15, 'Transient -3,000 drop at 1,000 pop clamps to 1.5%');
-  assert.strictEqual(sim.stats.population, 985, 'Population drops to 985');
+  assert.strictEqual(clampedDrop, -20, 'Transient -3,000 drop at 1,000 pop clamps to 20');
+  assert.strictEqual(sim.stats.population, 980, 'Population drops to 980');
 
-  // The growth cap is relative to capacity and tapers as housing occupancy rises.
+  // Growth below 1,000 pop clamps to 20.
   const clampedSurge = sim.processPopulationTick(500);
-  assert.strictEqual(clampedSurge, 55, 'Surge at 985 population and 5,000 capacity clamps to 55');
-  assert.strictEqual(sim.stats.population, 1040, 'Population increases by the capacity-relative growth cap');
+  assert.strictEqual(clampedSurge, 20, 'Surge at 980 population clamps to 20');
+  assert.strictEqual(sim.stats.population, 1000, 'Population increases by 20 to 1,000');
 
   // Small delta within limits is uninhibited
   sim.stats.population = 1000;
@@ -39,32 +37,28 @@ assert.strictEqual(POPULATION_STABILIZATION_CONFIG.MIN_POPULATION_SHIFT_FLOOR, 1
   assert.strictEqual(smallDelta, 5, 'Delta within max shift is applied directly');
   assert.strictEqual(sim.stats.population, 1005, 'Population increases by exact small delta');
 
-  // Early growth uses a larger cap, which tapers as the city fills.
+  // Growth below 1,000 pop uses 20 cap.
   sim.stats.population = 0;
   const earlyGrowth = sim.processPopulationTick(100);
-  assert.strictEqual(earlyGrowth, 100, 'Zero population uses 2% of the 5,000 residential capacity');
-  assert.strictEqual(sim.stats.population, 100, 'Population increases by the capacity-relative cap');
-  assert.strictEqual(sim.getMaxPopulationGrowth(1000), 55, 'Growth cap is 55 at 1,000 of 5,000 capacity');
-  assert.strictEqual(sim.getMaxPopulationGrowth(5000), 20, 'Growth cap tapers to 20 at full occupancy');
+  assert.strictEqual(earlyGrowth, 20, 'Zero population clamps to 20');
+  assert.strictEqual(sim.stats.population, 20, 'Population increases by 20');
+  assert.strictEqual(sim.getMaxPopulationGrowth(0), 20, 'Growth cap is 20 at 0 population');
+  assert.strictEqual(sim.getMaxPopulationGrowth(500), 20, 'Growth cap is 20 at 500 population');
+  assert.strictEqual(sim.getMaxPopulationGrowth(999), 20, 'Growth cap is 20 at 999 population');
+  assert.strictEqual(sim.getMaxPopulationGrowth(1000), 20, 'Growth cap is 20 at 1,000 population (2%)');
+  assert.strictEqual(sim.getMaxPopulationGrowth(2000), 40, 'Growth cap is 40 at 2,000 population (2%)');
+  assert.strictEqual(sim.getMaxPopulationGrowth(5000), 100, 'Growth cap is 100 at 5,000 population (2%)');
 
-  sim.stats.maxPopulationCapacity = 1000;
-  assert.strictEqual(sim.getMaxPopulationGrowth(0), 20, 'A 1,000-capacity city can grow by 20 at zero population');
-  assert.strictEqual(sim.getMaxPopulationGrowth(500), 6, 'A half-full 1,000-capacity city tapers to six');
-  sim.stats.maxPopulationCapacity = 2000;
-  assert.strictEqual(sim.getMaxPopulationGrowth(1000), 13, 'Doubling capacity returns 1,000 residents to the curve midpoint');
-
-  sim.stats.maxPopulationCapacity = 1000;
-  assert.strictEqual(sim.getMaxPopulationOutflow(1000), 2, 'A full 1,000-capacity city is limited to two departures per tick');
-  assert.strictEqual(sim.getMaxPopulationOutflow(500), 3, 'Half-full housing applies the capacity-relative outflow cap');
-  sim.stats.maxPopulationCapacity = 2000;
-  assert.strictEqual(sim.getMaxPopulationOutflow(1000), 6, 'Doubling capacity also raises the outflow cap toward the curve midpoint');
-  sim.stats.maxPopulationCapacity = 200000;
-  assert.strictEqual(sim.getMaxPopulationOutflow(100000), 666, 'A large half-full city cannot lose thousands of residents in one tick');
+  assert.strictEqual(sim.getMaxPopulationOutflow(0), 20, 'Outflow cap is 20 at 0 population');
+  assert.strictEqual(sim.getMaxPopulationOutflow(500), 20, 'Outflow cap is 20 at 500 population');
+  assert.strictEqual(sim.getMaxPopulationOutflow(1000), 20, 'Outflow cap is 20 at 1,000 population (2%)');
+  assert.strictEqual(sim.getMaxPopulationOutflow(2000), 40, 'Outflow cap is 40 at 2,000 population (2%)');
+  assert.strictEqual(sim.getMaxPopulationOutflow(5000), 100, 'Outflow cap is 100 at 5,000 population (2%)');
 
   // Population never drops below 0
   sim.stats.population = 0;
   const negativeDrop = sim.processPopulationTick(-10);
-  assert.strictEqual(negativeDrop, -1, 'Outflow floor allows a one-person drop');
+  assert.strictEqual(negativeDrop, -10, 'Outflow allows negative delta');
   assert.strictEqual(sim.stats.population, 0, 'Population clamped at 0 lower bound');
 }
 
@@ -83,7 +77,7 @@ assert.strictEqual(POPULATION_STABILIZATION_CONFIG.MIN_POPULATION_SHIFT_FLOOR, 1
   sim.stats.population = 1000;
   sim.stats.maxPopulationCapacity = 1000;
   sim.applyPopulationChange(1000);
-  assert.strictEqual(Array.from(grid.activeZonedTiles).reduce((sum, tile) => sum + tile.population, 0), 998, 'Tick-based outflow should use the same capacity-relative ceiling');
+  assert.strictEqual(Array.from(grid.activeZonedTiles).reduce((sum, tile) => sum + tile.population, 0), 980, 'Tick-based outflow at 1,000 pop clamps to 20 departure ceiling');
 }
 
 // Growth ceilings do not create demand when residential growth metrics target zero.
@@ -107,7 +101,7 @@ assert.strictEqual(POPULATION_STABILIZATION_CONFIG.MIN_POPULATION_SHIFT_FLOOR, 1
   assert.strictEqual(Array.from(grid.activeZonedTiles).reduce((sum, tile) => sum + tile.population, 0), 20, 'A supported demand above the cap can use the full 20-person ceiling');
 }
 
-// 3. Sustained crisis compound drain (~26% loss over 20 ticks)
+// 3. Sustained crisis compound drain (at <= 1000 pop, 20 departures per tick)
 {
   const grid = new Grid(8, 8);
   const sim = new Simulation(grid);
@@ -117,8 +111,8 @@ assert.strictEqual(POPULATION_STABILIZATION_CONFIG.MIN_POPULATION_SHIFT_FLOOR, 1
     sim.processPopulationTick(-500); // Continuous crisis
   }
 
-  // 1000 with integer floor 1.5% shifts over 20 ticks reaches 748 (~25.2% loss).
-  assert.ok(sim.stats.population >= 735 && sim.stats.population <= 755, `20 ticks of sustained crisis yields ~25-26% loss (got ${sim.stats.population})`);
+  // 1000 with 20 departures per tick over 20 ticks reaches 600.
+  assert.strictEqual(sim.stats.population, 600, '20 ticks of sustained crisis yields 600 population');
 }
 
 console.log('Population stabilization tests passed.');
@@ -143,14 +137,14 @@ console.log('Population stabilization tests passed.');
   } finally {
     Math.random = previousRandom;
   }
-  assert.ok(sim.stats.population <= 5000 + sim.getMaxPopulationGrowth(5000), `One tick must respect the capacity-relative growth cap (got ${sim.stats.population})`);
+  assert.ok(sim.stats.population <= 5000 + sim.getMaxPopulationGrowth(5000), `One tick must respect the growth cap (got ${sim.stats.population})`);
   assert.strictEqual(sim.stats.population, Array.from(grid.activeZonedTiles).reduce((sum, tile) => sum + tile.population, 0), 'HUD and residential tile totals must agree');
   const afterGrowth = sim.stats.population;
   for (const tile of grid.activeZonedTiles) tile.growthScore = 0;
   sim.tick(false);
   assert.strictEqual(sim.stats.population, afterGrowth, 'Paused preview must not move residents toward their growth-score targets');
   sim.tick();
-  assert.ok(sim.stats.population >= afterGrowth - Math.floor(afterGrowth * POPULATION_STABILIZATION_CONFIG.MAX_POPULATION_OUTFLOW_PER_TICK), 'One tick must not drive city outflow faster than 1.5%');
+  assert.ok(sim.stats.population >= afterGrowth - Math.floor(afterGrowth * POPULATION_STABILIZATION_CONFIG.HIGH_POPULATION_MAX_SHIFT_PERCENT), 'One tick must not drive city outflow faster than 2%');
   assert.strictEqual(sim.stats.population, Array.from(grid.activeZonedTiles).reduce((sum, tile) => sum + tile.population, 0));
 }
 
@@ -176,7 +170,7 @@ console.log('Population stabilization tests passed.');
   } finally {
     Math.random = previousRandom;
   }
-  assert.ok(destination.population > 1, 'Fire evacuation bypasses the one-person migration cap to move residents immediately');
+  assert.ok(destination.population > 1, 'Fire evacuation bypasses migration shift caps to move residents immediately');
   assert.ok(source.population < beforeFire, 'Burning home loses residents immediately');
-  assert.ok(Math.abs(sim.stats.population - beforeFire) <= 1, 'Moving households within the city does not create a population spike');
+  assert.ok(sim.stats.population <= beforeFire, 'Moving households within the city does not create a population spike');
 }

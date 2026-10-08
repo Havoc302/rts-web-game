@@ -838,7 +838,6 @@ h4 {
 .overworld-options {
   position: relative;
   flex-shrink: 0;
-  margin-left: auto;
   border-radius: 4px;
   font: inherit;
   pointer-events: auto;
@@ -1140,7 +1139,7 @@ h4 {
 .game-over-panel .btn-primary {
   margin-top: 18px;
 }
-.finance-panel {
+.utility-hud-tab.finance-panel.active {
   display: grid;
   gap: 8px;
 }
@@ -1188,6 +1187,7 @@ h4 {
   margin-left: auto;
   color: #afc9c6;
   font: 0.75rem var(--font-mono);
+  white-space: nowrap;
 }
 .overworld-treasury strong {
   color: #fff;
