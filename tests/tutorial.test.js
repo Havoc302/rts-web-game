@@ -12,7 +12,17 @@ globalThis.localStorage = {
 };
 const elements = new Map();
 const element = (id) => {
-  if (!elements.has(id)) elements.set(id, { id, style: {}, textContent: '', checked: false, listeners: {}, addEventListener(type, fn) { this.listeners[type] = fn; } });
+  if (!elements.has(id)) elements.set(id, {
+    id,
+    style: {},
+    textContent: '',
+    checked: false,
+    listeners: {},
+    attributes: {},
+    classList: { active: false, toggle(name, on) { if (name === 'active') this.active = on; } },
+    addEventListener(type, fn) { this.listeners[type] = fn; },
+    setAttribute(name, value) { this.attributes[name] = String(value); },
+  });
   return elements.get(id);
 };
 globalThis.document = { getElementById: element };
@@ -24,15 +34,13 @@ for (const row of grid.tiles) for (const tile of row) tile.terrain = TERRAIN.FLA
 const stats = { population: 0 };
 
 element('welcome-modal').style.display = 'none';
-const deferred = new TutorialManager({ currentCellId: null }, { showWelcome: false });
-assert.strictEqual(element('welcome-modal').style.display, 'none', 'Startup should defer welcome until the globe is ready');
-deferred.checkWelcomeModal();
-assert.strictEqual(element('welcome-modal').style.display, 'flex', 'Welcome should be shown after the globe is ready');
-
+// Guided Tutorial is a main-menu button toggle, enabled by default.
 const app = { currentCellId: null };
 const tutorial = new TutorialManager(app);
 assert.strictEqual(tutorial.currentStep, 0);
-assert.strictEqual(element('welcome-modal').style.display, 'flex', 'Welcome modal should show on first visit');
+assert.strictEqual(tutorial.isEnabled, true, 'Guided Tutorial should default to on');
+assert.strictEqual(element('btn-main-tutorial').textContent, '🎓 Tutorial: On', 'The button should show the current state');
+assert.strictEqual(element('btn-main-tutorial').attributes['aria-pressed'], 'true');
 assert.strictEqual(element('tutorial-banner').style.display, 'flex');
 assert.strictEqual(element('tutorial-step-title').textContent, TUTORIAL_STEPS[0].title);
 
@@ -84,24 +92,28 @@ tutorial.update(grid, stats);
 assert.strictEqual(tutorial.currentStep, TUTORIAL_STEPS.length);
 assert.strictEqual(element('tutorial-banner').style.display, 'none', 'Banner hides after the final step');
 
-// Skip & Play with "don't show again" persists both choices.
-element('chk-welcome-dont-show').checked = true;
-element('btn-skip-welcome').listeners.click();
-assert.strictEqual(localStorage.getItem('simconquer_welcome_dismissed'), 'true');
+// Pressing the toggle turns Guided Tutorial off and hides the banner.
+element('btn-main-tutorial').listeners.click();
 assert.strictEqual(localStorage.getItem('simconquer_tutorial_enabled'), 'false');
-assert.strictEqual(element('welcome-modal').style.display, 'none');
+assert.strictEqual(tutorial.isEnabled, false);
+assert.strictEqual(element('btn-main-tutorial').textContent, '🎓 Tutorial: Off', 'The button should reflect the off state');
+assert.strictEqual(element('btn-main-tutorial').attributes['aria-pressed'], 'false');
+assert.strictEqual(element('tutorial-banner').style.display, 'none', 'Disabling should hide the banner');
 
-element('welcome-modal').style.display = '';
-const returning = new TutorialManager({});
+// A later session honours the stored preference.
+const returning = new TutorialManager({ currentCellId: null });
 assert.strictEqual(returning.isEnabled, false);
-assert.notStrictEqual(element('welcome-modal').style.display, 'flex', 'Dismissed welcome modal should stay hidden');
+assert.strictEqual(element('btn-main-tutorial').textContent, '🎓 Tutorial: Off', 'The button should reflect a disabled tutorial');
 
-// Start Guided Tutorial after a finished run must show Step 1 again.
+// Pressing it again re-enables, and starting over shows Step 1 again.
 returning.currentStep = TUTORIAL_STEPS.length;
-element('btn-start-tutorial').listeners.click();
-assert.strictEqual(returning.currentStep, 0);
+element('btn-main-tutorial').listeners.click();
 assert.strictEqual(returning.isEnabled, true);
-assert.strictEqual(element('tutorial-banner').style.display, 'flex', 'Start should show the banner');
+assert.strictEqual(element('btn-main-tutorial').textContent, '🎓 Tutorial: On');
+returning.restart();
+assert.strictEqual(returning.currentStep, 0);
+assert.strictEqual(element('tutorial-banner').style.display, 'flex', 'Starting over should show the banner');
 assert.strictEqual(element('tutorial-step-title').textContent, TUTORIAL_STEPS[0].title);
+assert.strictEqual(localStorage.getItem('simconquer_tutorial_step'), '0');
 
 console.log('Tutorial tests passed.');

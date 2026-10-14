@@ -32,6 +32,12 @@ body {
   height: 100vh;
 }
 
+/* Boot state: no world is loaded yet, so the city chrome stays hidden and the
+   main menu sits alone on a blank background. */
+body.app-idle #app {
+  display: none;
+}
+
 .glass {
   background: var(--panel-bg);
   backdrop-filter: blur(12px);
@@ -794,6 +800,7 @@ h4 {
   align-items: center;
   gap: 4px 12px;
   min-width: 0;
+  flex: 1 1 auto;
 }
 
 .overworld-brand {
@@ -844,19 +851,33 @@ h4 {
 }
 
 .overworld-options summary {
-  display: grid;
-  place-items: center;
-  width: 36px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: auto;
+  min-width: 36px;
   height: 36px;
+  padding: 0 12px;
   border: 1px solid #628285;
   border-radius: 4px;
   background: #1a424f;
   color: #fff;
+  font: 600 0.76rem var(--font-mono);
+  white-space: nowrap;
   cursor: pointer;
   list-style: none;
 }
 
 .overworld-options summary::-webkit-details-marker { display: none; }
+
+.overworld-options-label {
+  letter-spacing: 0.03em;
+}
+
+.overworld-main-menu,
+.overworld-audio {
+  flex-shrink: 0;
+}
 
 .overworld-options-menu {
   position: absolute;
@@ -980,7 +1001,18 @@ h4 {
   font: 0.78rem var(--font-mono);
 }
 
-.overworld-seed strong { color: #fff; }
+@media (max-width: 600px) {
+  .overworld-header { padding-inline: 12px; gap: 8px; flex-wrap: wrap; row-gap: 6px; }
+  .overworld-header h2 { font-size: 0.75rem; }
+  .overworld-brand { display: none; }
+  .overworld-treasury { margin-left: auto; }
+  .overworld-info {
+    flex-wrap: wrap;
+    gap: 8px 14px;
+    padding: 12px 16px calc(16px + env(safe-area-inset-bottom, 0px));
+  }
+  .overworld-info button { width: 100%; }
+}
 
 .overworld-info button {
   padding: 9px 16px;
@@ -1129,6 +1161,35 @@ h4 {
   border-radius: 8px;
   background: #1e293b;
   text-align: center;
+}
+
+/* Main menu (startup + reopened from the world-map ☰ button) */
+.main-menu .modal-box {
+  max-width: 520px;
+}
+
+.main-menu .modal-body {
+  max-height: 46vh;
+  overflow-y: auto;
+  text-align: left;
+}
+
+.main-menu .modal-body ul {
+  margin: 0 0 4px;
+  padding-left: 18px;
+  color: #94a3b8;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.main-menu-actions {
+  flex-wrap: wrap;
+  margin-top: 16px;
+}
+
+.main-menu-actions .btn-primary,
+.main-menu-actions .btn-secondary {
+  flex: 1 1 auto;
 }
 .game-over-panel h2 {
   margin: 0;

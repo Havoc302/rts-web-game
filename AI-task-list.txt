@@ -7,9 +7,9 @@ Agent handoff protocol:
 - At the end of a generation, mark completed checklist items `[done]`, record validation, and leave unfinished work with enough context for another agent to continue.
 - Do not erase historical entries. `docs/DESIGN.md` is the architecture, product, and implementation-status source of truth; distinguish planned work from implemented behavior.
 
-Open handoff (2026-10-08):
-- No active task.
-- Latest completed task: scope Finance panel visibility to active HUD tab in `0.2.10`.
+Open handoff (2026-10-14):
+- Active task: none in progress; the next item is to pick up the Phase 1 follow-ups listed in `docs/DESIGN.md`.
+- Latest completed task: boot like a proper game — no world on load, main-menu Save/Load, destructive New Game guard, and the Guided Tutorial toggle beside Audio (`0.2.13`); see the final task entry in this log.
 - Verified baseline: `npm test` passes all 46 test files.
 - Phase 1 follow-ups are tracked in `docs/DESIGN.md`; in particular, localStorage autosave and named tick-stage extraction are not implemented. Do not treat historical `Current task` headings below as active.
 
@@ -1414,3 +1414,77 @@ Current task: Scope Finance panel display to active HUD tab (`0.2.10`).
 Validation:
 - `node tests/renderer-cache.test.js` and `node tests/version-sync.test.js` pass.
 - `npm test` passes all 46 test files; editor diagnostics are clean and `git diff --check` passes.
+
+Current task: Correct stale implementation claims in `docs/DESIGN.md`.
+
+- [done] Update the suite size to 46 test files in the Phase 1 status and the test-coverage notes (was 45 and 44).
+- [done] Mark Global Finance as implemented instead of "Planned Finance feature".
+- [done] Correct the stale "coverage caching remains an outstanding Phase 1 task" sentence to reflect implemented emergency coverage caching.
+- [done] Correct Key Decision 7 so happiness is described as implemented in the top-bar HUD, not an outstanding item.
+- [done] Correct stale `APP_VERSION` references (stack table, cache-busting note, Key Decision 29, References) to `0.2.10`.
+
+Validation:
+- Documentation-only change; no runtime behavior or tests were touched. Historical PR-description version numbers (e.g. `0.1.4`) were intentionally left unchanged.
+
+Current task: Add a main menu, New Game flow, and world-map header controls (`0.2.11`).
+
+- [done] Add a main menu overlay shown on load: audio on/off control, getting-started instructions, guided-tutorial button, New Game button, and Close.
+- [done] New Game discards the session (visited cities, treasury, loans) and generates a brand-new random planet with a fresh home city seed, then shows the globe.
+- [done] Add a Main Menu button at the far left of the world-map header, beside the WORLD MAP title, that reopens the main menu.
+- [done] Add a music mute toggle at the far right of the world-map header, beside the Edit World control.
+- [done] Rename the world options control (gear / "World options") to "Edit World".
+- [done] Retire the standalone audio prompt and welcome modal now that the main menu owns audio and getting-started content.
+- [done] Bump/synchronize `APP_VERSION`, `package.json`, and `package-lock.json` to `0.2.11`.
+- [done] Update markup tests, run the full suite, browser-check, and record validation.
+
+Notes:
+- TutorialManager keeps its step logic and banner; the main menu's tutorial button calls `TutorialManager.restart()`. Its legacy welcome-modal bindings become inert once the welcome modal is removed from `index.html`, so `tests/tutorial.test.js` keeps exercising them against its fake DOM.
+- `style.css` gained `.overworld-main-menu` / `.overworld-audio` / `.overworld-options-label` / `.main-menu*` rules, a flexible `.overworld-title`, and a wrapped mobile header at `max-width: 600px`.
+- The first attempt to patch the mobile header block left an unbalanced brace (an unterminated `.overworld-treasury` rule plus a stray `}`), which truncated stylesheet parsing at ~145 rules so `.modal-overlay` / `.modal-box` never applied and the main menu rendered as an unstyled flex child. Rebuilt the media-query block; brace balance is now 0 and the menu renders as a fixed, centered overlay.
+
+Validation:
+- `npm test` passes all 46 test files, including the updated `tests/renderer-cache.test.js` assertions for `#main-menu`, `#btn-main-audio`, `#btn-main-start-tutorial`, `#btn-main-new-game`, the header control order, the `Edit World` label, and the removal of `#welcome-modal` / `#audio-prompt-modal`.
+- Browser verification (Playwright, port 4173): main menu is visible on load with `position: fixed`, `z-index: 1200`, and a 520px/12px-radius `.modal-box`; the audio toggle drives all three buttons (`🔇 Audio: Off` ↔ `🔊 Audio: On`, city/world icons follow); Close hides the menu and the header ☰ reopens it; New Game hid the menu, reset `currentCellId` to `null`, `cityStates` to 0, treasury to `$25,000`, and regenerated the world seed (`8368853` → `6216899`) with the globe open.
+- Header order verified left-to-right as Main Menu ☰, WORLD MAP title, treasury, Edit World, music mute; at 390px the header wraps to two rows with no horizontal overflow.
+- Editor diagnostics are clean and the stylesheet brace check reports `final depth 0`.
+Current task: Boot like a proper game — no world on load, main-menu save/load, and a destructive New Game guard (`0.2.12`).
+
+Plan (recorded before implementation so the work is resumable):
+- [done] Boot with no world: the app opens on a blank background with only the main menu visible; the header, city HUD, and canvas chrome stay hidden until the player starts or loads a game.
+- [done] Main menu owns Save World / Load World, reusing the existing `serializeGameToJson` / `deserializeGameFromJson` file save and import path.
+- [done] Remove the Save World / Load World buttons from the world-map Edit World dropdown now that the main menu owns them.
+- [done] Convert "Start Guided Tutorial" into a "Guided Tutorial" checkbox that persists the preference and starts the step-by-step instructions when New Game is pressed with it ticked.
+- [done] Confirm before New Game when the world has player progress; skip the prompt on a pristine world.
+- [done] Bump/synchronize `APP_VERSION`, `package.json`, and `package-lock.json` to `0.2.12`.
+- [done] Update markup and tutorial tests, run the full suite, browser-check, and record validation.
+
+Notes:
+- The app no longer generates or opens a world at boot. `GameApp.worldActive` plus a `body.app-idle` class hide `#app` so the player sees a blank background with only the main menu; the globe is neither built nor rendered until New Game or Load World runs. `setIdleState()` owns this, and the render loop plus `setSpeed()` are gated on `worldActive` so nothing simulates or paints behind the menu.
+- The renderer/simulation object graph is still constructed inertly on boot so the ~130 existing `this.renderer` / `this.grid` / `this.simulation` call sites keep working; only the planet and the visible chrome are deferred. This is the deliberate trade-off to keep the change contained.
+- `hasWorldProgress()` derives the New Game warning from real state rather than a dirty flag: a visited hex, a non-starting treasury, outstanding debt, or any city with roads, producers, or zoned tiles. A pristine new world reports false and starts without a prompt.
+- `TutorialManager` lost the dead welcome-modal path (`#welcome-modal`, `#btn-start-tutorial`, `#btn-skip-welcome`, `#chk-welcome-dont-show` were already gone from the markup) and now binds the `#chk-main-tutorial` tick box. `renderBanner()` also hides the banner while `app.worldActive === false`, which is why no instructions appear on the title screen.
+- Save World / Load World moved out of the world-map `Edit World` dropdown into the main menu; the `#game-file-input` file picker moved with them. The `Edit World` menu keeps the selected-tile and planet seed controls. The city header never had save/load buttons, so the removal is the world-map one.
+- Save World is disabled and Close is disabled on the title screen, since there is nothing to save or return to before a world exists.
+
+Validation:
+- `npm test` passes all 46 test files, including the rewritten `tests/tutorial.test.js` (tick box default-on, untick persists and hides the banner, a later session honours the stored preference, restart returns to Step 1) and the updated `tests/renderer-cache.test.js` markup assertions (Guided Tutorial is a checkbox, Save/Load World and the file input live in the main menu, and `#btn-save-game` / `#btn-load-game` are gone).
+- Browser verification (Playwright, port 4173, `v0.2.12`): boot shows a blank background with `#app` at `display: none`, no globe canvas, banner hidden, Save and Close disabled, and `hasWorldProgress()` false.
+- New Game on a pristine world raised no prompt. After entering a city and laying 9 road tiles, `hasWorldProgress()` returned true and New Game raised exactly one confirmation reading "Start a new game? All progress in this world — your cities, treasury, and loans — will be lost."; dismissing it left the seed, cell, roads, and open menu untouched, while accepting generated a different world seed and cleared the session.
+- Ticking Guided Tutorial persisted `simconquer_tutorial_enabled = true` and New Game showed "Step 1: Select a map tile". Save World produced a 68,644-character world save (seed, active hex, treasury) from the main menu, and Load World opened the file picker; re-importing that save restored the seed, active hex `820a07fffffffff`, treasury `$20,000`, and all 9 roads, revealed the app, hid the menu, reopened the globe, and advanced the tutorial to Step 3 to match the restored roads.
+- Editor diagnostics are clean, the stylesheet brace check still reports `final depth 0`, and `git diff --check` reports no whitespace errors.
+
+Current task: Guided Tutorial toggle becomes a button beside Audio (`0.2.13`).
+
+- [done] Replace the Guided Tutorial checkbox with a button styled like the Audio toggle, sitting immediately beside it at the bottom of the main menu.
+- [done] Make it a toggle on/off that shows its state in the label (`🎓 Tutorial: On` / `🎓 Tutorial: Off`) with matching `aria-pressed` and active styling, mirroring the Audio button's pattern.
+- [done] Drive New Game from `tutorialManager.isEnabled` rather than reading a checkbox element, so the button is the single source of truth.
+- [done] Drop the now-unused `.main-menu-toggle` styles.
+- [done] Update the tutorial and markup tests, bump/synchronize every version source to `0.2.13`, and record validation.
+
+Supersedes the checkbox described in the `0.2.12` entry above; that entry is left in place as history.
+
+Validation:
+- `npm test` passes all 46 test files. `tests/tutorial.test.js` now drives the button (its fake DOM element gained `classList` / `setAttribute`), asserting the default `🎓 Tutorial: On` label, that clicking turns it off and hides the banner, that a later session honours the stored preference, and that re-enabling plus restart returns to Step 1.
+- `tests/renderer-cache.test.js` asserts the main menu offers `#btn-main-tutorial` with an `On`/`Off` label, that no `chk-main-tutorial` checkbox remains, and that the toggle sits after `#btn-main-load-world` and immediately before `#btn-main-audio`.
+- Browser verification (Playwright, port 4173, `v0.2.13`): the menu renders six actions in order New Game, Save World, Load World, `🎓 Tutorial: On`, `🔇 Audio: Off`, Close; the tutorial and audio buttons share a row and are horizontally adjacent. Clicking the toggle flips the label to `🎓 Tutorial: Off`, clears `aria-pressed` and the `active` class, persists `simconquer_tutorial_enabled = false`, and hides the banner; clicking again restores `On` and the stored `true`.
+- End-to-end: with the toggle off, New Game produced no tutorial banner; with it on, New Game showed `Step 1: Select a map tile` at step 0. Editor diagnostics are clean, the stylesheet brace check reports `final depth 0`, and version sources are synchronized.

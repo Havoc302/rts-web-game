@@ -58,6 +58,9 @@ class GameApp {
     this.loanManager = new LoanManager();
     this.gameOver = false;
     this.hasEverHadPopulation = false;
+    // The app boots with no world loaded: the main menu is the entry point, and the
+    // city chrome stays hidden on a blank background until New Game or Load World.
+    this.worldActive = false;
     this.activeTool = 'pan';
     this.autoSwitchToPan = false;
     this.dismissedAlerts = new Set();
@@ -93,12 +96,13 @@ class GameApp {
 
     this.audioManager = new AudioManager();
     this.initAudioUI();
-    this.tutorialManager = new TutorialManager(this, { showWelcome: false });
+    this.tutorialManager = new TutorialManager(this);
     this.syncWorldOptionsAvailability();
 
     this.setSpeed(0);
     this.startRenderLoop();
-    this.openOverworld().then(() => this.tutorialManager.checkWelcomeModal());
+    this.setIdleState(true);
+    this.showMainMenu();
   }
 
   initCanvasSize() {
@@ -131,6 +135,13 @@ class GameApp {
       toolDrawer?.classList.remove('mobile-open');
     });
     document.getElementById('btn-overworld')?.addEventListener('click', () => this.openOverworld());
+    document.getElementById('btn-main-menu')?.addEventListener('click', () => this.showMainMenu());
+    document.getElementById('btn-main-close')?.addEventListener('click', () => this.hideMainMenu());
+    document.getElementById('btn-main-start-tutorial')?.addEventListener('click', () => {
+      this.hideMainMenu();
+      this.tutorialManager?.restart();
+    });
+    document.getElementById('btn-main-new-game')?.addEventListener('click', () => this.newGame());
 
     document.querySelectorAll('.tool-btn').forEach((btn) => {
       btn.addEventListener('click', (e) => {
@@ -247,9 +258,9 @@ class GameApp {
       });
     }
 
-    document.getElementById('btn-save-game')?.addEventListener('click', () => this.saveGameToFile());
+    document.getElementById('btn-main-save-world')?.addEventListener('click', () => this.saveGameToFile());
     document.getElementById('btn-export-game')?.addEventListener('click', () => this.exportGameToFile());
-    document.getElementById('btn-load-game')?.addEventListener('click', () => document.getElementById('game-file-input')?.click());
+    document.getElementById('btn-main-load-world')?.addEventListener('click', () => document.getElementById('game-file-input')?.click());
     document.getElementById('game-file-input')?.addEventListener('change', (e) => {
       const file = e.target.files?.[0];
       if (file) this.importGameFile(file);
@@ -272,39 +283,143 @@ class GameApp {
     });
   }
 
-  initAudioUI() {
-    const audioBtn = document.getElementById('btn-toggle-audio');
-    const promptModal = document.getElementById('audio-prompt-modal');
-    const btnYes = document.getElementById('btn-audio-yes');
-    const btnNo = document.getElementById('btn-audio-no');
+  showMainMenu() {
+    const menu = document.getElementById('main-menu');
+    if (menu) menu.style.display = 'flex';
+    this.updateAudioButtons?.();
+    this.updateMainMenuState();
+  }
 
-    const updateButtonState = (active) => {
-      if (!audioBtn) return;
-      audioBtn.textContent = active ? '🔊' : '🔇';
-      audioBtn.classList.toggle('active', active);
+  hideMainMenu() {
+    const menu = document.getElementById('main-menu');
+    if (menu) menu.style.display = 'none';
+  }
+
+  /**
+   * Toggles the "no world loaded" boot state: a blank background with only the main
+   * menu on screen, so the game starts like a title screen instead of a live city.
+   */
+  setIdleState(idle) {
+    this.worldActive = !idle;
+    document.body.classList.toggle('app-idle', idle);
+    if (idle) {
+      const overworld = document.getElementById('overworld-view');
+      if (overworld) overworld.hidden = true;
+      document.getElementById('game-over-modal')?.setAttribute('hidden', '');
+      const inspector = document.getElementById('inspector-panel');
+      inspector?.classList.remove('visible');
+    }
+    this.tutorialManager?.renderBanner();
+    this.updateMainMenuState();
+  }
+
+  updateMainMenuState() {
+    const saveButton = document.getElementById('btn-main-save-world');
+    if (saveButton) saveButton.disabled = !this.worldActive;
+    const closeButton = document.getElementById('btn-main-close');
+    if (closeButton) closeButton.disabled = !this.worldActive;
+    this.tutorialManager?.syncTutorialButton();
+  }
+
+  /**
+   * True once the player has actually changed the world, so New Game can warn before
+   * throwing that work away. A freshly generated, untouched world reports false.
+   */
+  hasWorldProgress() {
+    if (this.currentCellId) return true;
+    if (this.treasury !== STARTING_TREASURY) return true;
+    if (this.loanManager?.outstandingBalance > 0) return true;
+    const cityHasWork = (grid) => Boolean(grid) && (
+      grid.activeRoadTiles.size > 0 ||
+      grid.producers.length > 0 ||
+      Array.from(grid.getActiveZonedTiles()).length > 0
+    );
+    if (cityHasWork(this.grid)) return true;
+    for (const city of this.cityStates.values()) {
+      if (cityHasWork(city.grid)) return true;
+    }
+    return false;
+  }
+
+  async newGame() {
+    if (this.hasWorldProgress() && !window.confirm('Start a new game? All progress in this world — your cities, treasury, and loans — will be lost.')) {
+      return;
+    }
+    this.hideMainMenu();
+    this.setSpeed(0);
+    const startTutorial = Boolean(this.tutorialManager?.isEnabled);
+    const { RANDOM_SEED_MIN, RANDOM_SEED_MAX } = TERRAIN_GENERATION_CONFIG;
+    const pickSeed = () => Math.floor(Math.random() * (RANDOM_SEED_MAX - RANDOM_SEED_MIN)) + RANDOM_SEED_MIN;
+    this.worldSeed = pickSeed();
+    this.homeSeed = pickSeed();
+    localStorage.setItem('simconquer_world_seed', this.worldSeed);
+    localStorage.setItem('simconquer_home_seed', this.homeSeed);
+    localStorage.setItem(MAP_SEED_STORAGE_KEY, this.homeSeed);
+
+    // A new world discards the whole visible session: cities, wallet, loans, and terminal state.
+    this.cityStates.clear();
+    this.terrainPreviewCache.clear();
+    this.overworldSeedOverrides.clear();
+    this.currentCellId = null;
+    this.selectedCellId = null;
+    this.treasury = STARTING_TREASURY;
+    this.loanManager = new LoanManager();
+    this.gameOver = false;
+    this.hasEverHadPopulation = false;
+    const gameOverModal = document.getElementById('game-over-modal');
+    if (gameOverModal) gameOverModal.hidden = true;
+
+    this.grid = new Grid(undefined, undefined, this.homeSeed);
+    this.simulation = new Simulation(this.grid);
+    this.renderer.grid = this.grid;
+    this.renderer.terrainChunks = [];
+    this.renderer.terrainChunksVersion = -1;
+    this.renderer.selectedTile = null;
+    this.renderer.hoverTile = null;
+    this.renderer.trafficManager.grid = this.grid;
+    this.renderer.trafficManager.cars = [];
+    this.renderer.trafficManager.lastCoverageVersion = -1;
+
+    if (this.tutorialManager) {
+      // The Guided Tutorial toggle decides whether the new world shows instructions.
+      this.tutorialManager.setTutorialEnabled(startTutorial);
+      this.tutorialManager.currentStep = 0;
+      localStorage.setItem('simconquer_tutorial_step', '0');
+      this.tutorialManager.renderBanner?.();
+    }
+
+    this.overworldView?.dispose();
+    this.overworldView = null;
+    this.planet = null;
+    this.setIdleState(false);
+    await this.openOverworld();
+    this.updateHUD({ force: true });
+  }
+
+  initAudioUI() {
+    const audioButtons = [
+      document.getElementById('btn-toggle-audio'),
+      document.getElementById('btn-overworld-audio'),
+      document.getElementById('btn-main-audio'),
+    ].filter(Boolean);
+
+    this.updateAudioButtons = () => {
+      const playing = this.audioManager.isEnabled && !this.audioManager.isMuted;
+      const icon = playing ? '🔊' : '🔇';
+      for (const button of audioButtons) {
+        button.textContent = button.id === 'btn-main-audio' ? `${icon} Audio: ${playing ? 'On' : 'Off'}` : icon;
+        button.classList.toggle('active', playing);
+        button.setAttribute('aria-pressed', String(playing));
+      }
     };
 
-    // Initial prompt modal handlers
-    if (btnYes && btnNo && promptModal) {
-      btnYes.addEventListener('click', () => {
-        this.audioManager.enable();
-        updateButtonState(true);
-        promptModal.style.display = 'none';
-      });
-
-      btnNo.addEventListener('click', () => {
-        updateButtonState(false);
-        promptModal.style.display = 'none';
+    for (const button of audioButtons) {
+      button.addEventListener('click', () => {
+        this.audioManager.toggleMute();
+        this.updateAudioButtons();
       });
     }
-
-    // Toolbar Mute Button toggle
-    if (audioBtn) {
-      audioBtn.addEventListener('click', () => {
-        const isUnmuted = this.audioManager.toggleMute();
-        updateButtonState(isUnmuted);
-      });
-    }
+    this.updateAudioButtons();
   }
 
   resetMapWithSeed(seed, cellId = this.selectedCellId) {
@@ -562,6 +677,9 @@ class GameApp {
       this.updateHUD({ force: true });
       this.renderer.render(this.simulation);
       this.syncWorldOptionsAvailability();
+      // Loading a save is the other way out of the title screen.
+      this.setIdleState(false);
+      this.hideMainMenu();
       if (this.gameOver) this.showGameOver();
       if (imported.overworld) await this.openOverworld();
     } catch (error) {
@@ -619,6 +737,7 @@ class GameApp {
 
   setSpeed(speed) {
     if (this.gameOver && speed !== 0) return false;
+    if (!this.worldActive && speed !== 0) return false;
     document.querySelectorAll('.speed-controls .btn-icon').forEach((b) => b.classList.remove('active'));
     if (speed === 0) {
       document.getElementById('btn-pause').classList.add('active');
@@ -1515,8 +1634,8 @@ class GameApp {
 
   startRenderLoop() {
     const loop = () => {
-      if (!this.overworldView?.isOpen) this.renderer.render(this.simulation);
-      if (this._pendingHud) this.updateHUD();
+      if (this.worldActive && !this.overworldView?.isOpen) this.renderer.render(this.simulation);
+      if (this.worldActive && this._pendingHud) this.updateHUD();
       if (this._pendingInspectorTile) this.updateInspector(this._pendingInspectorTile);
       this.logUiTimingIfNeeded();
       requestAnimationFrame(loop);

@@ -46,9 +46,8 @@ export const TUTORIAL_STEPS = [
 ];
 
 export class TutorialManager {
-  constructor(app, { showWelcome = true } = {}) {
+  constructor(app) {
     this.app = app;
-    this.welcomeKey = 'simconquer_welcome_dismissed';
     this.tutorialEnabledKey = 'simconquer_tutorial_enabled';
     this.stepKey = 'simconquer_tutorial_step';
 
@@ -57,37 +56,27 @@ export class TutorialManager {
     this.steps = TUTORIAL_STEPS;
 
     this.bindUI();
-    if (showWelcome) this.checkWelcomeModal();
     this.renderBanner();
   }
 
-  checkWelcomeModal() {
-    const welcomeModal = document.getElementById('welcome-modal');
-    if (welcomeModal && localStorage.getItem(this.welcomeKey) !== 'true') {
-      welcomeModal.style.display = 'flex';
+  bindUI() {
+    // The Guided Tutorial button in the main menu is the single on/off control.
+    const tutorialButton = document.getElementById('btn-main-tutorial');
+    if (tutorialButton) {
+      tutorialButton.addEventListener('click', () => this.setTutorialEnabled(!this.isEnabled));
     }
+    this.syncTutorialButton();
+
+    document.getElementById('btn-dismiss-tutorial')?.addEventListener('click', () => this.setTutorialEnabled(false));
   }
 
-  bindUI() {
-    const welcomeModal = document.getElementById('welcome-modal');
-    const dontShowChk = document.getElementById('chk-welcome-dont-show');
-    const settingsToggle = document.getElementById('chk-toggle-tooltips');
-
-    if (settingsToggle) {
-      settingsToggle.checked = this.isEnabled;
-      settingsToggle.addEventListener('change', (e) => this.setTutorialEnabled(e.target.checked));
-    }
-
-    const handleWelcomeClose = (startSteps) => {
-      if (dontShowChk?.checked) localStorage.setItem(this.welcomeKey, 'true');
-      if (welcomeModal) welcomeModal.style.display = 'none';
-      if (startSteps) this.restart();
-      else this.setTutorialEnabled(false);
-    };
-
-    document.getElementById('btn-start-tutorial')?.addEventListener('click', () => handleWelcomeClose(true));
-    document.getElementById('btn-skip-welcome')?.addEventListener('click', () => handleWelcomeClose(false));
-    document.getElementById('btn-dismiss-tutorial')?.addEventListener('click', () => this.setTutorialEnabled(false));
+  /** Keeps the main-menu toggle's label and pressed state matching the preference. */
+  syncTutorialButton() {
+    const button = document.getElementById('btn-main-tutorial');
+    if (!button) return;
+    button.textContent = `🎓 Tutorial: ${this.isEnabled ? 'On' : 'Off'}`;
+    button.classList.toggle('active', this.isEnabled);
+    button.setAttribute('aria-pressed', String(this.isEnabled));
   }
 
   restart() {
@@ -100,9 +89,7 @@ export class TutorialManager {
     this.isEnabled = enabled;
     localStorage.setItem(this.tutorialEnabledKey, String(enabled));
 
-    const settingsToggle = document.getElementById('chk-toggle-tooltips');
-    if (settingsToggle) settingsToggle.checked = enabled;
-
+    this.syncTutorialButton();
     this.renderBanner();
   }
 
@@ -125,7 +112,9 @@ export class TutorialManager {
     const banner = document.getElementById('tutorial-banner');
     if (!banner) return;
 
-    if (!this.isEnabled || this.currentStep >= this.steps.length) {
+    // No world is loaded yet (title screen), so there is nothing to guide the player through.
+    const idle = this.app?.worldActive === false;
+    if (!this.isEnabled || idle || this.currentStep >= this.steps.length) {
       banner.style.display = 'none';
       return;
     }

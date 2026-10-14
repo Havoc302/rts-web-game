@@ -5,8 +5,8 @@
 | Title | SimConquer 2000 — Architecture & Product Design |
 | Author | TBD |
 | Date | 2026-10-06 |
-| Status | Living draft (rev 22) |
-| Version covered | `APP_VERSION` `0.2.10` (`src/version.js`); current working tree |
+| Status | Living draft (rev 25) |
+| Version covered | `APP_VERSION` `0.2.13` (`src/version.js`); current working tree |
 | Intended in-repo path | `docs/DESIGN.md` |
 | Repo | `g:\Repos\rts-web-game` (`origin`: `https://github.com/Havoc302/rts-web-game.git`) |
 | Working tree at inventory | Documentation is checked against the current implementation; uncommitted changes may exist. |
@@ -40,19 +40,19 @@ This document exists to make the following boundaries explicit:
 
 ### Current state (honest)
 
-B&C2000 is a **single-player, client-only, paused-by-default city builder**. A session is: pick a seed, build a city, open the planet globe, and visit other seeded cities. Paused cities can be exported to JSON and imported later; there is no localStorage city autosave, so refreshing without exporting still loses the session. Food, consumer goods, oil/fuel, agriculture, crime, fire, services, and military stockpile display are implemented; military production has no unit sink yet.
+B&C2000 is a **single-player, client-only, paused-by-default city builder**. A session starts at the main menu with no world loaded; the player presses `New Game` to generate a random planet or `Load World` to import a save, then builds a city, opens the planet globe, and visits other seeded cities. Paused cities can be exported to JSON from the main menu and imported later; there is no localStorage city autosave, so refreshing without exporting still loses the session. Food, consumer goods, oil/fuel, agriculture, crime, fire, services, and military stockpile display are implemented; military production has no unit sink yet.
 
 ### Seeded Planet (0.2.5)
 
 `OverworldMap` uses H3 resolution-two cells to cover the spherical planet with 5,882 connected hexes. The planet seed independently places six irregular continents and island chains; no Earth coastlines or fixed continent coordinates are used. Ocean hexes have no biome or city seed. Land biomes form regional temperate lowlands, plains, hills, mountains, swamps, and deserts, and each land hex has a deterministic city seed. The first seeded continent supplies the home hex for moving an existing city when regenerating a planet.
 
-Startup opens the globe, with the welcome popup above it once the globe is ready. No city is assigned, highlighted, or retained until the player selects a land tile and chooses `Open Map`; this generates that tile's seeded biome rather than starting in a mixed placeholder city. The tutorial begins with `Step 1: Select a map tile` and advances to roads after entering the selected map. The tutorial banner sits below the globe header so it does not overlap mobile tile details. Returning to a city is available only after selecting a map.
+Startup loads no world at all. The app boots to a blank background with only the main menu visible; the header bar, city HUD, build tools, and canvas chrome stay hidden until the player starts or loads a game. The main menu is the entry point and owns the audio on/off control, the getting-started instructions, a `Guided Tutorial` toggle button that shows its current state and sits beside the audio toggle, `New Game`, `Save World`, `Load World`, and `Close`. It can be reopened at any time from the Main Menu button in the world-map header. `New Game` asks for confirmation when the current world already has player progress (any placed road, zone, or building, a changed treasury, a visited hex, or outstanding debt); a pristine world starts without a prompt. When `Guided Tutorial` is switched on, pressing `New Game` starts the step-by-step instructions for the new world. No city is assigned, highlighted, or retained until the player selects a land tile and chooses `Open Map`; this generates that tile's seeded biome rather than starting in a mixed placeholder city. The tutorial begins with `Step 1: Select a map tile` and advances to roads after entering the selected map. The tutorial banner sits below the globe header so it does not overlap mobile tile details. Returning to a city is available only after selecting a map.
 
 The World Map header also displays SimConquer 2000 and the current `APP_VERSION`, matching the city header. The title and branding wrap on narrow screens without overlapping planet-seed controls.
 
 Displayed tile boundaries are spherical Voronoi polygons derived from the existing H3 cell centers using Three.js `ConvexHull`. This removes H3 projection-seam kinks and produces 5,870 convex hexagons and 12 convex pentagons with shared, gap-free edges. Surface fills, borders, selection outlines, and picking use the same displayed geometry. Logical H3 IDs, original boundaries, city seeds, biome assignments, and save data remain unchanged.
 
-`OverworldView` renders the globe using Three.js and opens from the World button at the end of the top-bar speed controls, beside Mute. The shared treasury is displayed on the right of the globe header, immediately before Options. Players rotate and select land, enter a city generated on first visit, and return to visited cities with their state intact. Opening the globe pauses simulation and sets its speed to zero. A globe-only Options menu contains selected-tile and planet seed controls, reset/randomize actions, and Save World / Load World actions. The selected-tile seed field follows the highlighted land hex; changing or randomizing it clears that hex's previous city state and lazily regenerates the selected city's map from its new seed. Changing the planet seed asks for confirmation, moves the active city to the new home hex, and removes previously visited cities. Version-2 JSON world saves include the planet seed, nullable active hex, every land hex's city seed, home city seed, and every other visited city snapshot. World saves made before selecting a city are supported, and importing a world save returns to the globe. Older city-only saves remain importable. Terrain generation stays at version 2. Combat and world-map armies are still future work.
+`OverworldView` renders the globe using Three.js and opens from the World button at the end of the top-bar speed controls, beside Mute. The globe header shows a Main Menu button at the far left beside the `WORLD MAP` title, then the shared treasury, then the `Edit World` control, then the music mute toggle at the far right. Players rotate and select land, enter a city generated on first visit, and return to visited cities with their state intact. Opening the globe pauses simulation and sets its speed to zero. The `Edit World` menu contains selected-tile and planet seed controls and reset/randomize actions; Save World and Load World live in the main menu. Choosing `New Game` from the main menu discards the current session (visited cities, treasury, and loans) and generates a brand-new random planet with a fresh home city seed, returning to the globe; choosing it again produces another whole new world. The selected-tile seed field follows the highlighted land hex; changing or randomizing it clears that hex's previous city state and lazily regenerates the selected city's map from its new seed. Changing the planet seed asks for confirmation, moves the active city to the new home hex, and removes previously visited cities. Version-2 JSON world saves include the planet seed, nullable active hex, every land hex's city seed, home city seed, and every other visited city snapshot. World saves made before selecting a city are supported, and importing a world save returns to the globe. Older city-only saves remain importable. Terrain generation stays at version 2. Combat and world-map armies are still future work.
 
 New biome cities use biome profile 3: plains have sparse rocks, hills have larger rocky clusters, and mountains have large formations with less forest cover. Swamps generate 10-16 lakes with a 3.2x radius scale, up from 4-6 lakes with a 1.6x scale in profiles 1 and 2. Other biomes retain their profile-2 settings. The hex seed and biome both reach `Grid` on first entry. Saves record `map.biomeGenerationVersion` separately from the unchanged terrain generation version 2. Saves without that field regenerate using the original biome profile 1, and profile-2 saves retain the previous swamp settings, preserving terrain and hidden ore. Already-visited cities are not regenerated automatically. Resetting a city adopts the current biome profile.
 
@@ -103,9 +103,9 @@ The land-tile action is labeled `Open Map` for current, visited, and unexplored 
 Implemented; automated coverage is listed below, with browser-level gaps called out separately:
 
 - Pause-safe placement previews, treasury accounting, famine recovery, agriculture occupancy, resource consumption, fuel/refining, crime, fire, civic staffing, mobile input/layout, wind/solar/battery connectivity, version synchronization, chunked terrain rendering, and bounded HUD/inspector updates.
-- Unified test execution through `npm test`; all 45 test files pass.
+- Unified test execution through `npm test`; all 46 test files pass.
 - Residential, commercial, industrial, and agricultural zone tiers upgrade manually after reaching full occupancy; full tiles are marked and expose a costed Upgrade action in the inspector.
-- Planned Finance feature: treasury and loan ledger are shared across visited cities; loan-backed game over checks combined population across all cities.
+- Global Finance: treasury and loan ledger are shared across visited cities, whose economies tick together; loans amortize over 720 ticks and loan-backed game over checks combined population across all cities.
 - Road maintenance budget and deterioration: underfunded road tiles are randomly selected for 10% damage per tick; destroyed roads leave the active network and sever utilities/pathing unless an alternate route exists.
 - Versioned sparse city JSON export/import, seeded planet/world saves, the survey overlay and survey expense/cancellation flow, and School/University education tax bonuses are implemented.
 - City saves are manual file export/import only. A city autosave and autosave-based startup/restore flow are not implemented.
@@ -141,7 +141,7 @@ Correctness remains the constraint: river direction, utility shortfalls, fire re
 
 Outstanding implementation work:
 
-- LocalStorage city autosave, autosave boot precedence, and a confirmed New Game flow, as specified in the persistence design below.
+- LocalStorage city autosave and autosave boot precedence, as specified in the persistence design below.
 - Browser-level validation of JSON save download/import.
 - Named tick-stage extraction (`stagePrepare` / `stageUtilities` / …).
 - Stronger browser-level UI/touch validation.
@@ -213,7 +213,7 @@ flowchart TB
 | Terrain chunk size | 64 tiles (2048 px, under a 4096 GPU cap) | `RENDERER_CONFIG.TERRAIN_CHUNK_TILES` |
 | Mobile HUD cadence | 500 ms on coarse-pointer layouts | `RENDERER_CONFIG.HUD_MOBILE_CADENCE_MS` |
 | Dev | `"dev": "npx serve ."` | `package.json` |
-| Version | `0.2.5` from `src/version.js`, synchronized with `package.json` and cache-busting consumers | `tests/version-sync.test.js` |
+| Version | `0.2.13` from `src/version.js`, synchronized with `package.json` and cache-busting consumers | `tests/version-sync.test.js` |
 | `config.js` | 690 lines total (~637 non-blank) | file |
 | `Renderer.js` | 897 lines | file |
 
@@ -470,7 +470,7 @@ Node `assert` scripts; `package.json` `"test"` runs `tests/run-all.js`, which di
 | `renderer-cache.test.js` | Terrain-chunk identity on stable ticks, overlay non-invalidation, incremental bulldoze, full regen | — |
 | `demographics.test.js` | 40/40/20 jobs, split, pensions, retiree patients | — |
 
-This is a representative coverage map, not an exhaustive test inventory; `npm test` currently runs 44 test files. **Still lightly tested:** `main.js` input and treasury wiring, CSS/HTML, visual HUD behavior, browser touch interaction, and JSON file download/import in a real browser. Sparse-save size and version-1 migration are covered by `tests/save-game.test.js`. Full-map mobile responsiveness was verified on the reporting phone after Stage 5.
+This is a representative coverage map, not an exhaustive test inventory; `npm test` currently runs 46 test files. **Still lightly tested:** `main.js` input and treasury wiring, CSS/HTML, visual HUD behavior, browser touch interaction, and JSON file download/import in a real browser. Sparse-save size and version-1 migration are covered by `tests/save-game.test.js`. Full-map mobile responsiveness was verified on the reporting phone after Stage 5.
 
 ---
 
@@ -721,7 +721,7 @@ export function deserializeGame(data) { /* validate, migrate, restore */ }
 export function deserializeGameFromJson(json) { /* parse then validate/restore */ }
 ```
 
-These APIs and paused-only JSON file export/import are implemented. LocalStorage autosave, autosave boot precedence, and the confirmed New Game flow described below are planned requirements, not current behavior. The UI currently provides Save/Export and Load/Import file controls.
+These APIs and paused-only JSON file export/import are implemented. LocalStorage autosave and autosave boot precedence are planned requirements, not current behavior. The New Game flow and its destructive-action confirmation are implemented in the main menu, which also owns the Save World and Load World buttons; the city and world-map headers no longer expose save/load.
 
 **Boot precedence (decided):**
 
@@ -764,7 +764,7 @@ return stats.incomePerTick  # GameApp.simTick is the only caller that applies it
 
 ### HUD
 
-- Badge and stylesheet cache-busting use the current `APP_VERSION` (`0.1.8`); package/source synchronization is tested.
+- Badge and stylesheet cache-busting use the current `APP_VERSION` (`0.2.13`); package/source synchronization is tested.
 - Happiness chip; oil, fuel, bars, arms, tanks chips.
 - Build-info: handle `zone_a`.
 - Overlay picker: add Police / Fire / Hospital buttons already handled in `renderOverlay`.
@@ -956,7 +956,7 @@ Phase 1 has no backend. Observability is **debuggability and regression detectio
 
 `Simulation.stats` (later per-faction stats) is the metric bus. HUD is the dashboard. Add happiness + oil/fuel/bars/arms/tanks so the dashboard matches the sim.
 
-Police, fire, and hospital overlay controls are exposed in the current HTML. Coverage caching remains an outstanding Phase 1 task.
+Police, fire, and hospital overlay controls are exposed in the current HTML, and emergency coverage caching (direct, connected-road, and road-side sets) is implemented.
 
 ### Alerting → test suites
 
@@ -998,7 +998,7 @@ Phase 1 stays paused-by-default sandbox (0% tax, $25,000) for solo city-building
 
 6. **Single-player local is the current and Phase 1 constraint.** The v1.x *product* is **online matches** (Google identity + Firebase), not forever-offline. No login required to play Phase 1.
 
-7. **Procedural canvas art remains default through 1.0.** Sprites are optional later and do not justify a bundler now. Happiness drives growth and remains an outstanding dedicated HUD item.
+7. **Procedural canvas art remains default through 1.0.** Sprites are optional later and do not justify a bundler now. Happiness drives growth and is displayed in the top-bar HUD.
 
 8. **`src/config.js` remains the balance source of truth.** Split only when combat constants make it unnavigable.
 
@@ -1050,7 +1050,7 @@ Phase 1 stays paused-by-default sandbox (0% tax, $25,000) for solo city-building
 
 28. **Overworld Biome Generation.** `BIOME_TYPES` (`PLAINS`, `HILLY`, `MOUNTAINOUS`, `SWAMP`) modify procedural terrain generation: Hilly/Mountainous scale rock clusters (+25% / +50%); Plains reduce rock clusters (-50%); Swamp reduces forest (-50%), increases lakes (4-6), and forces fork/merge rivers. `generateProceduralTerrain(biome)` accepts the biome directly.
 
-29. **Single-source versioning.** `src/version.js` (`APP_VERSION = '0.1.65'`) is the single source of truth for version strings. `package.json` version and cache-busting consumers derive from it. Verified by `tests/version-sync.test.js`.
+29. **Single-source versioning.** `src/version.js` (`APP_VERSION = '0.2.13'`) is the single source of truth for version strings. `package.json` version and cache-busting consumers derive from it. Verified by `tests/version-sync.test.js`.
 
 30. **Desktop Pan and Drag Painting.** Desktop left-drag with the Pan tool pans the camera; clicking without dragging selects the tile without opening the inspector. Inspect Tile opens the inspector. Left-drag painting is restricted to repeatable tools (roads, bridges, tunnels, zones, bulldoze); single-placement buildings and surveys do not drag-paint.
 
@@ -1079,8 +1079,8 @@ Resolved by the user (rev 4): Conquer hybrid + world map + Firebase (Q1), victor
 ## References
 
 - Product title: `index.html` `<title>SimConquer 2000</title>`, brand `SimConquer 2000`.
-- Onboarding: `src/engine/TutorialManager.js` shows `#welcome-modal` above the startup globe until dismissed with "Don't show again", and a `#tutorial-banner` with six milestone steps (select a map tile, roads, utilities, residential + agriculture, jobs, population). The welcome guide puts map selection first and shifts its six city foundations down one. State persists in `localStorage` keys `simconquer_welcome_dismissed`, `simconquer_tutorial_enabled`, `simconquer_tutorial_step`. Startup without a selected city and "Start Guided Tutorial" both begin at Step 1; already-satisfied steps on the chosen map then advance automatically. Map seed key is `simconquer_map_seed` (one-time legacy read of `bc2000_map_seed`). Save downloads are `simconquer2000-save-YYYY-MM-DD-HHMMSS-seed-<seed>.json`.
-- Version: `APP_VERSION` `0.1.6` in `src/version.js`; `package.json` is synchronized and version/cache-busting behavior is covered by the version-sync test.
+- Onboarding: `src/engine/TutorialManager.js` shows a `#tutorial-banner` with six milestone steps (select a map tile, roads, utilities, residential + agriculture, jobs, population). The main menu owns the `Guided Tutorial` toggle button; switching it on and pressing `New Game` begins at Step 1, and the banner stays hidden while no world is loaded. State persists in `localStorage` keys `simconquer_tutorial_enabled` and `simconquer_tutorial_step`. Already-satisfied steps on the chosen map advance automatically after starting or loading a world. Map seed key is `simconquer_map_seed` (one-time legacy read of `bc2000_map_seed`). Save downloads are `simconquer2000-save-YYYY-MM-DD-HHMMSS-seed-<seed>.json`.
+- Version: `APP_VERSION` `0.2.13` in `src/version.js`; `package.json` is synchronized and version/cache-busting behavior is covered by the version-sync test.
 - Entry / orchestration: `src/main.js` (`GameApp`), `src/engine/Simulation.js` (`tick`, `computeStats`, `updateGrowthAndDensity`).
 - Spatial model: `src/engine/Grid.js` (`createDefaultTile`, `generateProceduralTerrain`, placement).
 - View: `src/engine/Renderer.js`, `style.css`, overlay buttons in `index.html`.

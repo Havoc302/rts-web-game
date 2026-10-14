@@ -79,6 +79,26 @@ function makeRenderer(grid, width = 800, height = 600) {
   );
   assert.ok(markup.includes('Game over, all your people left'), 'The terminal game-over text should be present');
   assert.match(markup, /id="game-over-modal"[\s\S]*?<button id="btn-restart-game"[^>]*>Restart<\/button>/, 'Game over should offer a Restart button inside the terminal dialog');
+  assert.ok(markup.includes('id="main-menu"'), 'A main menu overlay should exist');
+  assert.match(markup, /id="main-menu"[\s\S]*?id="btn-main-audio"/, 'Main menu should offer an audio toggle');
+  assert.match(markup, /id="main-menu"[\s\S]*?id="btn-main-tutorial"[^>]*>🎓 Tutorial: (On|Off)</, 'Main menu should offer a Guided Tutorial toggle button that shows its state');
+  assert.ok(!markup.includes('chk-main-tutorial'), 'Guided Tutorial should no longer be a checkbox');
+  assert.ok(
+    markup.indexOf('id="btn-main-tutorial"') < markup.indexOf('id="btn-main-audio"') &&
+    markup.indexOf('id="btn-main-load-world"') < markup.indexOf('id="btn-main-tutorial"'),
+    'The Guided Tutorial toggle should sit beside the Audio button',
+  );
+  assert.match(markup, /id="main-menu"[\s\S]*?id="btn-main-new-game"/, 'Main menu should offer New Game');
+  assert.match(markup, /id="main-menu"[\s\S]*?id="btn-main-save-world"/, 'Main menu should offer Save World');
+  assert.match(markup, /id="main-menu"[\s\S]*?id="btn-main-load-world"/, 'Main menu should offer Load World');
+  assert.match(markup, /id="main-menu"[\s\S]*?id="game-file-input"/, 'The Load World file picker should live in the main menu');
+  assert.ok(!markup.includes('id="btn-save-game"'), 'Save World should no longer sit in the city or world-map header');
+  assert.ok(!markup.includes('id="btn-load-game"'), 'Load World should no longer sit in the city or world-map header');
+  assert.ok(!markup.includes('id="welcome-modal"'), 'The main menu should replace the old welcome modal');
+  assert.ok(!markup.includes('id="audio-prompt-modal"'), 'The main menu should replace the standalone audio prompt');
+  assert.match(markup, /id="btn-main-menu"[\s\S]*?class="overworld-title"/, 'World-map Main Menu button should sit left of the WORLD MAP title');
+  assert.ok(markup.indexOf('id="overworld-options"') < markup.indexOf('id="btn-overworld-audio"'), 'Music toggle should sit at the far right, after Edit World');
+  assert.ok(markup.includes('Edit World'), 'The world options control should be labelled Edit World');
   for (const type of [PRODUCER_TYPE.WAREHOUSE_ORE, PRODUCER_TYPE.WAREHOUSE_BAR, PRODUCER_TYPE.WAREHOUSE_GOODS]) {
     const ctx = createMockCtx(new MockCanvas());
     const painted = [];
