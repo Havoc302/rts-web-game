@@ -135,10 +135,20 @@ export class Grid {
 
   generateHiddenOres() {
     const oreTypes = Object.keys(ORE_CONFIG);
+    const weights = oreTypes.map((type) => ORE_CONFIG[type].spawnWeight ?? 1);
+    const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
     for (const row of this.tiles) {
       for (const tile of row) {
         if (this.random() >= (ORE_GENERATION[tile.terrain] || 0)) continue;
-        tile.ore = oreTypes[Math.floor(this.random() * oreTypes.length)];
+        // Weighted pick so common metals stay common and titanium stays a rare find. One
+        // draw, matching the previous uniform pick's PRNG usage.
+        let roll = this.random() * totalWeight;
+        let index = 0;
+        while (index < weights.length - 1 && roll >= weights[index]) {
+          roll -= weights[index];
+          index++;
+        }
+        tile.ore = oreTypes[index];
       }
     }
   }
@@ -642,12 +652,32 @@ export class Grid {
     return this.isRoadAdjacent(x, y);
   }
 
+  /**
+   * True when bulldozing would actually change the tile. Wrecked road rubble counts: the
+   * player clears it here before rebuilding. Kept in step with `bulldoze`.
+   */
+  canBulldoze(x, y) {
+    const tile = this.getTile(x, y);
+    if (!tile) return false;
+    return Boolean(
+      tile.destroyed ||
+      tile.roadDamage ||
+      tile.hasRoad ||
+      tile.hasBridge ||
+      tile.hasTunnel ||
+      tile.producer ||
+      tile.zone !== ZONE.NONE ||
+      tile.terrain === TERRAIN_TYPE.FOREST
+    );
+  }
+
   canBuildTool(x, y, tool) {
     if (!tool) return false;
     if (tool === 'road') return this.canPlaceRoad(x, y);
     if (tool === 'bridge') return this.canPlaceBridge(x, y);
     if (tool === 'tunnel') return this.canPlaceTunnel(x, y);
     if (tool === 'survey') return this.canSurvey(x, y);
+    if (tool === 'bulldoze') return this.canBulldoze(x, y);
     if (tool.startsWith('zone_')) return this.canZone(x, y);
     const producerType = producerTypeForTool(tool);
     return producerType ? this.canBuildProducer(x, y, producerType) : false;
@@ -738,7 +768,9 @@ export class Grid {
       surveyProgress: 0,
       surveyRequired: 0,
       budget: SERVICE_GLOBAL_CONFIG.BUDGET_MAX_VALUE,
-      recipe: 'CONSUMER_GOODS',
+      // Only a Smelter runs a recipe. Null means "not applicable", and for a Smelter it
+      // means All Evenly, which is also the default the inspector presents.
+      recipe: null,
       storageType: PRODUCER_CONFIG[producerType]?.defaultStorageType || null,
       x,
       y,
@@ -906,6 +938,17 @@ export class Grid {
     this.activeRoadTiles.delete(tile);
     this.coverageVersion++;
     this.pollutionDirty = true;
+    return true;
+  }
+
+  /**
+   * Restores a worn road tile to pristine. Damage alone never affects pathing, so this
+   * does not invalidate coverage. Wrecked tiles are not repairable this way; they stay as
+   * rubble until the player bulldozes and rebuilds them.
+   */
+  repairRoad(tile) {
+    if (!tile || !tile.hasRoad || tile.destroyed || !tile.roadDamage) return false;
+    tile.roadDamage = 0;
     return true;
   }
 }

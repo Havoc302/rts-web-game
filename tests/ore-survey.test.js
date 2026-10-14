@@ -28,7 +28,7 @@ function clearTerrain(grid) {
       }
     }
   }
-  assert.ok(Object.keys(ORE_CONFIG).length === 5, 'Five ore types should exist');
+  assert.strictEqual(Object.keys(ORE_CONFIG).length, 7, 'Seven ore types should exist: iron, bauxite, coal, oil, uranium, copper and titanium');
   assert.ok(mountainTiles > 0 && flatTiles > 0, 'Test map should contain mountain and flat terrain');
   assert.ok(mountainDeposits / mountainTiles > flatDeposits / flatTiles, 'Mountains should have a higher ore deposit rate');
 }

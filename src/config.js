@@ -81,6 +81,9 @@ export const PRODUCER_TYPE = {
   MINE_BAUXITE: 'mine_bauxite',
   MINE_COAL: 'mine_coal',
   MINE_URANIUM: 'mine_uranium',
+  MINE_COPPER: 'mine_copper',
+  MINE_TITANIUM: 'mine_titanium',
+  QUARRY_SAND: 'quarry_sand',
   OIL_DERRICK: 'oil_derrick',
   REFINERY: 'refinery',
   WAREHOUSE_ORE: 'warehouse_ore',
@@ -138,14 +141,20 @@ export const ORE_TYPE = {
   COAL: 'coal',
   OIL: 'oil',
   URANIUM: 'uranium',
+  COPPER: 'copper',
+  TITANIUM: 'titanium',
 };
 
+// `spawnWeight` biases which ore a discovered deposit turns out to be. Common metals stay
+// common while titanium is deliberately rare, so finding it stays a reward.
 export const ORE_CONFIG = {
-  [ORE_TYPE.IRON_ORE]: { name: 'IRON', color: '#94a3b8' },
-  [ORE_TYPE.BAUXITE]: { name: 'Bauxite', color: '#c2410c' },
-  [ORE_TYPE.COAL]: { name: 'Coal', color: '#1f2937' },
-  [ORE_TYPE.OIL]: { name: 'Oil', color: '#111827' },
-  [ORE_TYPE.URANIUM]: { name: 'Uranium', color: '#84cc16' },
+  [ORE_TYPE.IRON_ORE]: { name: 'IRON', color: '#94a3b8', spawnWeight: 20 },
+  [ORE_TYPE.BAUXITE]: { name: 'Bauxite', color: '#c2410c', spawnWeight: 16 },
+  [ORE_TYPE.COAL]: { name: 'Coal', color: '#1f2937', spawnWeight: 20 },
+  [ORE_TYPE.OIL]: { name: 'Oil', color: '#111827', spawnWeight: 12 },
+  [ORE_TYPE.URANIUM]: { name: 'Uranium', color: '#84cc16', spawnWeight: 8 },
+  [ORE_TYPE.COPPER]: { name: 'Copper', color: '#e07b39', spawnWeight: 14 },
+  [ORE_TYPE.TITANIUM]: { name: 'Titanium', color: '#e2e8f0', spawnWeight: 6 },
 };
 
 export const COVERAGE_CONFIG = {
@@ -164,9 +173,6 @@ export const RESOURCE_CONFIG = {
   CONSUMER_GOODS_PER_RESIDENT: 0.08,    // Consumer goods demand per resident per tick
   MINE_EXTRACTION_PER_JOB: 0.2,         // Raw resource extracted by one filled mine job per tick
   WAREHOUSE_CAPACITY_PER_TILE: 500,     // Storage capacity provided by one warehouse building
-  SMELTER_ORE_PER_BAR: 1.0,             // Ore consumed to produce one metal bar
-  SMELTER_COAL_PER_BAR: 0.5,            // Coal consumed to produce one metal bar
-  SMELTER_BARS_PER_JOB: 0.2,            // Metal bars produced by one filled smelter job per tick
   COAL_PLANT_FUEL_PER_MW: 0.02,         // Coal consumed per megawatt supplied by a coal plant
   SILO_CAPACITY: 1000,                  // Storage capacity provided by one silo
   FOOD_PER_AGRICULTURAL_JOB: 0.1,        // Legacy per-job food rate; farm tiles now use AGRICULTURAL_FOOD_YIELD * fill ratio
@@ -258,14 +264,6 @@ export const BIOME_CONFIG = {
     lakeRadiusScale: 1.6,
     riverMode: 'fork_merge',
   },
-};
-
-// Industrial recipe definitions. Input values are stockpile units per output unit.
-export const FACTORY_RECIPES = {
-  CONSUMER_GOODS: { inputs: { bauxiteBar: 0.5, ironBar: 0.5, oil: 1 }, output: 'consumerGoods', rate: 0.2 },
-  FOOD: { inputs: {}, output: 'food', rate: 0.1 },
-  ARMS: { inputs: { ironBar: 0.5 }, output: 'arms', rate: 0.05 },
-  TANKS: { inputs: { ironBar: 1.0, bauxiteBar: 0.5 }, output: 'tanks', rate: 0.02 },
 };
 
 // Happiness feedback values shared by food and consumer-goods simulation.
@@ -545,6 +543,28 @@ export const PRODUCER_CONFIG = {
     utilityUsage: { power: 2, water: 1, sewage: 1 },
     jobs: { light: 10, medium: 10, high: 10 },
   },
+  [PRODUCER_TYPE.MINE_COPPER]: {
+    name: 'Copper Mine', category: 'resource', utility: 'resource', capacity: 0,
+    cost: 5000, color: '#e07b39',
+    requiresDiscoveredOre: ORE_TYPE.COPPER,
+    utilityUsage: { power: 1, water: 1, sewage: 1 },
+    jobs: { light: 10, medium: 10, high: 10 },
+  },
+  [PRODUCER_TYPE.MINE_TITANIUM]: {
+    name: 'Titanium Mine', category: 'resource', utility: 'resource', capacity: 0,
+    cost: 5000, color: '#e2e8f0',
+    requiresDiscoveredOre: ORE_TYPE.TITANIUM,
+    utilityUsage: { power: 1, water: 1, sewage: 1 },
+    jobs: { light: 10, medium: 10, high: 10 },
+  },
+  // Sand is everywhere, so unlike the ore mines a quarry needs no surveyed deposit.
+  // Quarries strip-mine topsoil rather than sinking a shaft, hence the different name.
+  [PRODUCER_TYPE.QUARRY_SAND]: {
+    name: 'Sand Quarry', category: 'resource', utility: 'resource', capacity: 0,
+    cost: 5000, color: '#e2c88b',
+    utilityUsage: { power: 1, water: 1, sewage: 1 },
+    jobs: { light: 10, medium: 10, high: 10 },
+  },
   [PRODUCER_TYPE.OIL_DERRICK]: {
     name: 'Oil Derrick', category: 'resource', utility: 'resource', capacity: 0,
     cost: 7000, color: '#111827',
@@ -637,7 +657,13 @@ export const COSTS = {
 export const ROAD_MAINTENANCE_COST = 1; // Maintenance cost per road or bridge tile per tick
 export const ROAD_MAINTENANCE_CONFIG = {
   DEFAULT_BUDGET: 100,
-  DAMAGE_PER_UNFUNDED_TICK: 10,
+  // Underfunding rolls a share of the network equal to the missing budget, so 99% funding
+  // rolls one tile per hundred road tiles and 50% funding rolls half the network.
+  // Each rolled tile then has this flat chance of taking DAMAGE_PER_HIT.
+  DAMAGE_ROLL_CHANCE: 0.05,
+  // Damage from one hit. Road tiles degrade from 0 to 100, so ten hits wreck a tile and
+  // the tile is worth ten hits of health.
+  DAMAGE_PER_HIT: 10,
 };
 export const UTILITY_OPERATING_COST = 2; // Per power generator, battery, water pump, or sewage plant per tick
 

@@ -9,9 +9,8 @@ import {
   SAVE_VERSION,
   serializeGame,
   serializeGameToJson,
-  serializeGameV1,
 } from '../src/engine/SaveGame.js';
-import { BIOME_TYPES, PRODUCER_TYPE, TERRAIN, ZONE } from '../src/config.js';
+import { APP_VERSION, BIOME_TYPES, PRODUCER_TYPE, TERRAIN, ZONE } from '../src/config.js';
 
 function makeApp(grid, simulation, extras = {}) {
   simulation.isPaused = true;
@@ -183,11 +182,11 @@ for (const biome of Object.values(BIOME_TYPES)) {
   );
   assert.throws(
     () => deserializeGame({ saveVersion: SAVE_VERSION + 1 }),
-    /Unsupported save version/,
-    'Unknown save versions should be rejected',
+    /format version/,
+    'Unknown save formats should be rejected',
   );
   assert.throws(
-    () => deserializeGame({ saveVersion: SAVE_VERSION, generationVersion: GENERATION_VERSION + 1, map: { width: 8, height: 8, seed: 1, nextProducerId: 1 } }),
+    () => deserializeGame({ saveVersion: SAVE_VERSION, appVersion: APP_VERSION, generationVersion: GENERATION_VERSION + 1, map: { width: 8, height: 8, seed: 1, nextProducerId: 1 } }),
     /terrain generation version/,
     'Generation-version mismatches should be rejected with a clear error',
   );
@@ -198,6 +197,52 @@ for (const biome of Object.values(BIOME_TYPES)) {
   );
 }
 
+// The version gate runs before any load work, so older builds and older formats are both
+// refused up front instead of failing partway through a restore.
+{
+  const grid = new Grid(8, 8, 12345);
+  flatten(grid);
+  grid.placeRoad(1, 1);
+  const simulation = new Simulation(grid);
+  simulation.isPaused = true;
+  const app = makeApp(grid, simulation, { treasury: 50 });
+  const document = serializeGame(app);
+
+  assert.ok(document.appVersion, 'A save should record the build that wrote it');
+
+  // A save from an earlier build is rejected, and the message names both versions.
+  const olderVersion = { ...document, appVersion: '0.0.1' };
+  assert.throws(
+    () => deserializeGame(olderVersion),
+    /written by version 0\.0\.1; this build is/,
+    'Saves from an older build should be rejected',
+  );
+  assert.throws(
+    () => deserializeGameFromJson(JSON.stringify(olderVersion)),
+    /Saves are not compatible across versions/,
+    'The gate should also apply when loading from JSON',
+  );
+
+  // A save that predates the appVersion field is treated as an older build too.
+  const noVersion = { ...document };
+  delete noVersion.appVersion;
+  assert.throws(() => deserializeGame(noVersion), /version unknown/, 'A save with no build stamp should be rejected');
+
+  // The legacy full-tile format is gone entirely, not migrated.
+  assert.throws(
+    () => deserializeGame({ ...document, saveVersion: 1 }),
+    /format version 1; this build expects 2/,
+    'Legacy format 1 saves should be rejected',
+  );
+
+  // The gate is checked first, so a rejected save never reaches the expensive restore.
+  const unsupported = { saveVersion: SAVE_VERSION, appVersion: '0.0.1', map: { width: 8, height: 8, seed: 1, nextProducerId: 1 } };
+  assert.throws(() => deserializeGame(unsupported), /not compatible across versions/, 'The version gate should run before terrain or grid validation');
+
+  const restored = deserializeGame(document);
+  assert.strictEqual(restored.treasury, 50, 'A save from this build should still load');
+}
+
 {
   const grid = new Grid(8, 8, 12345);
   flatten(grid);
@@ -206,14 +251,9 @@ for (const biome of Object.values(BIOME_TYPES)) {
   const simulation = new Simulation(grid);
   simulation.tickCount = 4;
   simulation.speed = 2;
-  const v1 = serializeGameV1(makeApp(grid, simulation, { treasury: 50 }));
-  v1.simulation.isPaused = false;
-  v1.simulation.speed = 2;
-  const restored = deserializeGame(v1);
-  assert.strictEqual(restored.grid.getTile(1, 2).zone, ZONE.RESIDENTIAL, 'Save version 1 should load through an explicit migration');
-  assert.strictEqual(restored.grid.generationVersion, 1, 'Full-tile legacy saves should retain their terrain generator when converted to sparse saves');
-  assert.strictEqual(restored.simulation.isPaused, true, 'Version 1 imports should still restore paused');
-  assert.strictEqual(restored.simulation.speed, 0, 'Version 1 imports should restore paused speed');
+  const restored = deserializeGame(serializeGame(makeApp(grid, simulation, { treasury: 50 })));
+  assert.strictEqual(restored.grid.getTile(1, 2).zone, ZONE.RESIDENTIAL, 'Zoned tiles should survive a round trip');
+  assert.strictEqual(restored.simulation.isPaused, true, 'Imports should still restore paused');
 }
 
 {
@@ -317,10 +357,12 @@ for (const biome of Object.values(BIOME_TYPES)) {
   const simulation = new Simulation(grid);
   const app = makeApp(grid, simulation, { treasury: 25000, activeTool: 'pan', autoSwitchToPan: false, renderer: { cameraX: 0, cameraY: 0, zoom: 1, overlayMode: 'normal' } });
   const sparse = serializeGameToJson(app);
-  const full = JSON.stringify(serializeGameV1(app));
-  assert.ok(sparse.length * 10 < full.length, `Normal sparse saves should be far smaller than the full-tile format (${sparse.length} vs ${full.length})`);
   const parsed = JSON.parse(sparse);
   assert.ok(parsed.tiles.length < 80, 'A small town on a generated map should only store player/state overrides');
+  assert.ok(
+    parsed.tiles.length * 100 < grid.width * grid.height,
+    `Sparse saves should omit the vast majority of the map (${parsed.tiles.length} overrides of ${grid.width * grid.height} tiles)`,
+  );
 }
 
 console.log('Save game round-trip tests passed.');

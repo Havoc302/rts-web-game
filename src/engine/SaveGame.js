@@ -2,15 +2,16 @@ import { APP_VERSION, BIOME_GENERATION_VERSION, DENSITY, LOAN_CONFIG, MAP_HEIGHT
 import { Grid } from './Grid.js';
 
 export const SAVE_VERSION = 2;
-export const SAVE_VERSION_V1 = 1;
 export const GENERATION_VERSION = TERRAIN_GENERATION_CONFIG.GENERATION_VERSION;
 
+// Every key a save written by this build contains. The version gate rejects older saves
+// before validation, so anything missing here is a corrupt file rather than an older one.
 const REQUIRED_STOCKPILE_KEYS = [
-  'food', 'coal', 'oil', 'fuel', 'ironOre', 'bauxiteOre',
-  'ironBar', 'bauxiteBar', 'consumerGoods', 'arms', 'tanks',
+  'food', 'coal', 'oil', 'fuel', 'ironOre', 'bauxiteOre', 'copperOre', 'titaniumOre', 'sand',
+  'ironBar', 'bauxiteBar', 'copperBar', 'steel', 'glass', 'polysilicon',
+  'consumerGoods', 'computerChips', 'arms', 'tanks',
 ];
 
-const EMPTY_STOCKPILE = Object.fromEntries(REQUIRED_STOCKPILE_KEYS.map((key) => [key, 0]));
 const EMPTY_SHORTFALL = { power: false, water: false, sewage: false };
 
 function clone(value) {
@@ -340,100 +341,6 @@ export function serializeGameToJson(app) {
   return JSON.stringify(serializeGame(app));
 }
 
-export function serializeGameV1(app) {
-  if (!app.simulation.isPaused) throw new Error('Pause the game before saving');
-  return {
-    saveVersion: SAVE_VERSION_V1,
-    appVersion: APP_VERSION,
-    savedAt: new Date().toISOString(),
-    grid: {
-      width: app.grid.width,
-      height: app.grid.height,
-      seed: app.grid.seed,
-      biome: app.grid.biome,
-      nextProducerId: app.grid.nextProducerId,
-      tiles: app.grid.tiles.map((row) => row.map((tile) => ({ ...clone(tile), producer: null }))),
-      producers: clone(app.grid.producers),
-    },
-    simulation: {
-      tickCount: app.simulation.tickCount,
-      isPaused: app.simulation.isPaused,
-      speed: app.simulation.speed,
-      taxRate: app.simulation.taxRate,
-      pensionBudget: app.simulation.pensionBudget,
-      roadMaintenanceBudget: app.simulation.roadMaintenanceBudget,
-      stockpile: clone(app.simulation.resourceManager.stockpile),
-      capacity: clone(app.simulation.resourceManager.capacity),
-      stats: clone(app.simulation.stats),
-    },
-    treasury: app.treasury,
-    camera: {
-      x: app.renderer.cameraX,
-      y: app.renderer.cameraY,
-      zoom: app.renderer.zoom,
-    },
-    ui: {
-      activeTool: app.activeTool,
-      overlayMode: app.renderer.overlayMode,
-      autoSwitchToPan: app.autoSwitchToPan,
-    },
-  };
-}
-
-function deserializeV1(document) {
-  const savedGrid = document.grid;
-  if (!savedGrid || !Number.isInteger(savedGrid.width) || !Number.isInteger(savedGrid.height) || savedGrid.width < 1 || savedGrid.height < 1) {
-    throw new Error('Invalid save grid dimensions');
-  }
-  if (!Array.isArray(savedGrid.tiles) || savedGrid.tiles.length !== savedGrid.height || savedGrid.tiles.some((row) => !Array.isArray(row) || row.length !== savedGrid.width)) {
-    throw new Error('Invalid save tile data');
-  }
-  assertNumber(savedGrid.seed, 'grid.seed', { integer: true });
-  assertNumber(savedGrid.nextProducerId, 'grid.nextProducerId', { integer: true, min: 1 });
-  assertNumber(document.treasury, 'treasury');
-  validateSimulation(document.simulation);
-  if (typeof document.simulation.isPaused !== 'boolean') throw new Error('Invalid simulation pause state');
-  validateCamera(document.camera);
-  validateProducers(savedGrid.producers, savedGrid.width, savedGrid.height);
-
-  const grid = new Grid(savedGrid.width, savedGrid.height, savedGrid.seed, savedGrid.biome ?? null, 1);
-  grid.tiles = savedGrid.tiles.map((row) => row.map((savedTile, y) => {
-    const tile = grid.createDefaultTile(savedTile.x ?? row.indexOf(savedTile), savedTile.y ?? y);
-    Object.assign(tile, clone(savedTile));
-    tile.producer = null;
-    tile.distanceToProducer = Object.fromEntries(
-      ['power', 'water', 'sewage'].map((key) => [key, savedTile.distanceToProducer?.[key] == null ? Infinity : savedTile.distanceToProducer[key]]),
-    );
-    tile.serviceDistances = savedTile.serviceDistances || {
-      police: Infinity,
-      fire: Infinity,
-      hospital: Infinity,
-      school: Infinity,
-      library: Infinity,
-      cityHall: Infinity,
-    };
-    tile.services = savedTile.services || {
-      police: false,
-      fire: false,
-      hospital: false,
-      school: false,
-      library: false,
-      cityHall: false,
-    };
-    return tile;
-  }));
-  finishGridRestore(grid, savedGrid.producers, savedGrid.nextProducerId);
-
-  return {
-    grid,
-    simulation: restoredSimulation(document.simulation),
-    treasury: document.treasury,
-    finance: restoredFinance(document.finance),
-    camera: { ...document.camera },
-    ui: restoredUi(document.ui),
-  };
-}
-
 function deserializeV2(document) {
   if (![1, GENERATION_VERSION].includes(document.generationVersion)) {
     throw new Error(
@@ -489,10 +396,27 @@ function deserializeV2(document) {
 }
 
 export function deserializeGame(document) {
-  if (!document || typeof document !== 'object') throw new Error('Save must be a JSON object');
-  if (document.saveVersion === SAVE_VERSION_V1) return deserializeV1(document);
-  if (document.saveVersion !== SAVE_VERSION) throw new Error(`Unsupported save version: ${document.saveVersion}`);
+  assertLoadableSave(document);
   return deserializeV2(document);
+}
+
+/**
+ * The gate every load passes before any other work. Prototype stage: a save is only
+ * accepted by the exact build that wrote it, so schema changes never have to keep
+ * backwards compatibility. Bumping `APP_VERSION` intentionally retires older saves.
+ */
+export function assertLoadableSave(document) {
+  if (!document || typeof document !== 'object') throw new Error('Save must be a JSON object');
+  if (document.saveVersion !== SAVE_VERSION) {
+    throw new Error(
+      `This save uses format version ${document.saveVersion ?? 'unknown'}; this build expects ${SAVE_VERSION}. Older saves are not supported — start a new game.`,
+    );
+  }
+  if (document.appVersion !== APP_VERSION) {
+    throw new Error(
+      `This save was written by version ${document.appVersion ?? 'unknown'}; this build is ${APP_VERSION}. Saves are not compatible across versions — start a new game.`,
+    );
+  }
 }
 
 export function deserializeGameFromJson(json) {

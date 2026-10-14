@@ -1,7 +1,8 @@
 import assert from 'assert';
 import { Grid } from '../src/engine/Grid.js';
 import { ResourceManager } from '../src/engine/ResourceManager.js';
-import { DENSITY, FACTORY_RECIPES, PRODUCER_TYPE, TERRAIN, ZONE } from '../src/config.js';
+import { DENSITY, PRODUCER_TYPE, TERRAIN, ZONE } from '../src/config.js';
+import { RECIPES } from '../src/recipes.js';
 
 console.log('=== industrial-inputs.test.js ===');
 
@@ -34,5 +35,35 @@ for (const input of ['ironBar', 'bauxiteBar', 'oil']) {
   assert.strictEqual(isolated.stockpile.consumerGoods, 0, `${input} shortfall should stop consumer goods production`);
 }
 
-assert.deepStrictEqual(Object.keys(FACTORY_RECIPES.CONSUMER_GOODS.inputs).sort(), ['bauxiteBar', 'ironBar', 'oil']);
+assert.deepStrictEqual(Object.keys(RECIPES.CONSUMER_GOODS.inputs).sort(), ['bauxiteBar', 'ironBar', 'oil']);
+
+// Computer Chips are an industrial recipe consuming polysilicon and copper bars.
+{
+  const chipGrid = new Grid(8, 8, 3);
+  for (const row of chipGrid.tiles) for (const tile of row) tile.terrain = TERRAIN.FLAT;
+  chipGrid.placeRoad(1, 1);
+  chipGrid.placeZone(1, 2, ZONE.INDUSTRIAL);
+  const chipFactory = chipGrid.getTile(1, 2);
+  chipFactory.density = DENSITY.LIGHT;
+  chipFactory.filledJobs = 10;
+  chipFactory.totalJobs = 10;
+  chipFactory.recipe = 'COMPUTER_CHIPS';
+
+  const chipManager = new ResourceManager();
+  chipManager.stockpile.polysilicon = 10;
+  chipManager.stockpile.copperBar = 10;
+  chipManager.produceFactories(chipGrid);
+  assert.ok(chipManager.stockpile.computerChips > 0, 'Polysilicon and copper bars should produce computer chips');
+  assert.ok(chipManager.stockpile.polysilicon < 10 && chipManager.stockpile.copperBar < 10, 'Chip production should consume both inputs');
+
+  for (const input of ['polysilicon', 'copperBar']) {
+    const isolated = new ResourceManager();
+    isolated.stockpile.polysilicon = 10;
+    isolated.stockpile.copperBar = 10;
+    isolated.stockpile[input] = 0;
+    isolated.produceFactories(chipGrid);
+    assert.strictEqual(isolated.stockpile.computerChips, 0, `${input} shortfall should stop chip production`);
+  }
+}
+
 console.log('Industrial input tests passed.');

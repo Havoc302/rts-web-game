@@ -5,8 +5,8 @@
 | Title | SimConquer 2000 — Architecture & Product Design |
 | Author | TBD |
 | Date | 2026-10-06 |
-| Status | Living draft (rev 25) |
-| Version covered | `APP_VERSION` `0.2.13` (`src/version.js`); current working tree |
+| Status | Living draft (rev 30) |
+| Version covered | `APP_VERSION` `0.2.18` (`src/version.js`); current working tree |
 | Intended in-repo path | `docs/DESIGN.md` |
 | Repo | `g:\Repos\rts-web-game` (`origin`: `https://github.com/Havoc302/rts-web-game.git`) |
 | Working tree at inventory | Documentation is checked against the current implementation; uncommitted changes may exist. |
@@ -52,11 +52,11 @@ The World Map header also displays SimConquer 2000 and the current `APP_VERSION`
 
 Displayed tile boundaries are spherical Voronoi polygons derived from the existing H3 cell centers using Three.js `ConvexHull`. This removes H3 projection-seam kinks and produces 5,870 convex hexagons and 12 convex pentagons with shared, gap-free edges. Surface fills, borders, selection outlines, and picking use the same displayed geometry. Logical H3 IDs, original boundaries, city seeds, biome assignments, and save data remain unchanged.
 
-`OverworldView` renders the globe using Three.js and opens from the World button at the end of the top-bar speed controls, beside Mute. The globe header shows a Main Menu button at the far left beside the `WORLD MAP` title, then the shared treasury, then the `Edit World` control, then the music mute toggle at the far right. Players rotate and select land, enter a city generated on first visit, and return to visited cities with their state intact. Opening the globe pauses simulation and sets its speed to zero. The `Edit World` menu contains selected-tile and planet seed controls and reset/randomize actions; Save World and Load World live in the main menu. Choosing `New Game` from the main menu discards the current session (visited cities, treasury, and loans) and generates a brand-new random planet with a fresh home city seed, returning to the globe; choosing it again produces another whole new world. The selected-tile seed field follows the highlighted land hex; changing or randomizing it clears that hex's previous city state and lazily regenerates the selected city's map from its new seed. Changing the planet seed asks for confirmation, moves the active city to the new home hex, and removes previously visited cities. Version-2 JSON world saves include the planet seed, nullable active hex, every land hex's city seed, home city seed, and every other visited city snapshot. World saves made before selecting a city are supported, and importing a world save returns to the globe. Older city-only saves remain importable. Terrain generation stays at version 2. Combat and world-map armies are still future work.
+`OverworldView` renders the globe using Three.js and opens from the World button at the end of the top-bar speed controls, beside Mute. The globe header shows a Main Menu button at the far left beside the `WORLD MAP` title, then the shared treasury, then the `Edit World` control, then the music mute toggle at the far right. Players rotate and select land, enter a city generated on first visit, and return to visited cities with their state intact. Opening the globe pauses simulation and sets its speed to zero. The `Edit World` menu contains selected-tile and planet seed controls and reset/randomize actions; Save World and Load World live in the main menu. Choosing `New Game` from the main menu discards the current session (visited cities, treasury, and loans) and generates a brand-new random planet with a fresh home city seed, returning to the globe; choosing it again produces another whole new world. The selected-tile seed field follows the highlighted land hex; changing or randomizing it clears that hex's previous city state and lazily regenerates the selected city's map from its new seed. Changing the planet seed asks for confirmation, moves the active city to the new home hex, and removes previously visited cities. Version-2 JSON world saves include the planet seed, nullable active hex, every land hex's city seed, home city seed, and every other visited city snapshot. World saves made before selecting a city are supported, and importing a world save returns to the globe. Saves are gated on an exact build match, so a save written by any other version is refused rather than migrated. Terrain generation stays at version 2. Combat and world-map armies are still future work.
 
 New biome cities use biome profile 3: plains have sparse rocks, hills have larger rocky clusters, and mountains have large formations with less forest cover. Swamps generate 10-16 lakes with a 3.2x radius scale, up from 4-6 lakes with a 1.6x scale in profiles 1 and 2. Other biomes retain their profile-2 settings. The hex seed and biome both reach `Grid` on first entry. Saves record `map.biomeGenerationVersion` separately from the unchanged terrain generation version 2. Saves without that field regenerate using the original biome profile 1, and profile-2 saves retain the previous swamp settings, preserving terrain and hidden ore. Already-visited cities are not regenerated automatically. Resetting a city adopts the current biome profile.
 
-Desert regions occupy seeded dry areas of continents and use sand-colored globe hexes. Desert cities have fewer rock clusters than plains, almost no forest, one or two small lakes, and no rivers. Desert changes do not alter the generation settings of other city biomes; existing visited cities retain their terrain.
+Desert regions occupy seeded dry areas of continents and use sand-colored globe hexes. Desert cities have fewer rock clusters than plains, almost no forest, one or two small lakes, and no rivers. Desert cities also render their bare ground with a dedicated sand palette instead of the default soil palette, so the city map reads as dunes to match the globe. Desert changes do not alter the generation settings of other city biomes; existing visited cities retain their terrain.
 
 Every land hex has a deterministic climate profile keyed by the planet seed and H3 cell ID, independently of its editable city-map seed. Latitude sets the broad temperature gradient (warm near the equator, cold near either pole); biome and small seeded variation tune the local mean, range, and sunny/cloudy/rainy chances. The immediate six-cell neighborhood gently blends base temperature and moisture tendencies, so neighboring deserts make temperate hexes slightly hotter and drier without changing their biome. Ocean neighbors contribute moisture. When a city is active, its single weather manager samples persistent condition intervals using those chances and temperature fluctuates around the cell's mean with a bounded bell-shaped distribution. Only active cities advance weather; saves retain current conditions and the remaining weather interval. Climate profiles regenerate from the world seed and cell identity.
 
@@ -68,7 +68,7 @@ The land-tile action is labeled `Open Map` for current, visited, and unexplored 
 
 ### Pain points
 
-1. **Standalone JSON save/load is sparse and seed-regenerated.** Saving is available only while paused and importing restores the game paused. `SAVE_VERSION` 2 stores seed, dimensions, biome, and a terrain generation version, then sparse tile overrides and producers. Legacy full-tile and sparse version-1 maps regenerate with the original circular cluster algorithm; new version-2 maps use irregular clusters. Re-saving a legacy map retains version 1 until the map is reset, which adopts version 2. Unsupported future generation versions are refused rather than rebuilding the wrong map.
+1. **Standalone JSON save/load is sparse and seed-regenerated.** Saving is available only while paused and importing restores the game paused. `SAVE_VERSION` 2 stores seed, dimensions, biome, and a terrain generation version, then sparse tile overrides and producers. Sparse maps still carrying terrain generation version 1 regenerate with the original circular cluster algorithm; version-2 maps use irregular clusters. Re-saving a version-1 map retains generation version 1 until the map is reset, which adopts version 2. Unsupported future generation versions are refused rather than rebuilding the wrong map, and the save format itself is gated on an exact build match.
 2. **`Simulation.tick` remains a large orchestrator.** Its pause/preview semantics are now explicit and tested, but named stage extraction is still outstanding.
 3. **Military production has no unit sink.** Arms and tanks are visible stockpiles, but barracks, vehicle depots, units, and world-map deployment are later phases.
 4. **Emergency coverage now uses cached direct/road/road-side sets.** Browser-level interaction and visual validation remain limited; see the test gaps below.
@@ -205,6 +205,7 @@ flowchart TB
 | Map | 200×200 tiles (40,000) | `MAP_WIDTH` / `MAP_HEIGHT` |
 | Tile size | 32 px → 6400×6400 world pixels | `TILE_SIZE` |
 | Money scale | Pre-scaled monetary constants; no runtime multiplier | `src/config.js` |
+| Crafting recipes | One central table for both recipe stations | `src/recipes.js` |
 | Starting treasury | `$25,000` (`2500 * 10`) | `STARTING_TREASURY`; HUD seed text in `index.html` |
 | Tick wall-clock | `4000 / speed` ms (`1x=4s`, `2x=2s`, `5x=800ms`) | `GameApp.setSpeed` |
 | Clock | 1 tick = 1 in-game hour, 24-hour day, day 06:00–18:00 | `TICKS_PER_HOUR`, `DAY_START_HOUR`, `NIGHT_START_HOUR` |
@@ -213,7 +214,7 @@ flowchart TB
 | Terrain chunk size | 64 tiles (2048 px, under a 4096 GPU cap) | `RENDERER_CONFIG.TERRAIN_CHUNK_TILES` |
 | Mobile HUD cadence | 500 ms on coarse-pointer layouts | `RENDERER_CONFIG.HUD_MOBILE_CADENCE_MS` |
 | Dev | `"dev": "npx serve ."` | `package.json` |
-| Version | `0.2.13` from `src/version.js`, synchronized with `package.json` and cache-busting consumers | `tests/version-sync.test.js` |
+| Version | `0.2.18` from `src/version.js`, synchronized with `package.json` and cache-busting consumers | `tests/version-sync.test.js` |
 | `config.js` | 690 lines total (~637 non-blank) | file |
 | `Renderer.js` | 897 lines | file |
 
@@ -278,7 +279,7 @@ While paused, placement uses `tick(false)`: world state, resource production/con
   - Unseeded (`Math.random`): wind capacity swing, fire ignition and spread, crime event roll and police suppression, the initial random seed pick in `getInitialSeed`.
 - **Seed sources, in order:** `?seed=` URL param → `localStorage.bc2000_map_seed` with one-time legacy read of `metropolis_map_seed` → random in `[100000, 9100000)`. Reset/regen writes the current key and URL.
 - **Generation order** (`generateProceduralTerrain`): rivers (simple 40% / fork 30% / merge 30%) → 0–5 standalone lakes → forest clusters scaled by map area → rock/mountain clusters. Version-2 lakes, forests, and mountains vary their radius by seeded angular lobes and smaller indentations, retaining the original per-tile edge wobble; the shapes extend beyond the former circular bounds. Rivers retain their separate flow generation. Version-1 generation keeps its original loop bounds and PRNG draw order for save compatibility. All terrain generation uses `this.random`, not `Math.random`.
-- **Hidden ores.** `generateHiddenOres` rolls `ORE_GENERATION` per terrain (mountain 35%, flat 3%, forest 1.5%, water 1%) and picks uniformly from iron / bauxite / coal / oil.
+- **Hidden ores.** `generateHiddenOres` rolls `ORE_GENERATION` per terrain (mountain 35%, flat 3%, forest 1.5%, water 1%) and then picks an ore by `ORE_CONFIG` `spawnWeight`: iron and coal 20, bauxite 16, copper 14, oil 12, uranium 8, titanium 6. Weighting keeps common metals common while titanium stays a rare find. Sand is deliberately not an ore: it is not rolled, not surveyed, and the Sand Quarry needs no deposit.
 - **Tile schema** (`createDefaultTile`): terrain, road/bridge/tunnel flags, zone, density, growthScore, industrial `recipe`, population bookkeeping (`relocatedPopulation`, `fireDisplacedPopulation`, `populationLoss`), producer pointer, utility shortfall/distances, pollution, ore/survey fields, crime, fire, `destroyed`. No `ownerId`. No visibility field.
 - **Placement rules.**
   - Roads: flat, not destroyed, no road/zone/producer.
@@ -328,7 +329,7 @@ income = ((population/100) + (jobsFilled/100)) * $10 * (taxRate/100) - crimeTaxL
 
 `BASE_INCOME` was removed. `industrial-economics.test.js` checks industrial/agricultural zone cost and equality of industrial/commercial job tables; it does not assert tax revenue. Growth modifier is continuous: bonus below 40%, negative at 50%, quadratic outflow toward 100%. Residential growth **stalls** (`delta = 0`) if any workers are unemployed or if the city has zero workplaces.
 
-**Treasury** lives on `GameApp`, not `Simulation`. Fully funded road maintenance is `$1` per active road/bridge/tunnel tile per tick (`ROAD_MAINTENANCE_COST = 1`). A road maintenance budget below 100% reduces expense proportionally and randomly assigns uncovered road tiles to deteriorate by 10% per tick; fully degraded roads are removed from active road and pathing registries. Every power generator, battery, water pump, and sewage plant costs `UTILITY_OPERATING_COST = $2` per tick (`stats.utilityExpenses`, ⚡ HUD chip), whether or not it is connected. Monetary values are pre-scaled constants. Pensions are folded into `serviceExpenses`.
+**Treasury** lives on `GameApp`, not `Simulation`. Fully funded road maintenance is `$1` per active road/bridge/tunnel tile per tick (`ROAD_MAINTENANCE_COST = 1`). A road maintenance budget below 100% reduces expense proportionally and rolls a share of the network equal to the missing budget for wear: 99% funding rolls one tile per hundred road tiles, 50% funding rolls half of them, and each rolled tile has a flat 5% chance (`ROAD_MAINTENANCE_CONFIG.DAMAGE_ROLL_CHANCE`) of taking one hit of `DAMAGE_PER_HIT = 10`. Road tiles degrade from 0 to 100, so a tile is worth ten hits. Wrecked tiles leave the active road and pathing registries and stay as rubble until the player bulldozes the tile and rebuilds it. Restoring the budget to 100% repairs one damaged tile per tick, worst damage first, until every standing road is pristine again. Every power generator, battery, water pump, and sewage plant costs `UTILITY_OPERATING_COST = $2` per tick (`stats.utilityExpenses`, ⚡ HUD chip), whether or not it is connected. Monetary values are pre-scaled constants. Pensions are folded into `serviceExpenses`.
 
 **Loans (implemented in `0.2.7`):** Players may borrow `$1,000`, `$2,500`, `$5,000`, `$7,500`, `$10,000`, `$15,000`, or `$20,000`. Each loan is amortized over 720 hourly ticks. Its fixed total-term interest rate is set at origination from the arithmetic mean happiness across all visited cities, including the active city: 2% at mean happiness 100, rising linearly to 20% at mean happiness 0; the equivalent per-tick rate compounds against the outstanding balance. A scheduled payment is deducted only when the shared treasury can cover it; missed payments capitalize that tick's interest. Treasury and loans are global across all visited cities, whose economies tick together and settle against one wallet; the globe pauses the shared clock while showing the same balance. Outstanding loan debt with zero combined population across cities pauses play permanently with `Game over, all your people left`; the game-over screen offers a Restart action that reloads into a fresh session.
 
@@ -353,7 +354,7 @@ Renewable output is weather-driven: `UtilityManager.allocateAll(grid, hour, weat
 
 Background music is a single looping HTML5 `<audio>` track (`AUDIO_CONFIG.MUSIC_FILE_PATH`, default volume `AUDIO_CONFIG.DEFAULT_VOLUME`); playback rejections (autoplay policy, missing file) are ignored.
 
-**Player placement rules** (`Grid.canBuildTool` / `canBuildProducer`, shared by click placement and the green valid-tile highlight; hover turns red when invalid): roads/bridges/tunnels follow their terrain rules and do not need a neighbouring road; zones and every non-renewable producer must touch a road; Water Pumps, Sewage Plants, and Nuclear Plants must also touch water; Windmills and Solar Panels need only an adjacent (incl. diagonal) Battery; surveys cannot target water. Engine-level `canPlaceProducer` does not require roads so tests can build fixtures directly.
+**Player placement rules** (`Grid.canBuildTool` / `canBuildProducer`, shared by click placement and the green valid-tile highlight; hover turns red when invalid): roads/bridges/tunnels follow their terrain rules and do not need a neighbouring road; zones and every non-renewable producer must touch a road; Water Pumps, Sewage Plants, and Nuclear Plants must also touch water; Windmills and Solar Panels need only an adjacent (incl. diagonal) Battery; surveys cannot target water. Every ore mine (iron, bauxite, coal, uranium, copper, titanium) additionally requires its own matching surveyed deposit, while the **Sand Quarry** needs only flat ground beside a road because sand is treated as universally available. Bulldoze follows `canBulldoze`, so it highlights exactly the tiles it can clear, including wrecked road rubble and forest. Engine-level `canPlaceProducer` does not require roads so tests can build fixtures directly.
 
 **Food:** residential food demand is the sum of each residential tile's `population × FOOD_PER_RESIDENT`, drawn from the stockpile filled by farms (`AGRICULTURAL_FOOD_YIELD × fill`). Food, consumer goods, arms, and tanks share Goods Warehouse space (500 each); anything above that is discarded at the end of each tick using a largest-remainder split, so a type at zero never gains stock. Without a warehouse, each tick's harvest can still be eaten that tick but none is stored. The Storage tab shows `Food / Tick` (+produced / −eaten) and `Goods Storage` used/capacity; the Tile Inspector shows each residential tile's food use and each farm's output. Any shortfall costs 25 happiness and 5% outflow per tile; after `FAMINE_TICKS` (10) consecutive shortfall ticks an extra `FAMINE_PENALTY` (40) applies until the city is fed.
 
@@ -417,17 +418,27 @@ Medical: patients from residents (retirees ×3, more if pensions underfunded), i
 
 ### Resources, industry, happiness
 
-`ResourceManager` stockpile keys: `food, coal, oil, fuel, ironOre, bauxiteOre, ironBar, bauxiteBar, consumerGoods, arms, tanks`.
+`ResourceManager` stockpile keys: `food, coal, oil, fuel, ironOre, bauxiteOre, copperOre, titaniumOre, sand, ironBar, bauxiteBar, copperBar, steel, glass, polysilicon, consumerGoods, computerChips, arms, tanks`.
+
+**Central recipe table.** `src/recipes.js` is the single place every craftable conversion is defined, for both stations that run recipes: the Smelter building and Industrial zone tiles. A recipe declares `station`, `label`, `inputs` (stockpile units per one unit of output), `output`, and `outputPerJob`. Adding or retuning a recipe is a one-file change; neither station hard-codes a ratio. `recipeOutput` / `applyRecipe` / `runRecipe` are the shared mechanics, so both stations consume inputs and bank outputs through identical code.
 
 | Loop | Producer | Sink | Status |
 | --- | --- | --- | --- |
 | Food | Agricultural yield 4/20/80 × job fill; industrial `FOOD` recipe | `FOOD_PER_RESIDENT = 0.05`; unfed tiles lose 5% pop/tick | Closed; famine loss clears when food returns |
-| Ore → bars | Mines 0.2/job; smelter 1 ore + 0.5 coal → 1 bar, 0.2 bars/job | Industrial `ARMS`/`TANKS` | Partial — bars only needed for unused military recipes |
-| Coal | Coal mine | Smelter + coal plant `0.02` per MW used | Closed if you mine it |
+| Ore → bars | Mines 0.2/job; smelter `IRON_BAR` (1 iron ore + 0.5 coking coal → 1 bar), `BAUXITE_BAR` (1 bauxite → 1 bar), `STEEL` (1 iron ore + 1 coking coal → 1 steel), `COPPER_BAR` (1 copper ore → 1 bar) | Industrial `ARMS` / `TANKS` / `COMPUTER_CHIPS` | Partial — bars and steel only needed for unused military recipes and chips |
+| Sand → glass / polysilicon | Sand Quarry 0.2/job (road-adjacent, no survey); smelter `GLASS` and `POLYSILICON`, 1 sand → 1 unit each | Industrial `COMPUTER_CHIPS` uses polysilicon | Stockpiled and visible; glass and polysilicon are intermediate goods for later phases |
+| Coal | Coal mine | Coking coal for iron bars and steel; thermal coal for the coal plant at `0.02` per MW used | Closed if you mine it |
 | Oil / fuel | Oil derrick → `oil`; refinery → `fuel`; silos store `oil` or `fuel` | Occupied zones and coal plants consume fuel | Implemented; tuning and tests may continue |
-| Consumer goods | Industrial `CONSUMER_GOODS` rate 0.2/job, no inputs | Demand `0.08`/resident; stockpile is consumed and contributes to happiness/tax effects | Implemented; tuning and tests may continue |
+| Computer chips | Industrial `COMPUTER_CHIPS` (1 polysilicon + 1 copper bar → 1 chip, rate 0.2/job) | No sink yet | Stockpiled and visible; advanced recipes are later |
+| Consumer goods | Industrial `CONSUMER_GOODS` rate 0.2/job | Demand `0.08`/resident; stockpile is consumed and contributes to happiness/tax effects | Implemented; tuning and tests may continue |
 | Arms / tanks | `ARMS` (0.5 ironBar, rate 0.05); `TANKS` (1 ironBar + 0.5 bauxiteBar, rate 0.02) | No unit sink yet | Stockpiled and visible; war-economy sink is later |
 | Storage | Ore/bar/goods warehouses 500 each; silo 500 oil or fuel | Clamp after production | Working |
+
+**Smelter energy and coking coal.** A smelter's process energy comes from the power grid, not from its inputs: the building carries `utilityUsage.power = 3` and `updateProducerOperationalState` takes it offline (after `UTILITY_FAILURE_GRACE_TICKS`) when the grid cannot serve it, so an unpowered smelter produces nothing regardless of what is in storage. Coal is therefore not a general smelter fuel — it is **coking coal**, a carbon input for exactly two reactions: iron bars (0.5 per bar) and steel (1.0 per steel). Bauxite bars are an electrolytic reduction and copper, glass, and polysilicon are pure conversions, so none of them consume coal.
+
+**Smelter recipe selection.** A Smelter carries a `recipe` field. `ALL_EVENLY` (the default, also what a null value means) shares the crew evenly across every smelter recipe that currently has inputs on hand, so a line with nothing to work on is skipped rather than reserving crew. Choosing a specific recipe in the inspector dedicates the whole crew to that product and makes nothing else. Only recipes belonging to the `smelter` station are honoured, so a stray industrial id falls back to `ALL_EVENLY`.
+
+**Storage tiers.** Sand, coal, iron, bauxite, copper, and titanium ore all count against Ore Warehouse capacity. Iron, bauxite, and copper bars, steel, glass, and polysilicon count against Bar Warehouse capacity. Computer chips are an industrial-zone product, so they share Goods Warehouse capacity with food, consumer goods, arms, and tanks.
 
 Famine loss is recalculated per advancing tick and cleared when food demand is met. Preview ticks do not run resource consumption or famine mutation.
 
@@ -470,7 +481,7 @@ Node `assert` scripts; `package.json` `"test"` runs `tests/run-all.js`, which di
 | `renderer-cache.test.js` | Terrain-chunk identity on stable ticks, overlay non-invalidation, incremental bulldoze, full regen | — |
 | `demographics.test.js` | 40/40/20 jobs, split, pensions, retiree patients | — |
 
-This is a representative coverage map, not an exhaustive test inventory; `npm test` currently runs 46 test files. **Still lightly tested:** `main.js` input and treasury wiring, CSS/HTML, visual HUD behavior, browser touch interaction, and JSON file download/import in a real browser. Sparse-save size and version-1 migration are covered by `tests/save-game.test.js`. Full-map mobile responsiveness was verified on the reporting phone after Stage 5.
+This is a representative coverage map, not an exhaustive test inventory; `npm test` currently runs 47 test files. **Still lightly tested:** `main.js` input and treasury wiring, CSS/HTML, visual HUD behavior, browser touch interaction, and JSON file download/import in a real browser. Sparse-save size, the save version gate, and stockpile validation are covered by `tests/save-game.test.js`. Full-map mobile responsiveness was verified on the reporting phone after Stage 5.
 
 ---
 
@@ -590,7 +601,7 @@ No Firebase schema dump here. Phase 1 PRs 1–8b stay valid with **zero** Fireba
 
 ### Phase 2 — War Economy (player city; after Phase 1)
 
-Make `FACTORY_RECIPES.ARMS` and `TANKS` mean something **before** pathfinding exists. Military production has an explicit economic opportunity cost: private industry can be requisitioned, but it is not free.
+Make the industrial `ARMS` and `TANKS` recipes mean something **before** pathfinding exists. Military production has an explicit economic opportunity cost: private industry can be requisitioned, but it is not free.
 
 #### Military production economics
 
@@ -694,7 +705,7 @@ Rules:
 | Civilian resource loops | Low | Core food, goods, oil/fuel, and agriculture loops are implemented; continue regression coverage |
 | Multi-year product mistaken for next-month PRs | High | Phase 1 = PRs 1–8b only; world map / Firebase / nukes are later slices |
 | Two halls on one city grid | High | Rejected; one city grid per civilisation |
-| Save/load format size and evolution | Medium | Sparse saves and version-1 migration are tested; browser file-flow validation and autosave remain |
+| Save/load format size and evolution | Medium | Sparse saves, the version gate, and stockpile validation are tested; browser file-flow validation and autosave remain |
 | Canvas 2D + world map + mobile | Medium | Chunked cache; world map is a simpler region renderer |
 | `config.js` kitchen sink | Medium | Keep through Phase 1; split combat/world later |
 | Generic `POWER_PLANT` test fixture / simulation RNG save state | Low | Keep the generic producer out of the toolbar; RNG-state persistence remains future cleanup |
@@ -712,14 +723,16 @@ Phase 1 is client-only. Firebase APIs appear in Phase 4, not in PRs 1–8b.
 ```js
 // Implemented: src/engine/SaveGame.js
 export const SAVE_VERSION = 2;
-export const SAVE_VERSION_V1 = 1;
 export const GENERATION_VERSION = TERRAIN_GENERATION_CONFIG.GENERATION_VERSION;
 
+export function assertLoadableSave(document) { /* version gate; runs before any other work */ }
 export function serializeGame(app) { /* → versioned SaveDocument */ }
 export function serializeGameToJson(app) { /* JSON string for file export */ }
-export function deserializeGame(data) { /* validate, migrate, restore */ }
-export function deserializeGameFromJson(json) { /* parse then validate/restore */ }
+export function deserializeGame(data) { /* gate, then validate and restore */ }
+export function deserializeGameFromJson(json) { /* parse then gate then restore */ }
 ```
+
+**Save version gate.** Loading is gated on an exact build match, and the check runs first — before terrain regeneration, grid validation, or any state mutation. A `SaveDocument` records both `saveVersion` (the structural format, currently 2) and `appVersion` (the `APP_VERSION` that wrote it). `assertLoadableSave` rejects any document whose format version or build stamp differs from the running build, naming both versions in the error. This is deliberate prototype-stage behaviour: while the save schema is still moving, older saves are refused instead of migrated, and bumping `APP_VERSION` retires every save written by an earlier build. The legacy full-tile format 1 reader and writer have been removed entirely, so there is no migration path to maintain. Because the gate guarantees a save came from this exact build, validation downstream stays strict: `simulation.stockpile` must carry every known key, and no field is backfilled.
 
 These APIs and paused-only JSON file export/import are implemented. LocalStorage autosave and autosave boot precedence are planned requirements, not current behavior. The New Game flow and its destructive-action confirmation are implemented in the main menu, which also owns the Save World and Load World buttons; the city and world-map headers no longer expose save/load.
 
@@ -764,7 +777,7 @@ return stats.incomePerTick  # GameApp.simTick is the only caller that applies it
 
 ### HUD
 
-- Badge and stylesheet cache-busting use the current `APP_VERSION` (`0.2.13`); package/source synchronization is tested.
+- Badge and stylesheet cache-busting use the current `APP_VERSION` (`0.2.18`); package/source synchronization is tested.
 - Happiness chip; oil, fuel, bars, arms, tanks chips.
 - Build-info: handle `zone_a`.
 - Overlay picker: add Police / Fire / Hospital buttons already handled in `renderOverlay`.
@@ -835,16 +848,16 @@ On load, `GameApp` regenerates derived utility distances with `tick(false)` (pre
 
 **Dimension checks.** `deserialize` accepts any `width`/`height` ≥ 1. Tests construct `Grid(8, 8)` and round-trip through `deserialize` without going through `GameApp`.
 
-**Size.** Naïve `JSON.stringify` of 40,000 fat tiles is tens of MB. A generated 40×40 town with a handful of roads/zones/producers serializes more than 10× smaller than the version-1 full-tile document. File export writes compact JSON.
+**Size.** Naïve `JSON.stringify` of 40,000 fat tiles is tens of MB. A generated 40×40 town with a handful of roads/zones/producers stores fewer than 100 tile overrides out of 1,600 tiles, so the written document omits the vast majority of the map. File export writes compact JSON.
 
-**Migrations.** `saveVersion === 1` loads the legacy full-tile document, then the next save writes version 2. `saveVersion > 2` is refused. `generationVersion` mismatch is refused with a user-facing error so a later terrain/ore algorithm cannot silently rebuild the wrong map. Unknown `producer.type` is refused. No `eval`, no function fields. A later world-map/faction PR can bump `SAVE_VERSION` again.
+**Compatibility.** There are no migrations. `assertLoadableSave` runs before any other load work and requires the document's `saveVersion` **and** `appVersion` to match the running build exactly; anything else is refused with an error naming both versions. `generationVersion` mismatch is separately refused so a later terrain/ore algorithm cannot silently rebuild the wrong map. Unknown `producer.type` is refused. No `eval`, no function fields. Because older saves are rejected rather than migrated, missing or extra stockpile keys are treated as corruption, and no field is backfilled.
 
 **Fixture tests (`tests/save-game.test.js`):**
 
 1. Round-trip a generated map with roads/zones, battery `storedEnergy`, fire, utility shortfall, discovered ore, and a surveyed no-deposit tile.
-2. Reject unknown `saveVersion` and a mismatched `generationVersion`.
-3. Load a version-1 full-tile document through the explicit migration and restore paused.
-4. A small town on a generated 40×40 map serializes more than 10× smaller than the version-1 full-tile document.
+2. Reject an unknown `saveVersion`, a mismatched `generationVersion`, and a corrupt stockpile.
+3. Reject a save stamped with an older `appVersion`, a save with no build stamp, and a format-1 document — confirming the gate runs before grid or terrain validation.
+4. A small town on a generated 40×40 map stores only player/state overrides rather than the whole map.
 
 ### Tile / producer additions (runtime, not all in v0.2 saves)
 
@@ -968,7 +981,7 @@ Police, fire, and hospital overlay controls are exposed in the current HTML, and
 
 - Single source: `APP_VERSION` in `src/version.js`, re-exported by `src/config.js` where needed.
 - `package.json` `version` and the HTML badge/cache-busting consumers must match; `tests/version-sync.test.js` protects the package/source pair.
-- Patch for fixes, minor for features, major for save-breaking changes (`SAVE_VERSION` bump can ride a minor if migrations exist).
+- Patch for fixes, minor for features (`APP_VERSION` bumps also retire older saves, since loads require an exact build match).
 
 ---
 
@@ -1050,7 +1063,7 @@ Phase 1 stays paused-by-default sandbox (0% tax, $25,000) for solo city-building
 
 28. **Overworld Biome Generation.** `BIOME_TYPES` (`PLAINS`, `HILLY`, `MOUNTAINOUS`, `SWAMP`) modify procedural terrain generation: Hilly/Mountainous scale rock clusters (+25% / +50%); Plains reduce rock clusters (-50%); Swamp reduces forest (-50%), increases lakes (4-6), and forces fork/merge rivers. `generateProceduralTerrain(biome)` accepts the biome directly.
 
-29. **Single-source versioning.** `src/version.js` (`APP_VERSION = '0.2.13'`) is the single source of truth for version strings. `package.json` version and cache-busting consumers derive from it. Verified by `tests/version-sync.test.js`.
+29. **Single-source versioning.** `src/version.js` (`APP_VERSION = '0.2.18'`) is the single source of truth for version strings. `package.json` version and cache-busting consumers derive from it. Verified by `tests/version-sync.test.js`.
 
 30. **Desktop Pan and Drag Painting.** Desktop left-drag with the Pan tool pans the camera; clicking without dragging selects the tile without opening the inspector. Inspect Tile opens the inspector. Left-drag painting is restricted to repeatable tools (roads, bridges, tunnels, zones, bulldoze); single-placement buildings and surveys do not drag-paint.
 
@@ -1080,12 +1093,12 @@ Resolved by the user (rev 4): Conquer hybrid + world map + Firebase (Q1), victor
 
 - Product title: `index.html` `<title>SimConquer 2000</title>`, brand `SimConquer 2000`.
 - Onboarding: `src/engine/TutorialManager.js` shows a `#tutorial-banner` with six milestone steps (select a map tile, roads, utilities, residential + agriculture, jobs, population). The main menu owns the `Guided Tutorial` toggle button; switching it on and pressing `New Game` begins at Step 1, and the banner stays hidden while no world is loaded. State persists in `localStorage` keys `simconquer_tutorial_enabled` and `simconquer_tutorial_step`. Already-satisfied steps on the chosen map advance automatically after starting or loading a world. Map seed key is `simconquer_map_seed` (one-time legacy read of `bc2000_map_seed`). Save downloads are `simconquer2000-save-YYYY-MM-DD-HHMMSS-seed-<seed>.json`.
-- Version: `APP_VERSION` `0.2.13` in `src/version.js`; `package.json` is synchronized and version/cache-busting behavior is covered by the version-sync test.
+- Version: `APP_VERSION` `0.2.18` in `src/version.js`; `package.json` is synchronized and version/cache-busting behavior is covered by the version-sync test.
 - Entry / orchestration: `src/main.js` (`GameApp`), `src/engine/Simulation.js` (`tick`, `computeStats`, `updateGrowthAndDensity`).
 - Spatial model: `src/engine/Grid.js` (`createDefaultTile`, `generateProceduralTerrain`, placement).
 - View: `src/engine/Renderer.js`, `style.css`, overlay buttons in `index.html`.
 - Managers: `UtilityManager.js`, `RoadNetwork.js`, `PollutionManager.js`, `ServiceManager.js`, `CrimeManager.js`, `FireManager.js`, `ResourceManager.js`.
-- Balance: `src/config.js` (`FACTORY_RECIPES`, `HAPPINESS_CONFIG`, `DEMOGRAPHICS_CONFIG`, `FIRE_CONFIG`, …).
+- Balance: `src/config.js` (`HAPPINESS_CONFIG`, `DEMOGRAPHICS_CONFIG`, `FIRE_CONFIG`, …) and `src/recipes.js` (all crafting recipes).
 - Tests: `tests/*.js`, `package.json` scripts.
 - Historical work log (stale): `AI-task-list.txt`.
 - Git: `806566a` UI Updates; remote `Havoc302/rts-web-game`.
@@ -1249,7 +1262,7 @@ The PR descriptions below were written for the earlier rev 4 planning snapshot. 
 - **Title:** Consume goods, FUEL recipe, road fuel sink, surface hidden stats
 - **Files:** `src/config.js`, `ResourceManager.js`, `main.js`, `index.html`, `tests/resource-management.test.js`
 - **Depends on:** PR 4a; PR 6 preferred so saves include new stockpile keys
-- **Description:** Decrement `consumerGoods` then `goodsRatio = consumed/demand` (Key Decision 12). `FACTORY_RECIPES.FUEL`. `FUEL_PER_ROAD_TILE = 0.002`. HUD: happiness, bars, oil, fuel, arms, tanks. Tests assert goods and fuel stockpiles fall.
+- **Description:** Decrement `consumerGoods` then `goodsRatio = consumed/demand` (Key Decision 12). Industrial `FUEL` recipe. `FUEL_PER_ROAD_TILE = 0.002`. HUD: happiness, bars, oil, fuel, arms, tanks. Tests assert goods and fuel stockpiles fall.
 
 ### PR 8 — Named tick stages (extract-method only)
 

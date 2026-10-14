@@ -772,18 +772,46 @@ export class Simulation {
   }
 
   updateRoadMaintenance() {
+    const maxBudget = SERVICE_GLOBAL_CONFIG.BUDGET_MAX_VALUE;
+    const budget = Math.max(0, Math.min(maxBudget, this.roadMaintenanceBudget));
+
+    // Fully funded maintenance patches one damaged tile per tick, worst first, so the
+    // network heals at a tile per tick until every standing road is pristine again.
+    // Wrecked tiles are rubble, not wear: the player clears and rebuilds those.
+    if (budget >= maxBudget) {
+      this.repairRoadTile();
+      return;
+    }
+
     const roadTiles = Array.from(this.grid.activeRoadTiles).filter((tile) => tile.hasRoad && !tile.destroyed);
-    if (roadTiles.length === 0 || this.roadMaintenanceBudget >= SERVICE_GLOBAL_CONFIG.BUDGET_MAX_VALUE) return;
+    if (roadTiles.length === 0) return;
 
-    const fundedExact = roadTiles.length * Math.max(0, Math.min(SERVICE_GLOBAL_CONFIG.BUDGET_MAX_VALUE, this.roadMaintenanceBudget)) / SERVICE_GLOBAL_CONFIG.BUDGET_MAX_VALUE;
-    let fundedCount = Math.floor(fundedExact);
-    if (fundedExact - fundedCount > 0 && Math.random() < fundedExact - fundedCount) fundedCount++;
-    const unfundedCount = roadTiles.length - fundedCount;
+    // Underfunding rolls a share of the network equal to the missing budget: 99% funding
+    // rolls one tile per hundred, 50% funding rolls half of them. Each rolled tile then
+    // has a flat chance of taking one hit, so the damage rate scales with the shortfall.
+    const rolledExact = roadTiles.length * (maxBudget - budget) / maxBudget;
+    let rolledCount = Math.floor(rolledExact);
+    if (Math.random() < rolledExact - rolledCount) rolledCount++;
 
-    for (let index = 0; index < unfundedCount; index++) {
+    for (let index = 0; index < rolledCount; index++) {
       const swapIndex = index + Math.floor(Math.random() * (roadTiles.length - index));
       [roadTiles[index], roadTiles[swapIndex]] = [roadTiles[swapIndex], roadTiles[index]];
-      this.grid.damageRoad(roadTiles[index], ROAD_MAINTENANCE_CONFIG.DAMAGE_PER_UNFUNDED_TICK);
+      if (Math.random() < ROAD_MAINTENANCE_CONFIG.DAMAGE_ROLL_CHANCE) {
+        this.grid.damageRoad(roadTiles[index], ROAD_MAINTENANCE_CONFIG.DAMAGE_PER_HIT);
+      }
     }
+  }
+
+  /**
+   * Repairs the most damaged road tile. Returns the tile, or null when nothing needs work.
+   */
+  repairRoadTile() {
+    let worst = null;
+    for (const tile of this.grid.activeRoadTiles) {
+      if (!tile.hasRoad || tile.destroyed || !tile.roadDamage) continue;
+      if (!worst || tile.roadDamage > worst.roadDamage) worst = tile;
+    }
+    if (!worst) return null;
+    return this.grid.repairRoad(worst) ? worst : null;
   }
 }

@@ -1,4 +1,5 @@
 import assert from 'assert';
+import { readFileSync } from 'node:fs';
 import { Grid } from '../src/engine/Grid.js';
 import { Simulation } from '../src/engine/Simulation.js';
 import {
@@ -151,6 +152,24 @@ function fakeDocument() {
 
   simulation.tickCount = 48;
   assert.strictEqual(buildHudSnapshot(simulation, 25000)['stat-day'], 'Day 3', 'Tick 48 (after 48 hrs) should be Day 3');
+}
+
+{
+  // Every HUD field the snapshot writes must exist in the markup, so a renamed or typo'd
+  // id is caught here instead of silently never updating on screen.
+  const markup = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  const grid = new Grid(8, 8, 1);
+  flatten(grid);
+  const simulation = new Simulation(grid);
+  simulation.computeStats();
+  const snapshot = buildHudSnapshot(simulation, 25000);
+  // These two drive the alerts panel instead of being elements of their own.
+  const nonElementKeys = new Set(['alerts-panel-visible', 'alerts-panel-data']);
+  const missing = Object.keys(snapshot).filter((key) => !nonElementKeys.has(key) && !markup.includes(`id="${key}"`));
+  assert.deepStrictEqual(missing, [], 'Every HUD snapshot field should have a matching element in index.html');
+  for (const key of ['stat-sand', 'stat-glass', 'stat-computer-chips']) {
+    assert.ok(key in snapshot, `${key} should be part of the HUD snapshot`);
+  }
 }
 
 console.log('HUD update tests passed.');

@@ -1,6 +1,5 @@
 import {
   DEMOGRAPHICS_CONFIG,
-  FACTORY_RECIPES,
   FUEL_CONFIG,
   HAPPINESS_CONFIG,
   LABOR_TAX_GROWTH_CONFIG,
@@ -10,6 +9,14 @@ import {
   RESOURCE_JOB_CATEGORIES,
   ZONE,
 } from '../config.js';
+import {
+  DEFAULT_INDUSTRIAL_RECIPE,
+  RECIPES,
+  SMELTER_RECIPE_IDS,
+  STATION,
+  hasInputs,
+  runRecipe,
+} from '../recipes.js';
 import { UtilityManager } from './UtilityManager.js';
 
 export function happinessDemandModifier(happiness) {
@@ -25,9 +32,17 @@ const EMPTY_STOCKPILE = {
   fuel: 0,
   ironOre: 0,
   bauxiteOre: 0,
+  copperOre: 0,
+  titaniumOre: 0,
+  sand: 0,
   ironBar: 0,
   bauxiteBar: 0,
+  copperBar: 0,
+  steel: 0,
+  glass: 0,
+  polysilicon: 0,
   consumerGoods: 0,
+  computerChips: 0,
   arms: 0,
   tanks: 0,
 };
@@ -110,6 +125,9 @@ export class ResourceManager {
       [PRODUCER_TYPE.MINE_COAL]: 'coal',
       [PRODUCER_TYPE.OIL_DERRICK]: 'oil',
       [PRODUCER_TYPE.MINE_URANIUM]: 'uraniumOre',
+      [PRODUCER_TYPE.MINE_COPPER]: 'copperOre',
+      [PRODUCER_TYPE.MINE_TITANIUM]: 'titaniumOre',
+      [PRODUCER_TYPE.QUARRY_SAND]: 'sand',
     };
     for (const producer of grid.producers) {
       const output = outputs[producer.type];
@@ -129,20 +147,22 @@ export class ResourceManager {
   smelt(grid) {
     for (const producer of grid.producers) {
       if (producer.type !== PRODUCER_TYPE.SMELTER || !producer.operational) continue;
-      let remainingJobs = producer.filledJobs || 0;
-      for (const [input, output] of [['ironOre', 'ironBar'], ['bauxiteOre', 'bauxiteBar']]) {
-        if (remainingJobs <= 0) break;
-        const possible = Math.min(
-          remainingJobs * RESOURCE_CONFIG.SMELTER_BARS_PER_JOB,
-          this.stockpile[input] / RESOURCE_CONFIG.SMELTER_ORE_PER_BAR,
-          this.stockpile.coal / RESOURCE_CONFIG.SMELTER_COAL_PER_BAR,
-        );
-        if (possible <= 0) continue;
-        this.stockpile[input] -= possible * RESOURCE_CONFIG.SMELTER_ORE_PER_BAR;
-        this.stockpile.coal -= possible * RESOURCE_CONFIG.SMELTER_COAL_PER_BAR;
-        this.stockpile[output] += possible;
-        remainingJobs -= possible / RESOURCE_CONFIG.SMELTER_BARS_PER_JOB;
+      const totalJobs = producer.filledJobs || 0;
+      if (totalJobs <= 0) continue;
+
+      // A smelter either runs one chosen recipe at full crew, or - the default - shares
+      // its crew evenly across every recipe it currently has inputs for. Only recipes
+      // belonging to the smelter are honoured, so a stray industrial id falls back.
+      const chosen = RECIPES[producer.recipe]?.station === STATION.SMELTER ? RECIPES[producer.recipe] : null;
+      if (chosen) {
+        runRecipe(chosen, totalJobs, this.stockpile);
+        continue;
       }
+
+      const active = SMELTER_RECIPE_IDS.filter((id) => hasInputs(RECIPES[id], this.stockpile));
+      if (active.length === 0) continue;
+      const jobsPerRecipe = totalJobs / active.length;
+      for (const id of active) runRecipe(RECIPES[id], jobsPerRecipe, this.stockpile);
     }
   }
 
@@ -156,14 +176,8 @@ export class ResourceManager {
         continue;
       }
       if (tile.zone !== ZONE.INDUSTRIAL || tile.destroyed || tile.onFire) continue;
-      const recipe = FACTORY_RECIPES[tile.recipe] || FACTORY_RECIPES.CONSUMER_GOODS;
-      const requested = (tile.filledJobs || 0) * recipe.rate;
-      const possible = Object.entries(recipe.inputs).reduce((amount, [input, required]) => (
-        Math.min(amount, this.stockpile[input] / required)
-      ), requested);
-      if (Object.keys(recipe.inputs).length > 0 && possible <= 0) continue;
-      for (const [input, required] of Object.entries(recipe.inputs)) this.stockpile[input] -= possible * required;
-      this.stockpile[recipe.output] += possible;
+      const recipe = RECIPES[tile.recipe] || RECIPES[DEFAULT_INDUSTRIAL_RECIPE];
+      runRecipe(recipe, tile.filledJobs || 0, this.stockpile);
     }
   }
 
@@ -330,15 +344,24 @@ export class ResourceManager {
       ironOre: this.capacity.ore,
       bauxiteOre: this.capacity.ore,
       coal: this.capacity.ore,
-      oil: this.capacity.oil,
       uraniumOre: this.capacity.ore,
+      copperOre: this.capacity.ore,
+      titaniumOre: this.capacity.ore,
+      sand: this.capacity.ore,
+      oil: this.capacity.oil,
       fuel: this.capacity.fuel,
       ironBar: this.capacity.bar,
       bauxiteBar: this.capacity.bar,
+      copperBar: this.capacity.bar,
+      steel: this.capacity.bar,
+      glass: this.capacity.bar,
+      polysilicon: this.capacity.bar,
     };
     for (const [key, limit] of Object.entries(limits)) this.stockpile[key] = Math.min(this.stockpile[key], limit);
 
-    const goodsKeys = ['food', 'consumerGoods', 'arms', 'tanks'];
+    // Computer chips are an industrial-zone product, so they share goods storage with
+    // food, consumer goods, arms and tanks.
+    const goodsKeys = ['food', 'consumerGoods', 'computerChips', 'arms', 'tanks'];
     const goodsLimit = this.capacity.goods || 0;
     const goodsTotal = goodsKeys.reduce((sum, key) => sum + (this.stockpile[key] || 0), 0);
     if (goodsTotal <= goodsLimit) return;

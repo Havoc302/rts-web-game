@@ -9,7 +9,7 @@ Agent handoff protocol:
 
 Open handoff (2026-10-14):
 - Active task: none in progress; the next item is to pick up the Phase 1 follow-ups listed in `docs/DESIGN.md`.
-- Latest completed task: boot like a proper game — no world on load, main-menu Save/Load, destructive New Game guard, and the Guided Tutorial toggle beside Audio (`0.2.13`); see the final task entry in this log.
+- Latest completed task: coking coal model for the smelter, so only iron bars and steel consume coal (`0.2.18`); see the final task entry in this log.
 - Verified baseline: `npm test` passes all 46 test files.
 - Phase 1 follow-ups are tracked in `docs/DESIGN.md`; in particular, localStorage autosave and named tick-stage extraction are not implemented. Do not treat historical `Current task` headings below as active.
 
@@ -1488,3 +1488,128 @@ Validation:
 - `tests/renderer-cache.test.js` asserts the main menu offers `#btn-main-tutorial` with an `On`/`Off` label, that no `chk-main-tutorial` checkbox remains, and that the toggle sits after `#btn-main-load-world` and immediately before `#btn-main-audio`.
 - Browser verification (Playwright, port 4173, `v0.2.13`): the menu renders six actions in order New Game, Save World, Load World, `🎓 Tutorial: On`, `🔇 Audio: Off`, Close; the tutorial and audio buttons share a row and are horizontally adjacent. Clicking the toggle flips the label to `🎓 Tutorial: Off`, clears `aria-pressed` and the `active` class, persists `simconquer_tutorial_enabled = false`, and hides the banner; clicking again restores `On` and the stored `true`.
 - End-to-end: with the toggle off, New Game produced no tutorial banner; with it on, New Game showed `Step 1: Select a map tile` at step 0. Editor diagnostics are clean, the stylesheet brace check reports `final depth 0`, and version sources are synchronized.
+
+Current task: Correct road maintenance wear scaling, add full-budget repair, and make wrecked roads bulldozable (`0.2.14`).
+
+- [done] Re-scale road wear to the requested model: underfunding rolls a share of the network equal to the missing budget, and each rolled tile has a flat 5% chance of taking one hit.
+- [done] Restoring the budget to 100% now repairs one damaged tile per tick, worst damage first, until every standing road is pristine.
+- [done] Wrecked road tiles leave the network as rubble; full funding does not rebuild them, so bulldozing the tile and rebuilding is the player path.
+- [done] Add `Grid.canBulldoze` and wire it into `canBuildTool` so the Bulldoze tool highlights what it can actually clear, including wrecked road rubble.
+- [done] Add `Grid.repairRoad` and `Simulation.repairRoadTile`, replacing `DAMAGE_PER_UNFUNDED_TICK` with `DAMAGE_PER_HIT` plus `DAMAGE_ROLL_CHANCE`.
+- [done] Update tests, bump/synchronize every version source to `0.2.14`, docs, and validation.
+
+Notes:
+- The previous implementation gave every uncovered tile a guaranteed 10 damage per tick, so lowering the budget from 100% to 99% wrecked a road every ten ticks with certainty. Damage is now probabilistic, so the average rate scales smoothly with the shortfall instead of stepping.
+- Measured on a 100-road network: 99% funding damages 0.0495 tiles/tick (expected 0.05), 50% funding 2.5293 (expected 2.5), 0% funding 5.0373 (expected 5). Hits per tick are `roadTiles * (100 - budget) / 100 * 0.05`.
+- The roll count uses stochastic rounding, so a small network at 99% funding still averages the right rate instead of flooring to zero rolls.
+- `canBuildTool` had no bulldoze branch, so the Bulldoze tool marked every hovered tile invalid and never showed a green target. The click already worked; only the affordance was broken. `canBulldoze` now mirrors exactly what `bulldoze` clears.
+- Wear alone never changes pathing (a road stays in `activeRoadTiles` until it is wrecked), so `repairRoad` deliberately does not bump `coverageVersion`.
+
+Validation:
+- `npm test` passes all 46 test files.
+- `tests/road-maintenance.test.js` covers the roll count at 100% / 99% / 50% budget, a forced-hit and forced-miss tick, a seeded long-run rate check asserting roughly 0.05 hits per tick at 99% and 2.5 at 50% with the ratio above 20x, the worst-first one-tile-per-tick repair, and that wrecked rubble is skipped by repair but clearable by bulldoze and rebuildable afterwards.
+- `tests/placement-rules.test.js` covers `canBulldoze` on bare ground, a healthy road, a worn road, wrecked rubble, after clearing, and forest.
+- Browser verification (Playwright, port 4173, `v0.2.14`): a 100-road city showed `canBuildTool(x, y, 'bulldoze')` true for worn and wrecked tiles and false for bare ground; clicking a wrecked tile through the real handler landed on the right tile, cleared `destroyed` and `roadDamage`, charged `$50`, dropped the network to 99 roads, and allowed a new road to be placed there; with three worn tiles at 100% budget the damaged count went 2 -> 1 -> 0 across ticks. The measured rate table above was produced from the live sim.
+
+Current task: Desert sand ground texture plus a Sand Mine → glass / computer chip industry (`0.2.15`).
+
+Confirmed with the user before implementation (their instruction was "I don't want rework"):
+- Sand Mine placement: any flat land tile beside a road, no survey. Not gated on a discovered deposit.
+- Sand is smelted by the existing Smelter into both glass and computer chips. No new building.
+- Storage: sand counts against Ore Warehouse capacity; glass and computer chips count against Bar Warehouse capacity (the intermediate tier).
+- Sand Mine mirrors the other mines: $5,000, 1 power / 1 water / 1 sewage, 10 jobs, 0.2 output per filled job per tick.
+
+- [done] Render desert city ground with a dedicated sand palette instead of the default soil palette.
+- [done] Add the Sand Mine producer type, config, toolbar button, and resource extraction into `sand`.
+- [done] Add `sand`, `glass`, and `computerChips` stockpile keys, cluster them into the right storage tiers, and surface them in the Storage HUD.
+- [done] Replace the hard-coded ore→bar smelt pairs with a declarative `SMELTER_RECIPES` table covering bars, glass, and computer chips.
+- [done] Backfill missing stockpile keys on load so saves written before this change still import.
+- [done] Add `tests/sand-industry.test.js` and a HUD snapshot/markup cross-check, bump every version source to `0.2.15`, and record validation.
+
+Notes:
+- The Sand Mine deliberately has no `requiresDiscoveredOre`. Without it `canPlaceProducer` takes its normal branch, so the mine needs bare (EMPTY) ground, which also means it cannot sit on mountain rock. That matches "any land tile" for buildable terrain and keeps it consistent with the other non-ore producers.
+- Sand is not added to `ORE_TYPE`/`ORE_CONFIG`, so it is never rolled as a hidden ore and the survey overlay is untouched.
+- The first smelter model processed recipes sequentially against one shared job budget. Because sand feeds both glass and chips, glass consumed the whole crew every tick and computer chips were unreachable. Replaced it with: the crew splits evenly across the `SMELTER_RECIPES` lines that currently have inputs, and a line with no input is skipped rather than holding a share. Consequence worth knowing: a smelter with both iron ore and sand on hand now gives iron a third of the crew instead of everything, so cities that smelt bars and want full bar throughput need a second smelter. A smelter with ore only is unchanged (it still gets the whole crew).
+- Glass consumes 1 sand + 0.5 coal per unit; computer chips consume 2 sand + 0.5 coal. Coal keeps working as the smelter's universal fuel.
+- `SaveGame.validateSimulation` used to demand every stockpile key and throw otherwise, which would have rejected every save written before sand existed. Validation now only rejects non-numeric values present in the file, and `restoreStockpile` fills anything absent with zero.
+- `tests/hud-update.test.js` gained a cross-check that every HUD snapshot field has a matching element in `index.html`, so a renamed or typo'd id fails the suite instead of silently never updating. `alerts-panel-visible` and `alerts-panel-data` are allowlisted because they drive the alerts panel rather than being elements.
+
+Validation:
+- `npm test` passes all 47 test files (up from 46 with the new `tests/sand-industry.test.js`).
+- `tests/sand-industry.test.js` covers Sand Mine config and placement (road-adjacent required, roadless rejected, water and mountain rejected, no survey needed), sand extraction with and without ore storage, the even smelter split, glass and chip yields and sand consumption, coal required, unstaffed smelters idle, unchanged iron smelting when sand is absent, shared crews when ore and sand are both stocked, storage tier clamping, a full save round trip, and desert vs non-desert ground palettes.
+- Browser verification (Playwright, port 4173, `v0.2.15`): a desert city renders bare ground as `#e8d6a8` while a hilly city renders `#6b5440`; the toolbar shows "Sand Mine ($5,000)"; a roadless tile reports `canBuildTool(..., 'producer_mine_sand')` false and a road-adjacent tile true, and the mine places; a live chain of Sand Mine + Ore Warehouse + Bar Warehouse + Smelter produced glass and computer chips with coal consumed; the Storage HUD rows read 123 / 45 / 9 after setting the stockpile and recomputing stats.
+- Editor diagnostics are clean and `git diff --check` reports no whitespace errors.
+
+Current task: Version-gate save loading and drop backwards compatibility (`0.2.16`).
+
+- [done] Add `assertLoadableSave` and run it first in `deserializeGame`, before terrain regeneration, grid validation, or any state mutation.
+- [done] Require an exact build match: the document's `saveVersion` and `appVersion` must both equal the running build.
+- [done] Remove the legacy format-1 reader and writer entirely (`deserializeV1`, `serializeGameV1`, `SAVE_VERSION_V1`), so there is no migration path to maintain.
+- [done] Revert the stockpile backfill added in `0.2.15` to strict validation, now that older saves cannot reach validation.
+- [done] Update tests, DESIGN.md, bump every version source to `0.2.16`, and record validation.
+
+Notes:
+- `serializeGame` already wrote `appVersion`, so the gate needed no new save field.
+- The gate rejects both older and newer stamps. A save from a later build may carry fields this build cannot interpret, so accepting it would be just as unsafe as accepting an older one. The error names both versions.
+- Every `APP_VERSION` bump now retires all existing saves. That is the intended prototype-stage behaviour the user asked for, and it is documented in DESIGN.md so it does not read as a bug later.
+- Strictness restored downstream: because the gate proves a save came from this exact build, `validateSimulation` again requires every `REQUIRED_STOCKPILE_KEYS` entry and nothing is backfilled. A save missing a key is now treated as corrupt, not old.
+- One test needed updating rather than fixing: the generation-version mismatch case previously built a document with no `appVersion`, so the new gate short-circuited it. It now carries `APP_VERSION` so it actually exercises the generation check behind the gate. The gate being first is the point.
+
+Validation:
+- `npm test` passes all 47 test files.
+- `tests/save-game.test.js` covers: a save stamped with an older build rejected; the same via `deserializeGameFromJson`; a save with no build stamp rejected; a format-1 document rejected; a document with a valid stamp but no map data rejected by the version gate rather than by grid validation, proving ordering; and a save from this build still loading.
+- `tests/sand-industry.test.js` now asserts a save missing a stockpile key is rejected as corrupt, and that a save stamped `0.2.14` is refused by the gate.
+- Browser verification (Playwright, port 4173, `v0.2.16`): Save World produced `{ saveVersion: 2, appVersion: "0.2.16" }`. Loading that file with `appVersion` rewritten to `0.2.15` alerted "This save was written by version 0.2.15; this build is 0.2.16. Saves are not compatible across versions — start a new game."; `saveVersion: 1` alerted "This save uses format version 1; this build expects 2. Older saves are not supported — start a new game."; deleting `appVersion` alerted "written by version unknown". After all three rejections the world seed, active hex, and treasury were unchanged, confirming the gate runs before any mutation. Re-importing the untouched save loaded cleanly with the edited treasury applied and no error.
+
+Current task: Central recipe table, copper and titanium ores, steel, and smelter recipe selection (`0.2.17`).
+
+Confirmed with the user before implementation:
+- Smelters get a product dropdown, and one of the options is "All Evenly" which is the existing share-the-crew behaviour.
+- Steel is 1 iron ORE + 1 coal -> 1 steel (not iron bars).
+- Glass is kept, separate from polysilicon, both in bar storage.
+- Computer chips move to the Goods Warehouse now that industrial tiles make them.
+- Copper and polysilicon smelt with no coal; only steel and the metal bars burn fuel.
+- Ore odds are weighted, with titanium the rarest.
+
+- [done] Create `src/recipes.js` as the single table every crafting recipe lives in, with shared `recipeOutput` / `applyRecipe` / `runRecipe` mechanics used by both stations.
+- [done] Move the smelter and industrial recipe sets and the loose `RESOURCE_CONFIG` ratios into that table, and delete the superseded constants.
+- [done] Add copper and titanium as surveyable ores with spawn weights, and give them mines that follow the existing mine rules.
+- [done] Rename the Sand Mine to Sand Quarry, including the producer type key, and keep its no-survey rule.
+- [done] Add steel and copper bars as smelter recipes, and polysilicon alongside glass.
+- [done] Add Computer Chips as an industrial recipe consuming polysilicon and copper bars.
+- [done] Add the smelter recipe dropdown to the inspector, wired through the central table.
+- [done] Update storage tiers, the Storage HUD, saves, tests, and docs; bump every version source to `0.2.17`.
+
+Notes:
+- `placeProducer` used to stamp `recipe: 'CONSUMER_GOODS'` on every producer, which was harmless while smelters ignored the field. With a real recipe dropdown it would have made every new smelter run the consumer-goods recipe, so producers now store `recipe: null` (meaning not applicable, and for a smelter, All Evenly) and `smelt()` ignores any recipe id that does not belong to the smelter station.
+- The old smelter and factory passes had the same maths expressed differently: the smelter treated coal as an extra ceiling, the factory did a min over an inputs map. Unifying coal into the inputs map makes them literally the same function, and the iron/bauxite ratios are unchanged (1 ore + 0.5 coal -> 1 bar at 0.2/job).
+- Glass and polysilicon are separate products rather than one recipe with two outputs, so the user can later gate a recipe on one but not the other.
+- Ore generation still makes exactly two PRNG draws per ore-bearing tile, so switching from a uniform pick to a weighted pick did not change how much randomness the map consumes.
+- Adding two ore types makes every specific ore rarer; the weights were chosen so iron and coal stay at 20 and titanium sits at 6.
+- Computer chips moving from bar to goods capacity means they now share a pool that scales down proportionally when over capacity, rather than clamping on their own.
+
+Validation:
+- `npm test` passes all 47 test files.
+- `tests/sand-industry.test.js` was rewritten to cover: the Sand Quarry rules; every one of the six ore mines sharing the same crew, utility, deposit and extraction rules; copper and titanium existing as weighted ores with titanium rarest; the steel, copper bar, polysilicon and glass ratios including which ones burn no coal; every recipe declaring a real output, label and rate; All Evenly feeding both sand recipes at once while skipping lines with no inputs; a dedicated smelter using its whole crew on one product and making nothing else; All Evenly as an explicit selection; the three storage tiers with the new keys; a save round trip including the smelter's recipe choice; and the desert ground palette.
+- `tests/industrial-inputs.test.js` covers the Computer Chips recipe and both of its input shortfalls. `tests/ore-survey.test.js` was updated from five ore types to seven.
+- Browser verification (Playwright, port 4173, `v0.2.17`): the toolbar lists Iron, Bauxite, Coal, Uranium, Copper and Titanium mines plus the Sand Quarry. A default smelter with iron, coal, copper and sand on hand produced 0.4 each of iron bars, steel, copper bars, glass and polysilicon - five active lines sharing the crew. Setting it to Steel produced 2.0 steel and nothing else. The inspector's smelter dropdown reads All Evenly, Iron Bars, Bauxite Bars, Steel, Copper Bars, Glass, Polysilicon; selecting Steel stored `recipe: "STEEL"` on the producer; a non-smelter producer hides the row. The industrial dropdown reads Consumer Goods, Food, Arms, Tanks, Computer Chips, and a 10-job chip factory turned 10 polysilicon plus 10 copper bars into 2 chips. The Storage HUD rendered copper ore 123, titanium ore 45, copper bars 67, steel 89, polysilicon 12, glass 34 and chips 5, with Goods Storage showing 5 / 500 - confirming chips now count against goods capacity. A fresh 140x140 map generated all seven ores: coal 223, iron 213, bauxite 192, copper 147, oil 141, uranium 84, titanium 69.
+
+Current task: Coking coal model for the smelter (`0.2.18`).
+
+The user clarified the smelter's energy model: the smelter smelts with electricity, and coal is only for coking, which means iron and steel.
+
+- [done] Remove coal from the Bauxite Bars recipe, leaving coking coal as an input to iron bars and steel only.
+- [done] Document the energy model in `src/recipes.js` and DESIGN.md.
+- [done] Add tests for which recipes consume coal, and for the smelter going offline without grid power.
+- [done] Bump every version source to `0.2.18`.
+
+Notes:
+- The smelter was already powered by the grid, so no code change was needed for the electricity half of the statement: `PRODUCER_CONFIG[SMELTER].utilityUsage.power = 3`, and `UtilityManager.updateProducerOperationalState` flips `operational` to false after `UTILITY_FAILURE_GRACE_TICKS` when the grid cannot serve it. Tests now pin that behaviour so it cannot regress silently.
+- Removing coal from bauxite is also the metallurgically correct call: bauxite to aluminium is an electrolytic reduction, so it consumes electricity rather than coke. Copper, glass, and polysilicon were already coal-free from the previous change.
+- Coal's remaining sinks are coking for iron bars and steel, and thermal coal for the coal plant. Nothing else in the game burns it.
+- Because the smelter is gated on both grid power and, for two recipes, coking coal, a city can have full coal stock and still make no iron or steel if the grid is down, and full power and still make no iron or steel without coal. The two failure modes are independent and now both covered.
+
+Validation:
+- `npm test` passes all 47 test files.
+- `tests/sand-industry.test.js` asserts that exactly `IRON_BAR` and `STEEL` declare coal, that bauxite smelts without touching the coal stockpile, that iron and steel produce nothing when coal is absent, and that a smelter with a power shortfall goes offline and neither produces bars nor consumes coal, then resumes when power returns.
+- Recipe table after the change: IRON_BAR 1 iron ore + 0.5 coal; BAUXITE_BAR 1 bauxite; STEEL 1 iron ore + 1 coal; COPPER_BAR 1 copper ore; GLASS 1 sand; POLYSILICON 1 sand.

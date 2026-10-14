@@ -1,7 +1,14 @@
-import { TERRAIN, ZONE, DENSITY, PRODUCER_TYPE, PRODUCER_CONFIG, TILE_SIZE, ORE_CONFIG, NIGHT_TINT_ALPHA, RENDERER_CONFIG, POLLUTION_CONFIG, isZoneAtCapacity } from '../config.js';
+import { TERRAIN, ZONE, DENSITY, PRODUCER_TYPE, PRODUCER_CONFIG, TILE_SIZE, ORE_CONFIG, NIGHT_TINT_ALPHA, RENDERER_CONFIG, POLLUTION_CONFIG, BIOME_TYPES, isZoneAtCapacity } from '../config.js';
 import { UtilityManager } from './UtilityManager.js';
 import { TrafficManager } from './TrafficManager.js';
 import { WeatherOverlay } from './WeatherOverlay.js';
+
+// Ground palettes for bare (FLAT) city tiles. The default is soil; desert cities render
+// sand instead so their terrain reads as dunes rather than farmland.
+const GROUND_PALETTE = {
+  default: { baseAlt: '#5b4636', base: '#463326', speckleAlt: '#6b5440', speckle: '#533d2d' },
+  [BIOME_TYPES.DESERT]: { baseAlt: '#dcc48f', base: '#cfb47c', speckleAlt: '#e8d6a8', speckle: '#bfa368' },
+};
 
 export class Renderer {
   constructor(canvas, grid) {
@@ -394,10 +401,11 @@ export class Renderer {
   renderTerrainTile(ctx, tile, px, py, animateWater = true) {
     if (tile.terrain === TERRAIN.FLAT) {
       const isAlt = (tile.x + tile.y) % 2 === 0;
-      ctx.fillStyle = isAlt ? '#5b4636' : '#463326';
+      const ground = GROUND_PALETTE[this.grid?.biome] || GROUND_PALETTE.default;
+      ctx.fillStyle = isAlt ? ground.baseAlt : ground.base;
       ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
 
-      ctx.fillStyle = isAlt ? '#6b5440' : '#533d2d';
+      ctx.fillStyle = isAlt ? ground.speckleAlt : ground.speckle;
       ctx.fillRect(px + 4, py + 4, 3, 3);
       ctx.fillRect(px + 18, py + 22, 2, 2);
     } else if (tile.terrain === TERRAIN.MOUNTAIN) {

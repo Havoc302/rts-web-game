@@ -47,6 +47,31 @@ assert.strictEqual(grid.canBuildTool(4, 4, 'producer_solar_panel'), true, 'Diago
 assert.strictEqual(grid.canBuildTool(0, 4, 'survey'), false);
 assert.strictEqual(grid.canBuildTool(6, 6, 'survey'), true);
 
+// Bulldoze highlights exactly what it can clear, so wrecked roads read as bulldozable
+// instead of always showing the red invalid overlay.
+{
+  const wreck = new Grid(6, 6, 1);
+  for (const row of wreck.tiles) for (const tile of row) tile.terrain = TERRAIN.FLAT;
+  assert.strictEqual(wreck.canBuildTool(2, 2, 'bulldoze'), false, 'Bare ground has nothing to bulldoze');
+
+  wreck.placeRoad(2, 2);
+  assert.strictEqual(wreck.canBuildTool(2, 2, 'bulldoze'), true, 'A road tile should be bulldozable');
+
+  const tile = wreck.getTile(2, 2);
+  tile.roadDamage = 40;
+  assert.strictEqual(wreck.canBuildTool(2, 2, 'bulldoze'), true, 'A worn road tile should be bulldozable');
+
+  wreck.damageRoad(tile, 60);
+  assert.strictEqual(tile.destroyed, true, 'The final hit should wreck the road');
+  assert.strictEqual(wreck.canBuildTool(2, 2, 'bulldoze'), true, 'Wrecked road rubble should be bulldozable');
+
+  assert.strictEqual(wreck.bulldoze(2, 2), true);
+  assert.strictEqual(wreck.canBuildTool(2, 2, 'bulldoze'), false, 'Clearing the wreck should leave nothing behind');
+
+  wreck.getTile(4, 4).terrain = TERRAIN.FOREST;
+  assert.strictEqual(wreck.canBuildTool(4, 4, 'bulldoze'), true, 'Forest should still be bulldozable');
+}
+
 assert.strictEqual(grid.canBuildTool(6, 6, null), false);
 
 console.log('Placement rule tests passed.');

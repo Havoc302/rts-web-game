@@ -16,13 +16,21 @@ import {
   uiTimingAverages,
 } from './engine/UiRefresh.js';
 import { deserializeGame, deserializeGameFromJson, serializeGameToJson } from './engine/SaveGame.js';
+import { ALL_EVENLY, DEFAULT_INDUSTRIAL_RECIPE, INDUSTRIAL_RECIPE_IDS, RECIPES, SMELTER_RECIPE_IDS } from './recipes.js';
 import { AudioManager } from './engine/AudioManager.js';
 import { LoanManager, loanTerms, shouldEndGame } from './engine/LoanManager.js';
 import { advanceWorldEconomy } from './engine/WorldFinance.js';
 import { TutorialManager } from './engine/TutorialManager.js';
-import { APP_VERSION, ZONE, TERRAIN, PRODUCER_TYPE, PRODUCER_CONFIG, SERVICE_CONFIG, FACTORY_RECIPES, COSTS, TILE_SIZE, STARTING_TREASURY, RESIDENTIAL_CAPACITY, JOBS_PROVIDED, FOREST_POLLUTION_ABSORPTION, FOREST_DESIRABILITY_RADIUS, CRIME_CONFIG, MEDICAL_CONFIG, POWER_PRODUCER_TYPES, POLLUTION_CONFIG, COAL_CONFIG, WIND_CONFIG, SOLAR_CONFIG, BATTERY_CONFIG, RESOURCE_CONFIG, UTILITY_OPERATING_COST, SURVEY_COST_PER_TICK, TICKS_PER_HOUR, DENSITY, RENDERER_CONFIG, TERRAIN_GENERATION_CONFIG, MAP_SEED_STORAGE_KEY, EDUCATION_CONFIG, LOAN_CONFIG, splitDemographics, getZoneUpgradeCost, isZoneAtCapacity } from './config.js';
+import { APP_VERSION, ZONE, TERRAIN, PRODUCER_TYPE, PRODUCER_CONFIG, SERVICE_CONFIG, COSTS, TILE_SIZE, STARTING_TREASURY, RESIDENTIAL_CAPACITY, JOBS_PROVIDED, FOREST_POLLUTION_ABSORPTION, FOREST_DESIRABILITY_RADIUS, CRIME_CONFIG, MEDICAL_CONFIG, POWER_PRODUCER_TYPES, POLLUTION_CONFIG, COAL_CONFIG, WIND_CONFIG, SOLAR_CONFIG, BATTERY_CONFIG, RESOURCE_CONFIG, UTILITY_OPERATING_COST, SURVEY_COST_PER_TICK, TICKS_PER_HOUR, DENSITY, RENDERER_CONFIG, TERRAIN_GENERATION_CONFIG, MAP_SEED_STORAGE_KEY, EDUCATION_CONFIG, LOAN_CONFIG, splitDemographics, getZoneUpgradeCost, isZoneAtCapacity } from './config.js';
 
 const nowMs = typeof performance !== 'undefined' ? () => performance.now() : () => Date.now();
+
+/** Options markup for a recipe dropdown, using the labels from the central recipe table. */
+function recipeOptions(ids) {
+  return ids
+    .map((id) => `<option value="${id}">${id === ALL_EVENLY ? 'All Evenly' : RECIPES[id].label}</option>`)
+    .join('');
+}
 
 class GameApp {
   constructor() {
@@ -1460,6 +1468,8 @@ class GameApp {
     const popJobsEl = document.getElementById('inspect-pop-jobs');
     const recipeRow = document.getElementById('industrial-recipe-row');
     const recipeSelect = document.getElementById('industrial-recipe-select');
+    const producerRecipeRow = document.getElementById('producer-recipe-row');
+    const producerRecipeSelect = document.getElementById('producer-recipe-select');
     const storageRow = document.getElementById('storage-type-row');
     const storageSelect = document.getElementById('storage-type-select');
     const demographicsRow = document.getElementById('demographics-row');
@@ -1498,13 +1508,24 @@ class GameApp {
     if (recipeRow && recipeSelect) {
       if (tile.zone === ZONE.INDUSTRIAL) {
         recipeRow.style.display = '';
-        recipeSelect.innerHTML = Object.keys(FACTORY_RECIPES)
-          .map((key) => `<option value="${key}">${key.replace('_', ' ')}</option>`)
-          .join('');
-        recipeSelect.value = tile.recipe || 'CONSUMER_GOODS';
+        recipeSelect.innerHTML = recipeOptions(INDUSTRIAL_RECIPE_IDS);
+        recipeSelect.value = RECIPES[tile.recipe] ? tile.recipe : DEFAULT_INDUSTRIAL_RECIPE;
         recipeSelect.onchange = () => { tile.recipe = recipeSelect.value; };
       } else {
         recipeRow.style.display = 'none';
+      }
+    }
+    if (producerRecipeRow && producerRecipeSelect) {
+      const isSmelter = tile.producer?.type === PRODUCER_TYPE.SMELTER;
+      // Only a smelter runs recipes; every other producer hides the row.
+      if (isSmelter) {
+        producerRecipeRow.style.display = '';
+        producerRecipeSelect.innerHTML = recipeOptions([ALL_EVENLY, ...SMELTER_RECIPE_IDS]);
+        const selected = tile.producer.recipe || ALL_EVENLY;
+        producerRecipeSelect.value = selected === ALL_EVENLY || RECIPES[selected] ? selected : ALL_EVENLY;
+        producerRecipeSelect.onchange = () => { tile.producer.recipe = producerRecipeSelect.value; };
+      } else {
+        producerRecipeRow.style.display = 'none';
       }
     }
     if (storageRow && storageSelect) {
