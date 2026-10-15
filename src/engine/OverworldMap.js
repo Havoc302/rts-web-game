@@ -17,17 +17,24 @@ const BIOME_CLIMATE = {
   [BIOME_TYPES.MOUNTAINOUS]: { temperature: -8, moisture: 0.52 },
   [BIOME_TYPES.SWAMP]: { temperature: 1, moisture: 0.82 },
   [BIOME_TYPES.DESERT]: { temperature: 5, moisture: 0.1 },
+  [BIOME_TYPES.ARCTIC]: { temperature: -8, moisture: 0.25 },
 };
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
+// Polar land is arctic no matter which continent region happens to reach it.
+export function isPolarLatitude(lat) {
+  return Math.abs(lat) >= CLIMATE_CONFIG.POLAR_CAP_LATITUDE;
+}
+
 function baseClimate(cell) {
   const latitude = clamp(Math.abs(cell.lat) / 90, 0, 1);
   const biome = BIOME_CLIMATE[cell.biome] || BIOME_CLIMATE[BIOME_TYPES.PLAINS];
   const temperature = CLIMATE_CONFIG.EQUATOR_TEMP +
-    (CLIMATE_CONFIG.POLE_TEMP - CLIMATE_CONFIG.EQUATOR_TEMP) * Math.pow(latitude, 1.15) + biome.temperature;
+    (CLIMATE_CONFIG.POLE_TEMP - CLIMATE_CONFIG.EQUATOR_TEMP) *
+      Math.pow(latitude, CLIMATE_CONFIG.LATITUDE_GRADIENT_POWER) + biome.temperature;
   const moisture = cell.ocean ? 0.86 : biome.moisture + (1 - latitude) * 0.08;
   return { temperature, moisture };
 }
@@ -137,7 +144,9 @@ export class OverworldMap {
         const cell = { id, lat, lng, boundary: cellToBoundary(id), ocean: !biome && !islands.has(id) && id !== this.homeCellId };
         if (!cell.ocean) {
           cell.seed = id === this.homeCellId && homeSeed != null ? Number(homeSeed) : hashSeed(this.seed, id);
-          cell.biome = biome || (Math.abs(lat) > 45 ? BIOME_TYPES.HILLY : BIOME_TYPES.PLAINS);
+          cell.biome = isPolarLatitude(lat)
+            ? BIOME_TYPES.ARCTIC
+            : biome || (Math.abs(lat) > 45 ? BIOME_TYPES.HILLY : BIOME_TYPES.PLAINS);
         }
         this.cells.set(id, cell);
       }

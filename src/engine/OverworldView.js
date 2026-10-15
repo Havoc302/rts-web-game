@@ -12,6 +12,7 @@ const COLORS = {
   [BIOME_TYPES.MOUNTAINOUS]: '#b8bcb6',
   [BIOME_TYPES.SWAMP]: '#477e6d',
   [BIOME_TYPES.DESERT]: '#d3ba72',
+  [BIOME_TYPES.ARCTIC]: '#e4eff6',
 };
 
 function point(lat, lng, radius = 1) {

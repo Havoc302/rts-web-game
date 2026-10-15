@@ -199,6 +199,7 @@ export const BIOME_TYPES = {
   MOUNTAINOUS: 'mountainous',
   SWAMP: 'swamp',
   DESERT: 'desert',
+  ARCTIC: 'arctic',
 };
 
 // Modifiers applied on top of TERRAIN_GENERATION_CONFIG. Omit biome for current
@@ -263,6 +264,17 @@ export const BIOME_CONFIG = {
     lakeCountMax: 6,
     lakeRadiusScale: 1.6,
     riverMode: 'fork_merge',
+  },
+  // Polar caps are frozen desert: snow-covered ground and mountains only. Zero
+  // forest clusters and a zero lake budget mean no trees and no standing water,
+  // and 'none' removes the river pass entirely.
+  [BIOME_TYPES.ARCTIC]: {
+    rockClusterScale: 0.8,
+    forestClusterScale: 0,
+    lakeCountMin: 0,
+    lakeCountMax: 0,
+    lakeRadiusScale: 1,
+    riverMode: 'none',
   },
 };
 
@@ -977,18 +989,56 @@ export const TEMPERATURE_CONFIG = {
   BASE_TEMP: 20,                    // Neutral baseline temperature in °C
   MIN_TEMP: 0,                      // Cold floor in °C
   MAX_TEMP: 40,                     // Heat ceiling in °C
+  FREEZING_POINT: 0,                // At or below this, precipitation falls as snow instead of rain
+  // Comfort band. Inside it nothing changes; outside it, cities draw more power and
+  // citizens get grumpier the further the temperature strays.
+  COMFORT_MIN: 10,
+  COMFORT_MAX: 35,
+  // Power draw grows linearly with the excursion and is deliberately UNCAPPED: it doubles
+  // at 20 °C outside the band and keeps climbing (a -40 °C polar city pays 3.5x).
+  POWER_DEMAND_DOUBLE_EXCURSION: 20,
+  // Happiness loss per degree outside the band. This one IS capped, because past a point
+  // it is simply cold and there is no more mood left to lose.
+  HAPPINESS_PENALTY_PER_EXCURSION_DEGREE: 0.5,
+  HAPPINESS_PENALTY_CAP: 10,
   HEALTH_RISK_LOW: 5,               // Cold exposure threshold in °C
   HEALTH_RISK_HIGH: 35,             // Heatwave exposure threshold in °C
   PATIENT_PER_RESIDENT_EXTREME: 0.005, // Extra patient demand per resident during temp extremes
 };
 
+// Degrees outside the comfort band; 0 while the temperature is comfortable or unknown.
+export function temperatureExcursion(temperature) {
+  if (!Number.isFinite(temperature)) return 0;
+  return Math.max(0, TEMPERATURE_CONFIG.COMFORT_MIN - temperature, temperature - TEMPERATURE_CONFIG.COMFORT_MAX);
+}
+
+// Heating/cooling load multiplier applied to every tile that draws power.
+export function temperaturePowerFactor(temperature) {
+  return 1 + temperatureExcursion(temperature) / TEMPERATURE_CONFIG.POWER_DEMAND_DOUBLE_EXCURSION;
+}
+
+// Capped happiness penalty for uncomfortable temperatures.
+export function temperatureHappinessPenalty(temperature) {
+  return Math.min(
+    TEMPERATURE_CONFIG.HAPPINESS_PENALTY_CAP,
+    temperatureExcursion(temperature) * TEMPERATURE_CONFIG.HAPPINESS_PENALTY_PER_EXCURSION_DEGREE,
+  );
+}
+
 export const CLIMATE_CONFIG = {
   EQUATOR_TEMP: 27,
-  POLE_TEMP: -18,
+  POLE_TEMP: -40,
+  // Latitude weight exponent. Above 1 it keeps the torrid and temperate bands close to
+  // their old warmth while concentrating the fall to freezing into the polar caps, so
+  // the gradient reads as "hemispheres stay habitable, poles turn arctic".
+  LATITUDE_GRADIENT_POWER: 1.6,
+  // Land at or beyond this absolute latitude is polar; its biome is forced to Arctic
+  // regardless of which continent region it belongs to.
+  POLAR_CAP_LATITUDE: 72,
   TEMP_SEED_VARIATION: 3,
   TEMP_STDDEV_MIN: 3,
   TEMP_STDDEV_MAX: 6,
-  TEMP_MIN: -30,
+  TEMP_MIN: -70,
   TEMP_MAX: 42,
   TEMP_NEIGHBOR_INFLUENCE: 0.22,
   MOISTURE_NEIGHBOR_INFLUENCE: 0.25,

@@ -61,7 +61,8 @@ export class WeatherOverlay {
     ctx.save();
     const rainIntensity = (weatherManager.cloudCover - WEATHER_CONFIG.RAIN_CLOUD_THRESHOLD) /
       (1 - WEATHER_CONFIG.RAIN_CLOUD_THRESHOLD);
-    ctx.strokeStyle = 'rgba(180, 210, 240, 0.45)';
+    const snowing = weatherManager.isSnowing?.() ?? false;
+    ctx.strokeStyle = snowing ? 'rgba(244, 250, 255, 0.65)' : 'rgba(180, 210, 240, 0.45)';
     ctx.lineWidth = 1.2;
 
     const activeCount = Math.floor(this.rainParticles.length * rainIntensity);

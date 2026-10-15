@@ -1,4 +1,4 @@
-import { GROWTH_CONFIG, DENSITY, ZONE, TERRAIN, USAGE_RATES, POLLUTION_CONFIG, JOBS_PROVIDED, RESIDENTIAL_CAPACITY, LABOR_TAX_GROWTH_CONFIG, FOREST_DESIRABILITY_RADIUS, PRODUCER_TYPE, PRODUCER_CONFIG, POWER_PRODUCER_TYPES, ROAD_MAINTENANCE_COST, ROAD_MAINTENANCE_CONFIG, UTILITY_OPERATING_COST, TAX_REVENUE_CONFIG, CRIME_CONFIG, MEDICAL_CONFIG, HAPPINESS_CONFIG, SERVICE_GLOBAL_CONFIG, TICKS_PER_HOUR, HOURS_PER_DAY, DAY_START_HOUR, NIGHT_START_HOUR, DEMOGRAPHICS_CONFIG, FUEL_CONFIG, SURVEY_COST_PER_TICK, POPULATION_STABILIZATION_CONFIG, TEMPERATURE_CONFIG, EDUCATION_CONFIG, splitDemographics } from '../config.js';
+import { GROWTH_CONFIG, DENSITY, ZONE, TERRAIN, USAGE_RATES, POLLUTION_CONFIG, JOBS_PROVIDED, RESIDENTIAL_CAPACITY, LABOR_TAX_GROWTH_CONFIG, FOREST_DESIRABILITY_RADIUS, PRODUCER_TYPE, PRODUCER_CONFIG, POWER_PRODUCER_TYPES, ROAD_MAINTENANCE_COST, ROAD_MAINTENANCE_CONFIG, UTILITY_OPERATING_COST, TAX_REVENUE_CONFIG, CRIME_CONFIG, MEDICAL_CONFIG, HAPPINESS_CONFIG, SERVICE_GLOBAL_CONFIG, TICKS_PER_HOUR, HOURS_PER_DAY, DAY_START_HOUR, NIGHT_START_HOUR, DEMOGRAPHICS_CONFIG, FUEL_CONFIG, SURVEY_COST_PER_TICK, POPULATION_STABILIZATION_CONFIG, TEMPERATURE_CONFIG, temperaturePowerFactor, EDUCATION_CONFIG, splitDemographics } from '../config.js';
 import { UtilityManager } from './UtilityManager.js';
 import { PollutionManager } from './PollutionManager.js';
 import { ServiceManager } from './ServiceManager.js';
@@ -152,7 +152,7 @@ export class Simulation {
     if (advanceWorld) {
       this.relocateDisplacedPopulation(this.stats.displacedPopulation || 0);
       this.updateSurveys(treasury);
-      this.resourceManager.update(this.grid, this.stats);
+      this.resourceManager.update(this.grid, this.stats, this.weatherManager?.temperature);
     }
     if (timing) {
       t1 = now();
@@ -465,10 +465,14 @@ export class Simulation {
       },
     };
 
+    // Hot and cold weather scale every powered tile and building. Water and sewage demand
+    // keep their base rates, so only the power meter responds to the temperature.
+    const powerFactor = temperaturePowerFactor(this.weatherManager?.temperature);
+
     for (const p of this.grid.producers) {
-      stats.powerDemand += PRODUCER_CONFIG[p.type]?.utilityUsage?.power || 0;
+      stats.powerDemand += (PRODUCER_CONFIG[p.type]?.utilityUsage?.power || 0) * powerFactor;
       if (p.type === PRODUCER_TYPE.SURVEY_STATION && p.surveyTarget) {
-        stats.powerDemand += PRODUCER_CONFIG[p.type].activeUtilityUsage.power;
+        stats.powerDemand += PRODUCER_CONFIG[p.type].activeUtilityUsage.power * powerFactor;
       }
       if (POWER_PRODUCER_TYPES.includes(p.type) || p.type === PRODUCER_TYPE.WATER_TOWER || p.type === PRODUCER_TYPE.SEWAGE_PLANT) {
         stats.utilityExpenses += UTILITY_OPERATING_COST;
@@ -501,7 +505,7 @@ export class Simulation {
     const jobsMultiplier = 1 - highTaxPressure * LABOR_TAX_GROWTH_CONFIG.MAX_HIGH_TAX_JOBS_REDUCTION;
 
     for (const tile of this.grid.activeZonedTiles) {
-        stats.powerDemand += UtilityManager.getTileUtilityUsage(tile, 'power');
+        stats.powerDemand += UtilityManager.getTileUtilityUsage(tile, 'power', powerFactor);
         stats.waterDemand += UtilityManager.getTileUtilityUsage(tile, 'water');
         stats.sewageDemand += UtilityManager.getTileUtilityUsage(tile, 'sewage');
 

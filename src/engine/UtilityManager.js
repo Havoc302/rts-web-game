@@ -1,4 +1,4 @@
-import { PRODUCER_TYPE, PRODUCER_CONFIG, SERVICE_GLOBAL_CONFIG, USAGE_RATES, POWER_PRODUCER_TYPES, WIND_CONFIG, SOLAR_CONFIG, BATTERY_CONFIG, DAY_START_HOUR, NIGHT_START_HOUR, WEATHER_CONFIG } from '../config.js';
+import { PRODUCER_TYPE, PRODUCER_CONFIG, SERVICE_GLOBAL_CONFIG, USAGE_RATES, POWER_PRODUCER_TYPES, WIND_CONFIG, SOLAR_CONFIG, BATTERY_CONFIG, DAY_START_HOUR, NIGHT_START_HOUR, WEATHER_CONFIG, temperaturePowerFactor } from '../config.js';
 import { RoadNetwork } from './RoadNetwork.js';
 
 export class UtilityManager {
@@ -8,23 +8,26 @@ export class UtilityManager {
     if (!preview) {
       this.updatePowerGeneration(grid, hourOfDay, weatherManager);
     }
+    // Hot and cold weather make every powered tile work harder. Water and sewage demand
+    // are unaffected; only power scales with the temperature.
+    const powerFactor = temperaturePowerFactor(weatherManager?.temperature);
     for (const producer of grid.producers) {
       if (POWER_PRODUCER_TYPES.includes(producer.type)) producer.usedCapacity = 0;
     }
-    this.allocateUtility(grid, this.getRenewablePowerProducerTypes(), 'power', 'none');
-    this.allocateUtility(grid, [PRODUCER_TYPE.BATTERY], 'power', 'none', false);
-    this.allocateUtility(grid, this.getDispatchablePowerProducerTypes(), 'power', 'none', false);
+    this.allocateUtility(grid, this.getRenewablePowerProducerTypes(), 'power', 'none', true, powerFactor);
+    this.allocateUtility(grid, [PRODUCER_TYPE.BATTERY], 'power', 'none', false, powerFactor);
+    this.allocateUtility(grid, this.getDispatchablePowerProducerTypes(), 'power', 'none', false, powerFactor);
     this.allocateUtility(grid, PRODUCER_TYPE.WATER_TOWER, 'water', 'ascending');
     this.allocateUtility(grid, PRODUCER_TYPE.SEWAGE_PLANT, 'sewage', 'descending');
-    this.allocateUtilityConsumers(grid);
+    this.allocateUtilityConsumers(grid, powerFactor);
     let hasPowerShortfall = grid.producers.some((producer) => producer.utilityShortfall?.power);
     for (const tile of grid.getActiveZonedTiles()) {
-      if (tile.shortfall.power && this.getTileUtilityUsage(tile, 'power') > 0) {
+      if (tile.shortfall.power && this.getTileUtilityUsage(tile, 'power', powerFactor) > 0) {
         hasPowerShortfall = true;
         break;
       }
     }
-    if (hasPowerShortfall) this.allocatePowerByDistance(grid);
+    if (hasPowerShortfall) this.allocatePowerByDistance(grid, powerFactor);
     this.updateProducerOperationalState(grid);
     if (!preview) {
       this.settleBatteries(grid);
@@ -154,7 +157,7 @@ export class UtilityManager {
   // the nearest connected source of each (except the utility it produces itself).
   // Covers civic services, Survey Station, and now the power/water/sewage
   // producers too, so they show up as connected consumers in the Tile Inspector.
-  static allocateUtilityConsumers(grid) {
+  static allocateUtilityConsumers(grid, powerFactor = 1) {
     const utilitySources = {
       power: POWER_PRODUCER_TYPES,
       water: PRODUCER_TYPE.WATER_TOWER,
@@ -179,7 +182,7 @@ export class UtilityManager {
         : {};
 
       for (const [utilityKey] of Object.entries(utilitySources)) {
-        const required = (usage[utilityKey] || 0) + (activeUsage[utilityKey] || 0);
+        const required = this.scaleUtilityUsage((usage[utilityKey] || 0) + (activeUsage[utilityKey] || 0), utilityKey, powerFactor);
         if (required <= 0) continue;
 
         const roadDistancesMap = roadDistancesByUtility[utilityKey];
@@ -214,7 +217,7 @@ export class UtilityManager {
     }
   }
 
-  static allocatePowerByDistance(grid) {
+  static allocatePowerByDistance(grid, powerFactor = 1) {
     const { roadDistancesMap, connectedZonedTiles } = RoadNetwork.computeProducerDistances(grid, POWER_PRODUCER_TYPES);
     for (const producer of grid.producers) {
       if (POWER_PRODUCER_TYPES.includes(producer.type)) producer.usedCapacity = 0;
@@ -224,12 +227,12 @@ export class UtilityManager {
       tile: item.tile,
       distance: item.distance,
       candidates: item.allCandidatesSorted,
-      required: this.getTileUtilityUsage(item.tile, 'power'),
+      required: this.getTileUtilityUsage(item.tile, 'power', powerFactor),
     }));
     for (const producer of grid.producers) {
       const config = PRODUCER_CONFIG[producer.type];
       const active = producer.type === PRODUCER_TYPE.SURVEY_STATION && producer.surveyTarget ? config?.activeUtilityUsage?.power || 0 : 0;
-      const required = (config?.utilityUsage?.power || 0) + active;
+      const required = this.scaleUtilityUsage((config?.utilityUsage?.power || 0) + active, 'power', powerFactor);
       if (required <= 0) continue;
       const choices = new Map();
       for (const neighbor of grid.getNeighbors(producer.x, producer.y)) {
@@ -261,7 +264,7 @@ export class UtilityManager {
     }
   }
 
-  static allocateUtility(grid, producerType, utilityKey, sortOrder = 'ascending', reset = true) {
+  static allocateUtility(grid, producerType, utilityKey, sortOrder = 'ascending', reset = true, powerFactor = 1) {
     const types = Array.isArray(producerType) ? producerType : [producerType];
     const producers = grid.producers.filter((p) => types.includes(p.type));
 
@@ -297,7 +300,7 @@ export class UtilityManager {
     for (const item of connectedZonedTiles) {
       const tile = item.tile;
       if (!reset && !tile.shortfall[utilityKey]) continue;
-      const usage = this.getTileUtilityUsage(tile, utilityKey);
+      const usage = this.getTileUtilityUsage(tile, utilityKey, powerFactor);
 
       let chosenProducer = null;
 
@@ -349,8 +352,13 @@ export class UtilityManager {
     return capacity > 0 ? Math.min(1, Math.max(0, occupied / capacity)) : 0;
   }
 
-  static getTileUtilityUsage(tile, utilityKey) {
+  static getTileUtilityUsage(tile, utilityKey, powerFactor = 1) {
     const baseUsage = USAGE_RATES[tile.zone]?.[tile.density]?.[utilityKey] || 0;
-    return baseUsage * this.getTileOccupancyRatio(tile);
+    return this.scaleUtilityUsage(baseUsage, utilityKey, powerFactor) * this.getTileOccupancyRatio(tile);
+  }
+
+  // Only power responds to the temperature; water and sewage keep their base rates.
+  static scaleUtilityUsage(usage, utilityKey, powerFactor = 1) {
+    return utilityKey === 'power' ? usage * powerFactor : usage;
   }
 }

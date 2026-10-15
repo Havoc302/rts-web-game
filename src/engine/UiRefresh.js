@@ -1,4 +1,4 @@
-import { DAY_START_HOUR, MEDICAL_CONFIG, NIGHT_START_HOUR, PRODUCER_CONFIG, PRODUCER_TYPE, RENDERER_CONFIG, ZONE } from '../config.js';
+import { DAY_START_HOUR, MEDICAL_CONFIG, NIGHT_START_HOUR, PRODUCER_CONFIG, PRODUCER_TYPE, RENDERER_CONFIG, ZONE, temperaturePowerFactor } from '../config.js';
 import { formatDerrickOutput, formatProducerCapacity, formatSiloStorage, getProducerConnectionStatus, getTileUtilityStatus } from './InspectorStatus.js';
 
 function meterView(demand, capacity, formatDecimals) {
@@ -45,6 +45,7 @@ export function weatherSnapshot(weather, isDay, hourOfDay = null) {
     'stat-weather-wind': weather ? `${pct(weather.windIntensity)}${weather.extremeWindTicks > 0 ? ' ⚠️ overspeed' : ''}` : '-',
     'stat-weather-cloud': weather ? pct(weather.cloudCover) : '-',
     'stat-weather-temp': weather ? `${Math.round(weather.temperature)}°C` : '-',
+    'stat-weather-load': weather ? pct(temperaturePowerFactor(weather.temperature)) : '-',
     'stat-weather-solar': weather?.getSolarEfficiency ? pct(weather.getSolarEfficiency() * daylightFactor(hourOfDay)) : '-',
   };
 }

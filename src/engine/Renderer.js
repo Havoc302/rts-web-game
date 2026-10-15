@@ -8,6 +8,7 @@ import { WeatherOverlay } from './WeatherOverlay.js';
 const GROUND_PALETTE = {
   default: { baseAlt: '#5b4636', base: '#463326', speckleAlt: '#6b5440', speckle: '#533d2d' },
   [BIOME_TYPES.DESERT]: { baseAlt: '#dcc48f', base: '#cfb47c', speckleAlt: '#e8d6a8', speckle: '#bfa368' },
+  [BIOME_TYPES.ARCTIC]: { baseAlt: '#eef5fa', base: '#dceaf3', speckleAlt: '#ffffff', speckle: '#c3d8e6' },
 };
 
 export class Renderer {

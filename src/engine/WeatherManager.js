@@ -83,6 +83,13 @@ export class WeatherManager {
     return Math.min(1, (this.cloudCover - threshold) / (1 - threshold));
   }
 
+  // Any precipitation in a freezing cell falls as snow, which is what makes the polar
+  // caps read as arctic rather than merely cold and wet.
+  isSnowing() {
+    return this.cloudCover > WEATHER_CONFIG.RAIN_CLOUD_THRESHOLD &&
+      this.temperature <= TEMPERATURE_CONFIG.FREEZING_POINT;
+  }
+
   getRainExtinguishChance() {
     if (this.cloudCover <= WEATHER_CONFIG.RAIN_CLOUD_THRESHOLD) return 0;
     const { RAIN_EXTINGUISH_MIN_CHANCE: min, RAIN_EXTINGUISH_MAX_CHANCE: max } = WEATHER_CONFIG;
@@ -90,7 +97,8 @@ export class WeatherManager {
   }
 
   getWeatherLabel() {
-    const cloud = this.cloudCover <= 0.4 ? 'Sunny' : this.cloudCover <= 0.7 ? 'Cloudy' : 'Raining';
+    const precipitation = this.isSnowing() ? 'Snowing' : 'Raining';
+    const cloud = this.cloudCover <= 0.4 ? 'Sunny' : this.cloudCover <= 0.7 ? 'Cloudy' : precipitation;
     const wind = this.windIntensity <= 0.2 ? 'Calm' : this.windIntensity <= 0.7 ? 'Breezy' : 'Gale Force';
     return `${cloud}, ${wind} (${this.temperature}°C)`;
   }

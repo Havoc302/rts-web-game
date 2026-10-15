@@ -5,8 +5,8 @@
 | Title | SimConquer 2000 — Architecture & Product Design |
 | Author | TBD |
 | Date | 2026-10-06 |
-| Status | Living draft (rev 30) |
-| Version covered | `APP_VERSION` `0.2.18` (`src/version.js`); current working tree |
+| Status | Living draft (rev 32) |
+| Version covered | `APP_VERSION` `0.2.20` (`src/version.js`); current working tree |
 | Intended in-repo path | `docs/DESIGN.md` |
 | Repo | `g:\Repos\rts-web-game` (`origin`: `https://github.com/Havoc302/rts-web-game.git`) |
 | Working tree at inventory | Documentation is checked against the current implementation; uncommitted changes may exist. |
@@ -44,7 +44,7 @@ B&C2000 is a **single-player, client-only, paused-by-default city builder**. A s
 
 ### Seeded Planet (0.2.5)
 
-`OverworldMap` uses H3 resolution-two cells to cover the spherical planet with 5,882 connected hexes. The planet seed independently places six irregular continents and island chains; no Earth coastlines or fixed continent coordinates are used. Ocean hexes have no biome or city seed. Land biomes form regional temperate lowlands, plains, hills, mountains, swamps, and deserts, and each land hex has a deterministic city seed. The first seeded continent supplies the home hex for moving an existing city when regenerating a planet.
+`OverworldMap` uses H3 resolution-two cells to cover the spherical planet with 5,882 connected hexes. The planet seed independently places six irregular continents and island chains; no Earth coastlines or fixed continent coordinates are used. Ocean hexes have no biome or city seed. Land biomes form regional temperate lowlands, plains, hills, mountains, swamps, and deserts, and any land that reaches a polar cap becomes arctic; each land hex has a deterministic city seed. The first seeded continent supplies the home hex for moving an existing city when regenerating a planet.
 
 Startup loads no world at all. The app boots to a blank background with only the main menu visible; the header bar, city HUD, build tools, and canvas chrome stay hidden until the player starts or loads a game. The main menu is the entry point and owns the audio on/off control, the getting-started instructions, a `Guided Tutorial` toggle button that shows its current state and sits beside the audio toggle, `New Game`, `Save World`, `Load World`, and `Close`. It can be reopened at any time from the Main Menu button in the world-map header. `New Game` asks for confirmation when the current world already has player progress (any placed road, zone, or building, a changed treasury, a visited hex, or outstanding debt); a pristine world starts without a prompt. When `Guided Tutorial` is switched on, pressing `New Game` starts the step-by-step instructions for the new world. No city is assigned, highlighted, or retained until the player selects a land tile and chooses `Open Map`; this generates that tile's seeded biome rather than starting in a mixed placeholder city. The tutorial begins with `Step 1: Select a map tile` and advances to roads after entering the selected map. The tutorial banner sits below the globe header so it does not overlap mobile tile details. Returning to a city is available only after selecting a map.
 
@@ -58,7 +58,11 @@ New biome cities use biome profile 3: plains have sparse rocks, hills have large
 
 Desert regions occupy seeded dry areas of continents and use sand-colored globe hexes. Desert cities have fewer rock clusters than plains, almost no forest, one or two small lakes, and no rivers. Desert cities also render their bare ground with a dedicated sand palette instead of the default soil palette, so the city map reads as dunes to match the globe. Desert changes do not alter the generation settings of other city biomes; existing visited cities retain their terrain.
 
-Every land hex has a deterministic climate profile keyed by the planet seed and H3 cell ID, independently of its editable city-map seed. Latitude sets the broad temperature gradient (warm near the equator, cold near either pole); biome and small seeded variation tune the local mean, range, and sunny/cloudy/rainy chances. The immediate six-cell neighborhood gently blends base temperature and moisture tendencies, so neighboring deserts make temperate hexes slightly hotter and drier without changing their biome. Ocean neighbors contribute moisture. When a city is active, its single weather manager samples persistent condition intervals using those chances and temperature fluctuates around the cell's mean with a bounded bell-shaped distribution. Only active cities advance weather; saves retain current conditions and the remaining weather interval. Climate profiles regenerate from the world seed and cell identity.
+Arctic land covers the polar caps. Any land hex whose center sits at or beyond `CLIMATE_CONFIG.POLAR_CAP_LATITUDE` (72°) is arctic, overriding whatever regional biome the continent rules would otherwise assign, so a continent edge that reaches a pole turns white. The caps cover the 4.8% of the globe above that latitude, and because continents are placed independently of the caps some planets have few or no arctic hexes. Arctic cities are frozen desert: snow-covered bare ground, mountains, and nothing else. The arctic profile sets zero forest clusters (no trees and therefore no wildfire candidates), a zero lake budget, and `riverMode: 'none'`, so a polar city contains only snow and mountains. Bare arctic ground uses a dedicated near-white snow palette and arctic hexes render almost white on the globe.
+
+Every land hex has a deterministic climate profile keyed by the planet seed and H3 cell ID, independently of its editable city-map seed. Latitude sets the broad temperature gradient from the equator to the poles, where the cold is concentrated in the caps: the fall is weighted by `CLIMATE_CONFIG.LATITUDE_GRADIENT_POWER` (1.6) so the torrid and temperate bands keep their warmth while the polar caps reach a `POLE_TEMP` of -40 °C. Biome and small seeded variation tune the local mean, range, and sunny/cloudy/rainy chances; arctic land is both much colder and drier than the temperate bands. The immediate six-cell neighborhood gently blends base temperature and moisture tendencies, so neighboring deserts make temperate hexes slightly hotter and drier without changing their biome. Ocean neighbors contribute moisture. When a city is active, its single weather manager samples persistent condition intervals using those chances and temperature fluctuates around the cell's mean with a bounded bell-shaped distribution; at or below `TEMPERATURE_CONFIG.FREEZING_POINT` the label reads `Snowing` rather than `Raining` and the precipitation overlay draws pale flakes. Only active cities advance weather; saves retain current conditions and the remaining weather interval. Climate profiles regenerate from the world seed and cell identity.
+
+Hot and cold weather cost money and mood. `TEMPERATURE_CONFIG` defines a comfort band of 10-35 °C. Outside it, every tile and building that draws power pays a load multiplier of `1 + excursion / 20`, where the excursion is the distance to the nearest band edge. That doubling point is not a ceiling: the multiplier keeps climbing linearly, so a -40 °C polar city draws 3.5x its mild-weather power and a city sized for a temperate climate can brown out in a freeze or a heatwave. Water and sewage demand never change with the temperature. Happiness loses a capped 0.5 per degree of excursion, reaching its 10-point maximum 20 °C outside the band; past that it is simply cold and there is no more mood left to lose, which is why a deep freeze and a heatwave cost the same. This is deliberately separate from the medical rule, which still treats anything below 5 °C or above 35 °C as a health exposure. The weather tooltip reports the current power load as a percentage so a demand spike is visible.
 
 Temperate is the explicit unmodified base biome: normal forest and rock cluster counts and sizes, 0-5 lakes at normal size, and mixed river layouts. For the same seed and generation profile, Temperate produces exactly the same terrain, river flow, and hidden ore as the biome-unspecified base generator. A seeded direction splits available cooler continental lowlands into grouped Temperate and Plains regions, rather than assigning all cooler lowlands to Temperate and confining Plains to the equator. Plains remains a separate, more open biome, shown in light green; Temperate uses darker green. Existing visited cities retain their generated terrain.
 
@@ -214,7 +218,7 @@ flowchart TB
 | Terrain chunk size | 64 tiles (2048 px, under a 4096 GPU cap) | `RENDERER_CONFIG.TERRAIN_CHUNK_TILES` |
 | Mobile HUD cadence | 500 ms on coarse-pointer layouts | `RENDERER_CONFIG.HUD_MOBILE_CADENCE_MS` |
 | Dev | `"dev": "npx serve ."` | `package.json` |
-| Version | `0.2.18` from `src/version.js`, synchronized with `package.json` and cache-busting consumers | `tests/version-sync.test.js` |
+| Version | `0.2.20` from `src/version.js`, synchronized with `package.json` and cache-busting consumers | `tests/version-sync.test.js` |
 | `config.js` | 690 lines total (~637 non-blank) | file |
 | `Renderer.js` | 897 lines | file |
 
@@ -777,7 +781,7 @@ return stats.incomePerTick  # GameApp.simTick is the only caller that applies it
 
 ### HUD
 
-- Badge and stylesheet cache-busting use the current `APP_VERSION` (`0.2.18`); package/source synchronization is tested.
+- Badge and stylesheet cache-busting use the current `APP_VERSION` (`0.2.20`); package/source synchronization is tested.
 - Happiness chip; oil, fuel, bars, arms, tanks chips.
 - Build-info: handle `zone_a`.
 - Overlay picker: add Police / Fire / Hospital buttons already handled in `renderOverlay`.
@@ -1063,11 +1067,15 @@ Phase 1 stays paused-by-default sandbox (0% tax, $25,000) for solo city-building
 
 28. **Overworld Biome Generation.** `BIOME_TYPES` (`PLAINS`, `HILLY`, `MOUNTAINOUS`, `SWAMP`) modify procedural terrain generation: Hilly/Mountainous scale rock clusters (+25% / +50%); Plains reduce rock clusters (-50%); Swamp reduces forest (-50%), increases lakes (4-6), and forces fork/merge rivers. `generateProceduralTerrain(biome)` accepts the biome directly.
 
-29. **Single-source versioning.** `src/version.js` (`APP_VERSION = '0.2.18'`) is the single source of truth for version strings. `package.json` version and cache-busting consumers derive from it. Verified by `tests/version-sync.test.js`.
+29. **Single-source versioning.** `src/version.js` (`APP_VERSION = '0.2.20'`) is the single source of truth for version strings. `package.json` version and cache-busting consumers derive from it. Verified by `tests/version-sync.test.js`.
 
 30. **Desktop Pan and Drag Painting.** Desktop left-drag with the Pan tool pans the camera; clicking without dragging selects the tile without opening the inspector. Inspect Tile opens the inspector. Left-drag painting is restricted to repeatable tools (roads, bridges, tunnels, zones, bulldoze); single-placement buildings and surveys do not drag-paint.
 
-31. **Unified Test Runner.** `tests/run-all.js` discovers and executes all 29 test suites across the engine and simulation. `npm test` runs this master suite.
+31. **Unified Test Runner.** `tests/run-all.js` discovers and executes every `tests/*.test.js` suite (49 at `0.2.20`) across the engine and simulation. `npm test` runs this master suite.
+
+32. **Arctic polar caps.** The temperature gradient runs equator-to-pole with the cold concentrated in the caps (`LATITUDE_GRADIENT_POWER`, `POLE_TEMP = -40`), replacing the earlier gentler hemisphere-wide falloff. Any land hex inside `POLAR_CAP_LATITUDE` (72°) is biome-forced to **arctic** regardless of continent region, so polar generation follows latitude rather than hemisphere geography. Arctic cities contain snow and mountains only (no forest, rivers, or lakes) and freezing cities report snow instead of rain. Verified by `tests/arctic-biome.test.js`.
+
+33. **Temperature load: uncapped power, capped happiness.** Outside the 10-35 °C comfort band, power demand scales linearly and without a ceiling (`1 + excursion / POWER_DEMAND_DOUBLE_EXCURSION`, so 2x at 20 °C out and 3.5x at 40 °C out) on every tile that draws power, while the happiness penalty ramps on the same slope but stops at `HAPPINESS_PENALTY_CAP` because past a point it is simply cold. The two deliberately differ: a freeze should be a real infrastructure problem, not an infinite mood sink. Water and sewage are untouched, and the medical exposure rule keeps its own 5/35 °C thresholds. Verified by `tests/temperature-load.test.js`.
 
 ---
 
@@ -1093,7 +1101,7 @@ Resolved by the user (rev 4): Conquer hybrid + world map + Firebase (Q1), victor
 
 - Product title: `index.html` `<title>SimConquer 2000</title>`, brand `SimConquer 2000`.
 - Onboarding: `src/engine/TutorialManager.js` shows a `#tutorial-banner` with six milestone steps (select a map tile, roads, utilities, residential + agriculture, jobs, population). The main menu owns the `Guided Tutorial` toggle button; switching it on and pressing `New Game` begins at Step 1, and the banner stays hidden while no world is loaded. State persists in `localStorage` keys `simconquer_tutorial_enabled` and `simconquer_tutorial_step`. Already-satisfied steps on the chosen map advance automatically after starting or loading a world. Map seed key is `simconquer_map_seed` (one-time legacy read of `bc2000_map_seed`). Save downloads are `simconquer2000-save-YYYY-MM-DD-HHMMSS-seed-<seed>.json`.
-- Version: `APP_VERSION` `0.2.18` in `src/version.js`; `package.json` is synchronized and version/cache-busting behavior is covered by the version-sync test.
+- Version: `APP_VERSION` `0.2.20` in `src/version.js`; `package.json` is synchronized and version/cache-busting behavior is covered by the version-sync test.
 - Entry / orchestration: `src/main.js` (`GameApp`), `src/engine/Simulation.js` (`tick`, `computeStats`, `updateGrowthAndDensity`).
 - Spatial model: `src/engine/Grid.js` (`createDefaultTile`, `generateProceduralTerrain`, placement).
 - View: `src/engine/Renderer.js`, `style.css`, overlay buttons in `index.html`.

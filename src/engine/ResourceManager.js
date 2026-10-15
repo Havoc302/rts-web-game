@@ -8,6 +8,7 @@ import {
   RESOURCE_CONFIG,
   RESOURCE_JOB_CATEGORIES,
   ZONE,
+  temperatureHappinessPenalty,
 } from '../config.js';
 import {
   DEFAULT_INDUSTRIAL_RECIPE,
@@ -67,7 +68,7 @@ export class ResourceManager {
     }
   }
 
-  update(grid, stats) {
+  update(grid, stats, temperature = null) {
     this.capacity = this.getWarehouseCapacity(grid);
     this.updateProducerJobs(grid, stats.employmentRate || 0);
     this.extractFromMines(grid);
@@ -81,7 +82,7 @@ export class ResourceManager {
     const foodResult = this.consumeFood(grid);
     const goodsResult = this.consumeConsumerGoods(stats.population || 0);
     const fuelResult = this.consumeFuel(grid);
-    stats.happiness = this.calculateHappiness(grid, stats, goodsResult.goodsRatio, foodResult.shortfall > 0);
+    stats.happiness = this.calculateHappiness(grid, stats, goodsResult.goodsRatio, foodResult.shortfall > 0, temperature);
     stats.happinessGrowthModifier = happinessDemandModifier(stats.happiness);
     stats.foodShortfall = foodResult.shortfall;
     stats.foodDemand = foodResult.demand;
@@ -291,7 +292,7 @@ export class ResourceManager {
     return total > 0 ? { cleanShare: clean / total, pollutedShare: polluted / total } : { cleanShare: 0, pollutedShare: 0 };
   }
 
-  calculateHappiness(grid, stats, goodsRatio, hasFoodShortfall) {
+  calculateHappiness(grid, stats, goodsRatio, hasFoodShortfall, temperature = null) {
     const taxRate = stats.taxRate ?? 0;
     const taxDelta = taxRate <= HAPPINESS_CONFIG.TAX_NEUTRAL_RATE
       ? (HAPPINESS_CONFIG.TAX_NEUTRAL_RATE - taxRate) * HAPPINESS_CONFIG.LOW_TAX_BONUS_PER_POINT
@@ -324,6 +325,8 @@ export class ResourceManager {
     const { cleanShare, pollutedShare } = this.getWaterfrontShares(grid, residentialTiles);
     const waterfrontDelta = cleanShare * HAPPINESS_CONFIG.CLEAN_WATERFRONT_MAX_BONUS -
       pollutedShare * HAPPINESS_CONFIG.POLLUTED_WATERFRONT_MAX_PENALTY;
+    // Hot and cold weather is a small, capped ding: past the cap it is simply cold.
+    const temperaturePenalty = temperatureHappinessPenalty(temperature);
     return Math.min(
       HAPPINESS_CONFIG.MAX_SCORE,
       Math.max(
@@ -332,7 +335,7 @@ export class ResourceManager {
           avgServiceRatio * HAPPINESS_CONFIG.SERVICE_MAX_BONUS +
           goodsRatio * HAPPINESS_CONFIG.CONSUMER_GOODS_MAX_BONUS -
           averagePollution * HAPPINESS_CONFIG.POLLUTION_PENALTY_PER_POINT -
-          crimePenalty - medicalPenalty - firePenalty - utilityPenalty -
+          crimePenalty - medicalPenalty - firePenalty - utilityPenalty - temperaturePenalty -
           (hasFoodShortfall ? HAPPINESS_CONFIG.FOOD_SHORTFALL_PENALTY : 0) -
           (this.foodShortfallTicks >= HAPPINESS_CONFIG.FAMINE_TICKS ? HAPPINESS_CONFIG.FAMINE_PENALTY : 0),
       ),

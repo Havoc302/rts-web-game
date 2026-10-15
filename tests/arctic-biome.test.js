@@ -1,0 +1,158 @@
+import assert from 'assert';
+import {
+  BIOME_TYPES,
+  CLIMATE_CONFIG,
+  TEMPERATURE_CONFIG,
+  TERRAIN,
+} from '../src/config.js';
+import { Grid } from '../src/engine/Grid.js';
+import { buildClimateProfile, isPolarLatitude, OverworldMap } from '../src/engine/OverworldMap.js';
+import { Renderer } from '../src/engine/Renderer.js';
+import { WeatherManager } from '../src/engine/WeatherManager.js';
+
+console.log('=== arctic-biome.test.js ===');
+
+const countTerrain = (grid, terrain) => grid.tiles.flat().filter((tile) => tile.terrain === terrain).length;
+
+// --- Polar caps are identified by latitude, in both hemispheres --------------------------
+assert.ok(Object.values(BIOME_TYPES).includes(BIOME_TYPES.ARCTIC), 'Arctic must be a registered biome');
+assert.ok(CLIMATE_CONFIG.POLAR_CAP_LATITUDE > 0 && CLIMATE_CONFIG.POLAR_CAP_LATITUDE < 90,
+  'The polar cap must sit below the geographic pole');
+assert.strictEqual(isPolarLatitude(CLIMATE_CONFIG.POLAR_CAP_LATITUDE), true, 'The cap boundary itself is polar');
+assert.strictEqual(isPolarLatitude(-(CLIMATE_CONFIG.POLAR_CAP_LATITUDE + 5)), true, 'Both poles are polar');
+assert.strictEqual(isPolarLatitude(CLIMATE_CONFIG.POLAR_CAP_LATITUDE - 0.01), false, 'Just outside the cap is not polar');
+assert.strictEqual(isPolarLatitude(0), false, 'The equator is not polar');
+
+// --- Land placed inside a polar cap becomes Arctic, and Arctic appears nowhere else ------
+for (const worldSeed of [424242, 424243, 12345, 77764, 77767, 2185603]) {
+  const world = new OverworldMap(worldSeed);
+  const cells = Array.from(world.cells.values());
+  const land = cells.filter((cell) => !cell.ocean);
+  const polarLand = land.filter((cell) => isPolarLatitude(cell.lat));
+  assert.ok(polarLand.every((cell) => cell.biome === BIOME_TYPES.ARCTIC),
+    `Seed ${worldSeed}: every polar land hex should be Arctic`);
+  assert.ok(land.every((cell) => cell.biome !== BIOME_TYPES.ARCTIC || isPolarLatitude(cell.lat)),
+    `Seed ${worldSeed}: Arctic should never appear outside the polar caps`);
+  assert.ok(polarLand.every((cell) => Number.isInteger(cell.seed)), 'Arctic hexes keep a city seed');
+  assert.ok(cells.filter((cell) => cell.ocean).every((cell) => !('biome' in cell)),
+    `Seed ${worldSeed}: the polar cap does not turn ocean into land`);
+}
+assert.ok(Array.from(new OverworldMap(424242).cells.values()).some((cell) => cell.biome === BIOME_TYPES.ARCTIC),
+  'Seed 424242 should have arctic land inside its polar cap');
+
+// --- The gradient falls from equator to pole and the poles end up arctic -----------------
+{
+  const fixture = { id: 'arctic-fixture', lat: 0, biome: BIOME_TYPES.TEMPERATE };
+  const at = (lat, biome = BIOME_TYPES.TEMPERATE) => buildClimateProfile(456, { ...fixture, lat, biome }).temperatureMean;
+  const bands = [0, 20, 40, 55, 65, CLIMATE_CONFIG.POLAR_CAP_LATITUDE, 85]
+    .map((lat) => at(lat));
+  for (let index = 1; index < bands.length; index++) {
+    assert.ok(bands[index] < bands[index - 1], 'Temperature should fall steadily from the equator to the poles');
+  }
+
+  const polar = buildClimateProfile(456, { ...fixture, lat: CLIMATE_CONFIG.POLAR_CAP_LATITUDE + 4, biome: BIOME_TYPES.ARCTIC });
+  const equator = buildClimateProfile(456, { ...fixture, lat: 0, biome: BIOME_TYPES.PLAINS });
+  assert.ok(polar.temperatureMean < TEMPERATURE_CONFIG.FREEZING_POINT,
+    `Polar cities should be freezing, saw ${polar.temperatureMean.toFixed(1)}°C`);
+  assert.ok(polar.temperatureMax <= TEMPERATURE_CONFIG.FREEZING_POINT,
+    'Polar precipitation should always fall as snow because even the warm end of the range is freezing');
+  assert.ok(equator.temperatureMean > polar.temperatureMean, 'The equator should stay far warmer than the poles');
+
+  const temperate = buildClimateProfile(456, { ...fixture, lat: CLIMATE_CONFIG.POLAR_CAP_LATITUDE + 4, biome: BIOME_TYPES.TEMPERATE });
+  assert.ok(polar.temperatureMean < temperate.temperatureMean, 'The arctic biome should be colder than adjacent temperate land');
+  assert.ok(polar.weatherChances.rainy < temperate.weatherChances.rainy, 'Arctic weather should be drier than temperate weather');
+
+  const insideCap = buildClimateProfile(456, { ...fixture, lat: CLIMATE_CONFIG.POLAR_CAP_LATITUDE, biome: BIOME_TYPES.ARCTIC });
+  const outsideCap = buildClimateProfile(456, { ...fixture, lat: CLIMATE_CONFIG.POLAR_CAP_LATITUDE - 1, biome: BIOME_TYPES.HILLY });
+  assert.ok(insideCap.temperatureMean < outsideCap.temperatureMean, 'Crossing into the cap should drop the temperature sharply');
+}
+
+// --- Arctic cities are snow and mountains only: no forests, rivers, or lakes -------------
+{
+  const modifiers = new Grid(40, 40, 424242, BIOME_TYPES.ARCTIC).getBiomeModifiers();
+  assert.strictEqual(modifiers.forestClusterScale, 0, 'Arctic has no forest clusters');
+  assert.strictEqual(modifiers.lakeCountMin, 0, 'Arctic has no minimum lake budget');
+  assert.strictEqual(modifiers.lakeCountMax, 0, 'Arctic has no lake budget');
+  assert.strictEqual(modifiers.riverMode, 'none', 'Arctic never generates a river');
+  assert.ok(modifiers.rockClusterScale > 0, 'Arctic still places mountains');
+
+  for (const citySeed of [424242, 12345, 4893875]) {
+    const arctic = new Grid(200, 200, citySeed, BIOME_TYPES.ARCTIC);
+    assert.strictEqual(countTerrain(arctic, TERRAIN.FOREST), 0, `Seed ${citySeed}: arctic cities should have no forest`);
+    assert.strictEqual(countTerrain(arctic, TERRAIN.WATER), 0, `Seed ${citySeed}: arctic cities should have no rivers or lakes`);
+    assert.ok(countTerrain(arctic, TERRAIN.MOUNTAIN) > 40000 * 0.1, `Seed ${citySeed}: arctic cities should still be mountainous`);
+    assert.strictEqual(countTerrain(arctic, TERRAIN.MOUNTAIN) + countTerrain(arctic, TERRAIN.FLAT), 40000,
+      `Seed ${citySeed}: arctic ground should be snow and mountains only`);
+    assert.strictEqual(arctic.fireCandidateTiles.size, 0, `Seed ${citySeed}: arctic forests cannot burn because there are none`);
+
+    const lakeGrid = new Grid(200, 200, citySeed, BIOME_TYPES.ARCTIC);
+    let lakeCount = 0;
+    lakeGrid.paintTerrainCluster = () => { lakeCount++; };
+    lakeGrid.generateLakes();
+    assert.strictEqual(lakeCount, 0, `Seed ${citySeed}: arctic cities should generate no lakes`);
+
+    const beforeRiver = countTerrain(arctic, TERRAIN.WATER);
+    arctic.generateRiver(arctic.getBiomeModifiers().riverMode);
+    assert.strictEqual(countTerrain(arctic, TERRAIN.WATER), beforeRiver, `Seed ${citySeed}: arctic cities should not add a river`);
+  }
+}
+
+// --- Bare arctic ground renders as snow, not soil ----------------------------------------
+{
+  const painted = [];
+  const makeCtx = () => new Proxy({ canvas: {}, fillStyle: '', strokeStyle: '', lineWidth: 1, font: '', textAlign: '', textBaseline: '' }, {
+    get: (target, prop) => (prop in target ? target[prop] : () => {}),
+    set: (target, prop, value) => { target[prop] = value; return true; },
+  });
+  const ctx = makeCtx();
+  ctx.fillRect = () => painted.push(ctx.fillStyle);
+  const flatGrid = (biome = null) => {
+    const grid = new Grid(4, 4, 1, biome);
+    for (const row of grid.tiles) for (const tile of row) tile.terrain = TERRAIN.FLAT;
+    return grid;
+  };
+  const tile = { terrain: TERRAIN.FLAT, x: 0, y: 0 };
+
+  const arcticRenderer = new Renderer({ getContext: () => makeCtx() }, flatGrid(BIOME_TYPES.ARCTIC));
+  arcticRenderer.renderTerrainTile(ctx, tile, 0, 0);
+  const snow = painted[0];
+
+  painted.length = 0;
+  new Renderer({ getContext: () => makeCtx() }, flatGrid()).renderTerrainTile(ctx, tile, 0, 0);
+  assert.notStrictEqual(snow, painted[0], 'Arctic ground should not use the temperate soil palette');
+  assert.strictEqual(painted[0], '#5b4636', 'Non-arctic ground should keep the existing soil colour');
+
+  const rgb = snow.match(/^#(..)(..)(..)$/).slice(1).map((part) => parseInt(part, 16));
+  assert.ok(rgb.every((channel) => channel > 200), `Arctic ground should be snowy white, saw ${snow}`);
+}
+
+// --- Freezing cities report snow instead of rain -----------------------------------------
+{
+  const wm = new WeatherManager({
+    temperatureMean: -30,
+    temperatureStdDev: 4,
+    temperatureMin: -55,
+    temperatureMax: -15,
+    weatherChances: { sunny: 0.5, cloudy: 0.3, rainy: 0.2 },
+  });
+  wm.temperature = -30;
+  wm.windIntensity = 0.1;
+  wm.cloudCover = 0.2;
+  assert.strictEqual(wm.isSnowing(), false, 'Clear polar skies are not snowing');
+  assert.strictEqual(wm.getWeatherLabel(), 'Sunny, Calm (-30°C)');
+
+  wm.cloudCover = 0.5;
+  wm.windIntensity = 0.5;
+  assert.strictEqual(wm.getWeatherLabel(), 'Cloudy, Breezy (-30°C)');
+
+  wm.cloudCover = 0.9;
+  wm.windIntensity = 0.95;
+  assert.strictEqual(wm.isSnowing(), true, 'Freezing precipitation is snow');
+  assert.strictEqual(wm.getWeatherLabel(), 'Snowing, Gale Force (-30°C)');
+
+  wm.temperature = 5;
+  assert.strictEqual(wm.isSnowing(), false, 'Precipitation above freezing stays rain');
+  assert.strictEqual(wm.getWeatherLabel(), 'Raining, Gale Force (5°C)');
+}
+
+console.log('Arctic biome tests passed.');

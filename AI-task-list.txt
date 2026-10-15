@@ -7,10 +7,10 @@ Agent handoff protocol:
 - At the end of a generation, mark completed checklist items `[done]`, record validation, and leave unfinished work with enough context for another agent to continue.
 - Do not erase historical entries. `docs/DESIGN.md` is the architecture, product, and implementation-status source of truth; distinguish planned work from implemented behavior.
 
-Open handoff (2026-10-14):
+Open handoff (2026-10-15):
 - Active task: none in progress; the next item is to pick up the Phase 1 follow-ups listed in `docs/DESIGN.md`.
-- Latest completed task: coking coal model for the smelter, so only iron bars and steel consume coal (`0.2.18`); see the final task entry in this log.
-- Verified baseline: `npm test` passes all 46 test files.
+- Latest completed task: temperature comfort band, uncapped power load, and capped happiness penalty (`0.2.20`); see the final task entry in this log.
+- Verified baseline: `npm test` passes all 49 test files.
 - Phase 1 follow-ups are tracked in `docs/DESIGN.md`; in particular, localStorage autosave and named tick-stage extraction are not implemented. Do not treat historical `Current task` headings below as active.
 
 Current task: Add standalone JSON game save export/import.
@@ -1613,3 +1613,47 @@ Validation:
 - `npm test` passes all 47 test files.
 - `tests/sand-industry.test.js` asserts that exactly `IRON_BAR` and `STEEL` declare coal, that bauxite smelts without touching the coal stockpile, that iron and steel produce nothing when coal is absent, and that a smelter with a power shortfall goes offline and neither produces bars nor consumes coal, then resumes when power returns.
 - Recipe table after the change: IRON_BAR 1 iron ore + 0.5 coal; BAUXITE_BAR 1 bauxite; STEEL 1 iron ore + 1 coal; COPPER_BAR 1 copper ore; GLASS 1 sand; POLYSILICON 1 sand.
+
+Current task: Add an Arctic polar-cap biome (`0.2.19`).
+
+The user asked for a new Arctic biome map type, a weather gradient that runs to the poles so the poles end up with arctic weather, and polar land that is automatically arctic. Arctic ground is snow, and arctic tiles have mountains but no forests, rivers, or lakes.
+
+- [done] Add `BIOME_TYPES.ARCTIC` with a city-map profile of snow and mountains only: `forestClusterScale: 0`, a zero lake budget, and `riverMode: 'none'`.
+- [done] Force any land hex inside the polar caps to arctic, overriding the regional continent biome, via `CLIMATE_CONFIG.POLAR_CAP_LATITUDE` (72°) and `OverworldMap.isPolarLatitude`.
+- [done] Move the temperature gradient to the poles with `LATITUDE_GRADIENT_POWER` (1.6) and `POLE_TEMP` `-40` °C, add an arctic climate entry (colder and drier), and lower `TEMP_MIN` to `-70` °C so polar means are not clamped.
+- [done] Report `Snowing` instead of `Raining` at or below `TEMPERATURE_CONFIG.FREEZING_POINT` and tint the precipitation overlay pale when snowing.
+- [done] Add a snow ground palette for bare arctic tiles and an almost-white arctic colour on the globe.
+- [done] Cover polar assignment, the graded poles, snow-only terrain, and the snow weather label in a new `tests/arctic-biome.test.js`; bump every version source to `0.2.19`.
+
+Interpretation note:
+- "From the hemisphere to the poles" was read as: the temperature gradient should be pole-centric rather than a gentle symmetric falloff, so both caps are genuinely arctic. The exponent and `POLE_TEMP` were chosen so the torrid/temperate bands keep roughly their previous warmth while the caps drop below freezing year-round. Temperate and hilly land at high latitude is now roughly 5-10 °C colder than before, and any freezing city (including cold hills, not only the caps) now reports snow.
+- Continents and island chains are still placed independently of the caps, so some planets have few or no arctic hexes (seed 424243 has one; seeds 424242/12345 have 10/14). The caps cover 4.8% of the globe above 72° latitude.
+
+Validation:
+- `npm test` passes all 48 test files (47 existing plus the new `tests/arctic-biome.test.js`).
+- `tests/arctic-biome.test.js` asserts: both poles are treated as polar and the equator is not; every polar land hex on six world seeds is arctic and arctic never appears outside the caps; ocean hexes stay unassigned; temperature falls monotonically from the equator to the poles and the polar mean and maximum are both at or below freezing; arctic weather is drier than temperate weather; 200×200 arctic cities on three city seeds contain 0 forest and 0 water tiles with ~14% mountains and 0 lake clusters and add no river when the river pass is re-run; arctic bare ground renders near-white while non-arctic ground keeps `#5b4636`; and a freezing weather manager reads `Snowing, Gale Force (-30°C)` while the same conditions above freezing read `Raining`.
+- Verified by direct measurement: seed 424242 has 10 polar land hexes with climate means between -25.6 °C and -37.2 °C and rainy chances near 0.20, versus about 20 °C at the equator.
+- `config.js`, `OverworldMap.js`, `WeatherManager.js`, `WeatherOverlay.js`, `Renderer.js`, and `OverworldView.js` report no editor diagnostics.
+
+Current task: Temperature comfort band drives power load and happiness (`0.2.20`).
+
+The user asked whether sub-zero temperatures already hurt happiness or power usage, and asked for a comfort band that scales power usage (doubling 20 °C outside the band, uncapped) plus a small happiness hit. They confirmed: cap the happiness penalty, keep power scaling linearly without a limit.
+
+- [done] Audit the existing model: temperature only added patients below 5 °C or above 35 °C; it never touched power demand or the happiness formula.
+- [done] Add `TEMPERATURE_CONFIG.COMFORT_MIN`/`COMFORT_MAX` (10/35 °C), `POWER_DEMAND_DOUBLE_EXCURSION` (20), `HAPPINESS_PENALTY_PER_EXCURSION_DEGREE` (0.5), and `HAPPINESS_PENALTY_CAP` (10), with shared `temperatureExcursion`, `temperaturePowerFactor`, and `temperatureHappinessPenalty` helpers.
+- [done] Scale every power draw in `UtilityManager` (zoned tiles, utility consumers, and the by-distance fallback) and in `Simulation.computeStats`, so the HUD meter, allocation, and shortfall alerts all agree. Water and sewage demand are unchanged.
+- [done] Subtract the capped happiness penalty in `ResourceManager.calculateHappiness`, fed by `Simulation`'s live weather temperature.
+- [done] Show the current power load in the weather tooltip (`stat-weather-load`).
+- [done] Cover the ramp, the cap, the uncapped power climb, the brown-out case, and the live plumbing in `tests/temperature-load.test.js`; bump every version source to `0.2.20`.
+
+Notes:
+- Both new entry points default to a neutral value (`temperaturePowerFactor(undefined) === 1`, `calculateHappiness(..., temperature = null)`), so existing direct callers and tests keep their previous behaviour.
+- Power is intentionally uncapped while happiness is capped: a -40 °C polar city draws 3.5x power but loses only the 10-point mood maximum. A freeze is meant to be an infrastructure problem, not an infinite mood sink.
+- The medical exposure rule keeps its own 5/35 °C thresholds; the comfort band does not replace it, so a -15 °C city now pays both the load and the patient penalty.
+- Warm weather is a no-op, which is why every pre-existing power assertion (for example `tests/ore-survey.test.js` expecting 6 and 16) still passes unchanged: those tests run at the 20 °C default.
+
+Validation:
+- `npm test` passes all 49 test files (48 previous plus the new `tests/temperature-load.test.js`).
+- `tests/temperature-load.test.js` asserts: the comfort band is a no-op at 10/20/35 °C; the excursion is 10 at 0/45 °C and 20 at -10/55 °C; power is 1.5x at 0/45 °C, 2x at -10/55 °C, 3.5x at -40 °C, and 2.75x at 70 °C (uncapped); happiness is 5 at 0/45 °C and pinned to the 10-point cap from -10 °C and 55 °C outward; an unknown temperature changes nothing; zoned power demand scales while water and sewage do not; a live 7-unit city (pump 2 + sewage plant 2 + high-density home 3) draws 7/10.5/14/3.5x-free 7 units at 20/45/55 °C and charges exactly that to the plant; a plant sized at 7 covers the city at 20 °C but browns out at -40 °C; and two identical simulations differing only in climate end 10 happiness apart through the real tick.
+- Browser verification (Playwright, port 4173, `v0.2.20`): the arctic city reported `Sunny, Breezy (-31.3°C)` with the snow ground, and the weather tooltip now shows the Power Load row alongside Conditions, Wind, Cloud Cover, Temperature, and Solar Efficiency.
+- `config.js`, `UtilityManager.js`, `Simulation.js`, `ResourceManager.js`, `UiRefresh.js`, and `index.html` report no editor diagnostics.
