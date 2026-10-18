@@ -9,6 +9,30 @@ assert.strictEqual(loanInterestRateForHappiness(100), 0.02, 'Maximum happiness s
 assert.strictEqual(loanInterestRateForHappiness(0), 0.20, 'Zero happiness should receive the maximum rate');
 assert.strictEqual(loanInterestRateForHappiness(50), 0.11, 'Interest should scale linearly with happiness');
 assert.ok(loanTerms(1000, 100).scheduledPayment < loanTerms(1000, 0).scheduledPayment);
+
+// Each loan already outstanding adds 10 percentage points to the next loan's base rate.
+assert.strictEqual(loanInterestRateForHappiness(100, 1), 0.12, 'One outstanding loan adds one risk step');
+assert.strictEqual(loanInterestRateForHappiness(50, 1), 0.21);
+assert.strictEqual(loanInterestRateForHappiness(50, 4), 0.51, 'Five loans in total means four risk steps');
+assert.strictEqual(loanInterestRateForHappiness(0, 3), 0.50);
+assert.strictEqual(loanInterestRateForHappiness(0, 50), LOAN_CONFIG.MAX_TOTAL_INTEREST_RATE,
+  'The risk premium must stop at the configured ceiling');
+assert.ok(loanTerms(1000, 50, 3).scheduledPayment > loanTerms(1000, 50, 0).scheduledPayment,
+  'A riskier loan should cost more per tick');
+assert.strictEqual(loanInterestRateForHappiness(50, -2), loanInterestRateForHappiness(50, 0),
+  'A negative loan count is treated as no debt');
+
+{
+  const manager = new LoanManager();
+  const first = manager.takeLoan(1000, 50);
+  const second = manager.takeLoan(1000, 50);
+  const third = manager.takeLoan(1000, 50);
+  assert.strictEqual(first.interestRate, 0.11, 'The first loan uses the happiness-only rate');
+  assert.strictEqual(second.interestRate, 0.21, 'The second loan pays one risk step');
+  assert.strictEqual(third.interestRate, 0.31, 'The third loan pays two risk steps');
+  assert.ok(third.scheduledPayment > second.scheduledPayment, 'A higher rate means a bigger installment');
+}
+
 assert.strictEqual(shouldEndGame(1, 0, true), true, 'Debt and zero combined population after settlement should end the game');
 assert.strictEqual(shouldEndGame(1, 10, true), false, 'Any remaining population prevents game over');
 assert.strictEqual(shouldEndGame(0, 0, true), false, 'A debt-free city cannot trigger debt game over');

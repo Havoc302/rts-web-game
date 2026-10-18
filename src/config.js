@@ -889,6 +889,11 @@ export const LOAN_CONFIG = {
   MAX_INTEREST_RATE: 0.20,
   HAPPINESS_MIN: 0,
   HAPPINESS_MAX: 100,
+  // Each loan already on the books adds this much to the next loan's base rate, because the
+  // lender is pricing in a city that is already in debt.
+  RISK_PREMIUM_PER_LOAN: 0.10,
+  // Ceiling so a deep debt stack cannot produce an unbounded rate.
+  MAX_TOTAL_INTEREST_RATE: 1.0,
 };
 
 export const POLLUTION_CONFIG = {

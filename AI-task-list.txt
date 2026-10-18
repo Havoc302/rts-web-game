@@ -9,7 +9,7 @@ Agent handoff protocol:
 
 Open handoff (2026-10-19):
 - Active task: none in progress; the next item is to pick up the Phase 1 follow-ups listed in `docs/DESIGN.md`.
-- Latest completed task: forced loan-or-bankruptcy choice when the treasury goes negative (`0.3.8`); see the final task entry in this log.
+- Latest completed task: debt risk premium of +10% per outstanding loan (`0.3.9`); see the final task entry in this log.
 - Verified baseline: `npm test` passes all 52 test files.
 - Phase 1 follow-ups are tracked in `docs/DESIGN.md`; in particular, localStorage autosave and named tick-stage extraction are not implemented. Do not treat historical `Current task` headings below as active.
 
@@ -1853,3 +1853,22 @@ Notes:
 Validation:
 - `node tests/run-all.js` passes all 52 test files.
 - Browser verification (`v0.3.8`): setting treasury to -$42 and ticking paused the game, opened `Treasury empty` showing -$42 with a 10.5% / $1 preview, and `setSpeed(1)` returned false; Take Loan credited $1,000 (treasury $958) and hid the modal; a -$25,000 deficit took a $20,000 loan and kept the modal open at -$5,000 with a $29 payment, then a second loan cleared it and speed could resume; Declare Bankruptcy confirmed into a `Bankrupt` game-over screen.
+
+Current task: Price debt risk into each new loan (`0.3.9`).
+
+The user had five loans and asked that each new loan add another 10% base interest as risk increases. They also asked why a loan with 0 ticks left had not disappeared while its balance kept climbing.
+
+- [done] Add `LOAN_CONFIG.RISK_PREMIUM_PER_LOAN = 0.10` and `MAX_TOTAL_INTEREST_RATE = 1.0`; `loanInterestRateForHappiness(happiness, existingLoans)` and `loanTerms(principal, happiness, existingLoans)` add 10 percentage points per outstanding loan, capped at 100%.
+- [done] `LoanManager.takeLoan` passes its current loan count, so each loan locks its rate at origination. At 50 happiness that is 11% → 21% → 31% → 41% → 51% for the first five loans.
+- [done] Show a `Risk Premium` row in the finance panel and the emergency-loan modal, and preview the resulting rate/payment in both.
+- [done] Relax the save validator to accept rates up to the new cap.
+- [done] Extend `tests/loan-manager.test.js` with premium, cap, and multi-loan assertions; bump every version source to `0.3.9`.
+
+Notes:
+- Explanation for the observed loan: at 0 ticks remaining the whole balance becomes due each tick. If the treasury still cannot cover it, the payment is missed, the counter stays at 0, and that tick's interest capitalizes, so the loan never disappears and the balance grows. The build in that session predated `0.3.8`; with the forced insolvency pause, a negative treasury stops the clock before that spiral can run.
+- The premium only affects newly originated loans; existing loans keep the rate they locked in.
+- The premium is additive on the happiness-derived base rate and is shown separately so a jump from 11% to 21% is explainable.
+
+Validation:
+- `node tests/run-all.js` passes all 52 test files.
+- Browser verification (`v0.3.9`): the finance panel showed 11.0% / +0% before borrowing, then 21.0% / +10%, 31.0% / +20%, 41.0% / +30%, and 51.0% / +40% after one through four loans, with locked rates 0.11 / 0.21 / 0.31 / 0.41; the emergency-loan modal with four loans outstanding showed 49.2% and +40%.

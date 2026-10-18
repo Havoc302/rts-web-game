@@ -334,6 +334,7 @@
           </select>
           <div class="storage-item"><span>Average City Happiness</span><strong id="loan-average-happiness">50 / 100</strong></div>
           <div class="storage-item"><span>Interest Rate</span><strong id="loan-interest-rate">11.0%</strong></div>
+          <div class="storage-item" title="Each loan already outstanding adds 10% to the next loan's base rate"><span>Risk Premium</span><strong id="loan-risk-premium">+0%</strong></div>
           <div class="storage-item"><span>Estimated Tick Payment</span><strong id="loan-estimated-payment">$0</strong></div>
           <button class="btn-primary loan-action" id="btn-take-loan" type="button">Take Loan</button>
           <div class="loan-list" id="loan-list"></div>
@@ -623,6 +624,7 @@
       <select id="insolvency-loan-select"></select>
       <div class="insolvency-stats">
         <span>Interest rate <strong id="insolvency-interest-rate">0.0%</strong></span>
+        <span>Risk premium <strong id="insolvency-risk-premium">+0%</strong></span>
         <span>Estimated tick payment <strong id="insolvency-estimated-payment">$0</strong></span>
       </div>
       <div class="insolvency-actions">

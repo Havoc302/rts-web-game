@@ -987,9 +987,12 @@ class GameApp {
     const select = document.getElementById('insolvency-loan-select');
     if (!select) return;
     const happiness = this.getAverageCityHappiness();
-    const terms = loanTerms(Number(select.value), happiness);
+    const activeLoans = this.loanManager.loans.length;
+    const terms = loanTerms(Number(select.value), happiness, activeLoans);
     const rate = document.getElementById('insolvency-interest-rate');
     if (rate) rate.textContent = `${(terms.interestRate * 100).toFixed(1)}%`;
+    const premium = document.getElementById('insolvency-risk-premium');
+    if (premium) premium.textContent = `+${(LOAN_CONFIG.RISK_PREMIUM_PER_LOAN * activeLoans * 100).toFixed(0)}%`;
     const payment = document.getElementById('insolvency-estimated-payment');
     if (payment) payment.textContent = formatMoney(terms.scheduledPayment);
   }
@@ -1037,9 +1040,12 @@ class GameApp {
     if (!principalSelect || !rate || !payment || !average || !balance || !due || !button || !list || !this.loanManager) return;
 
     const happiness = this.getAverageCityHappiness();
-    const terms = loanTerms(Number(principalSelect.value), happiness);
+    const activeLoans = this.loanManager.loans.length;
+    const terms = loanTerms(Number(principalSelect.value), happiness, activeLoans);
     average.textContent = `${happiness.toFixed(1)} / 100`;
     rate.textContent = `${(terms.interestRate * 100).toFixed(1)}%`;
+    const riskPremium = document.getElementById('loan-risk-premium');
+    if (riskPremium) riskPremium.textContent = `+${(LOAN_CONFIG.RISK_PREMIUM_PER_LOAN * activeLoans * 100).toFixed(0)}%`;
     payment.textContent = formatMoney(terms.scheduledPayment);
     balance.textContent = formatMoney(this.loanManager.outstandingBalance);
     due.textContent = formatMoney(this.loanManager.scheduledPayment);

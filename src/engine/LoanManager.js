@@ -4,15 +4,19 @@ function currency(value) {
   return Math.round(value * 100) / 100;
 }
 
-export function loanInterestRateForHappiness(happiness) {
+// Base rate from city happiness plus a risk premium for every loan already outstanding.
+export function loanInterestRateForHappiness(happiness, existingLoans = 0) {
   const score = Math.max(LOAN_CONFIG.HAPPINESS_MIN, Math.min(LOAN_CONFIG.HAPPINESS_MAX, Number(happiness) || 0));
   const range = LOAN_CONFIG.MAX_INTEREST_RATE - LOAN_CONFIG.MIN_INTEREST_RATE;
-  return Number((LOAN_CONFIG.MAX_INTEREST_RATE - range * score /
-    (LOAN_CONFIG.HAPPINESS_MAX - LOAN_CONFIG.HAPPINESS_MIN)).toFixed(10));
+  const base = LOAN_CONFIG.MAX_INTEREST_RATE - range * score /
+    (LOAN_CONFIG.HAPPINESS_MAX - LOAN_CONFIG.HAPPINESS_MIN);
+  const loans = Math.max(0, Math.floor(Number(existingLoans) || 0));
+  const premium = LOAN_CONFIG.RISK_PREMIUM_PER_LOAN * loans;
+  return Number(Math.min(LOAN_CONFIG.MAX_TOTAL_INTEREST_RATE, base + premium).toFixed(10));
 }
 
-export function loanTerms(principal, happiness) {
-  const interestRate = loanInterestRateForHappiness(happiness);
+export function loanTerms(principal, happiness, existingLoans = 0) {
+  const interestRate = loanInterestRateForHappiness(happiness, existingLoans);
   const perTickRate = Math.pow(1 + interestRate, 1 / LOAN_CONFIG.TERM_TICKS) - 1;
   const scheduledPayment = currency(
     principal * perTickRate / (1 - Math.pow(1 + perTickRate, -LOAN_CONFIG.TERM_TICKS)),
@@ -38,7 +42,8 @@ export class LoanManager {
 
   takeLoan(principal, averageHappiness) {
     if (!LOAN_CONFIG.PRINCIPAL_OPTIONS.includes(principal)) return null;
-    const terms = loanTerms(principal, averageHappiness);
+    // The rate is fixed at origination and reflects the loans already outstanding.
+    const terms = loanTerms(principal, averageHappiness, this.loans.length);
     const loan = {
       id: this.nextLoanId++,
       principal,

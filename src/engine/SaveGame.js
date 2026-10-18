@@ -171,7 +171,7 @@ function validateFinance(finance) {
     ids.add(loan.id);
     assertNumber(loan.balance, 'finance.loan.balance', { min: 0 });
     assertNumber(loan.interestRate, 'finance.loan.interestRate', { min: LOAN_CONFIG.MIN_INTEREST_RATE });
-    if (loan.interestRate > LOAN_CONFIG.MAX_INTEREST_RATE) throw new Error('Invalid saved loan interest rate');
+    if (loan.interestRate > LOAN_CONFIG.MAX_TOTAL_INTEREST_RATE) throw new Error('Invalid saved loan interest rate');
     assertNumber(loan.perTickRate, 'finance.loan.perTickRate', { min: 0 });
     assertNumber(loan.scheduledPayment, 'finance.loan.scheduledPayment', { min: 0 });
     assertNumber(loan.ticksRemaining, 'finance.loan.ticksRemaining', { integer: true, min: 0 });
