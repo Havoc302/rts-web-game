@@ -3,55 +3,77 @@ import { Grid } from '../src/engine/Grid.js';
 import { CoverageManager } from '../src/engine/CoverageManager.js';
 import { PRODUCER_TYPE, TERRAIN } from '../src/config.js';
 
-function flatGrid() {
-  const grid = new Grid(30, 30, 1);
+function flatGrid(size = 40) {
+  const grid = new Grid(size, size, 1);
   for (const row of grid.tiles) for (const tile of row) tile.terrain = TERRAIN.FLAT;
   return grid;
 }
 
 {
   const grid = flatGrid();
-  const station = grid.placeProducer(10, 10, PRODUCER_TYPE.POLICE_STATION, 0);
+  const station = grid.placeProducer(15, 15, PRODUCER_TYPE.POLICE_STATION, 0);
+  for (let x = 8; x <= 32; x++) grid.placeRoad(x, 16);
   station.filledJobs = 1;
   const coverage = CoverageManager.getCoverageSet(grid, 'police');
 
-  assert.ok(coverage.has('10,10'), 'Direct coverage should include the building tile');
-  assert.ok(coverage.has('15,10'), 'One staffed officer should provide five tiles of direct coverage');
-  assert.ok(!coverage.has('16,10'), 'Direct coverage should stop at the base radius');
+  assert.ok(coverage.has('15,15'), 'Direct coverage should include the building tile');
+  assert.ok(coverage.has('18,16'), 'One staffed officer should cover three road blocks');
+  assert.ok(!coverage.has('19,17'), 'Coverage should stop after three road blocks and one side block');
+  assert.ok(coverage.has('18,17'), 'One staffed officer should cover one side block');
+  assert.ok(!coverage.has('18,18'), 'Coverage should stop after one side block');
+
+  const near = CoverageManager.getCoverageSource(grid, 'police', 16, 16);
+  const far = CoverageManager.getCoverageSource(grid, 'police', 18, 16);
+  assert.ok(near && far, 'Covered tiles should record their responding station');
+  assert.strictEqual(near.stationId, station.id);
+  assert.ok(far.distance > near.distance, 'Distance should grow away from the station');
+  assert.strictEqual(far.maxDistance, 4, 'Tier 1 with one staff covers four blocks at its edge');
 }
 
 {
   const grid = flatGrid();
-  const station = grid.placeProducer(10, 10, PRODUCER_TYPE.FIRE_STATION, 0);
+  const station = grid.placeProducer(15, 15, PRODUCER_TYPE.FIRE_STATION, 0);
   station.filledJobs = 1;
-  for (let x = 11; x <= 22; x++) grid.placeRoad(x, 10);
+  for (let x = 8; x <= 32; x++) grid.placeRoad(x, 16);
 
   const firstCoverage = CoverageManager.getCoverageSet(grid, 'fire');
-  assert.ok(firstCoverage.has('20,10'), 'Coverage should extend ten road tiles from the building');
-  assert.ok(!firstCoverage.has('21,14'), 'Coverage should stop beyond the road length and side width');
-  assert.ok(firstCoverage.has('20,13'), 'Coverage should extend three tiles beside the covered road');
+  assert.ok(firstCoverage.has('18,16'), 'One firefighter should reach three road blocks');
+  assert.ok(!firstCoverage.has('19,17'), 'Coverage should stop after three road blocks and one side block');
+  assert.ok(firstCoverage.has('18,17'), 'One firefighter should cover one block beside the road');
   assert.strictEqual(
     firstCoverage,
     CoverageManager.getCoverageSet(grid, 'fire'),
     'Unchanged coverage inputs should reuse the cached set',
   );
 
-  station.filledJobs = 2;
+  station.filledJobs = 5;
   const expandedCoverage = CoverageManager.getCoverageSet(grid, 'fire');
-  assert.ok(expandedCoverage.has('21,14'), 'An additional staff member should increase road length and side width by one');
-  assert.ok(expandedCoverage.has('21,14'), 'An additional staff member should increase road-side width by one');
+  assert.ok(expandedCoverage.has('22,16'), 'Five firefighters should reach seven road blocks');
+  assert.ok(expandedCoverage.has('22,21'), 'Five firefighters should cover five side blocks');
+  assert.ok(!expandedCoverage.has('22,22'), 'Coverage should stop after five side blocks');
+}
+
+{
+  const grid = flatGrid();
+  const station = grid.placeProducer(15, 15, PRODUCER_TYPE.POLICE_STATION, 0);
+  for (let x = 8; x <= 32; x++) grid.placeRoad(x, 16);
+  assert.strictEqual(grid.upgradeProducer(grid.getTile(15, 15)), true);
+  station.filledJobs = 1;
+
+  const coverage = CoverageManager.getCoverageSet(grid, 'police');
+  assert.ok(coverage.has('21,16'), 'Tier 2 with one staff should reach six road blocks');
+  assert.ok(!coverage.has('24,16'), 'Tier 2 should stop after six road blocks plus two side blocks');
+  assert.ok(coverage.has('21,18'), 'Tier 2 should cover two side blocks');
+  assert.ok(!coverage.has('21,19'), 'Tier 2 should stop after two side blocks');
 }
 
 {
   const grid = flatGrid();
   const hospital = grid.placeProducer(5, 5, PRODUCER_TYPE.HOSPITAL, 0);
-  const clinic = grid.placeProducer(20, 20, PRODUCER_TYPE.CLINIC, 0);
   hospital.filledJobs = 1;
-  clinic.filledJobs = 1;
   const coverage = CoverageManager.getCoverageSet(grid, 'medical');
-  assert.ok(coverage.has('5,5'), 'Medical coverage should include hospital coverage');
-  assert.ok(coverage.has('20,20'), 'Medical coverage should include clinic coverage');
-  assert.strictEqual(new Set(coverage).size, coverage.size, 'Merged medical coverage should contain no duplicates');
+  assert.ok(coverage.has('5,5'), 'Medical coverage should include the hospital tile');
+  assert.strictEqual(new Set(coverage).size, coverage.size, 'Medical coverage should contain no duplicates');
 }
 
 console.log('Emergency coverage tests passed.');

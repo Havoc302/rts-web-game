@@ -194,6 +194,12 @@
     <main class="viewport">
       <canvas id="game-canvas"></canvas>
 
+      <!-- Shown while a city map or the planet globe is being generated. -->
+      <div id="map-loading" class="map-loading" hidden role="status" aria-live="polite">
+        <div class="map-loading-spinner" aria-hidden="true"></div>
+        <span id="map-loading-label">Loading map…</span>
+      </div>
+
       <!-- Mobile drawer toggles (hidden on desktop) -->
       <button class="mobile-toggle mobile-toggle-tools glass" id="btn-toggle-tools" aria-label="Toggle Tools">🛠️</button>
       <button class="mobile-toggle mobile-toggle-hud glass" id="btn-toggle-hud" aria-label="Toggle Stats">📊</button>
@@ -396,15 +402,15 @@
           <span class="group-title">UTILITY PRODUCERS</span>
           <button class="tool-btn" data-tool="producer_windmill">
             <span class="icon">🌬️</span>
-            <span class="name">Windmill ($1,500)</span>
+            <span class="name">Windmill ($500)</span>
           </button>
           <button class="tool-btn" data-tool="producer_solar_panel">
             <span class="icon">☀️</span>
-            <span class="name">Solar Panel ($2,000)</span>
+            <span class="name">Solar Panel ($100)</span>
           </button>
           <button class="tool-btn" data-tool="producer_battery">
             <span class="icon">🔋</span>
-            <span class="name">Battery Storage ($3,000)</span>
+            <span class="name">Battery Storage ($250)</span>
           </button>
           <button class="tool-btn" data-tool="producer_coal_plant">
             <span class="icon">🏭</span>
@@ -446,19 +452,15 @@
           <span class="group-title">CIVIC SERVICES</span>
           <button class="tool-btn" data-tool="producer_police_station">
             <span class="icon">🚓</span>
-            <span class="name">Police Station ($4,000)</span>
+            <span class="name">Police Station ($200)</span>
           </button>
           <button class="tool-btn" data-tool="producer_fire_station">
             <span class="icon">🚒</span>
-            <span class="name">Fire Station ($4,000)</span>
+            <span class="name">Fire Station ($500)</span>
           </button>
           <button class="tool-btn" data-tool="producer_hospital">
             <span class="icon">🏥</span>
-            <span class="name">Hospital ($6,000)</span>
-          </button>
-          <button class="tool-btn" data-tool="producer_clinic">
-            <span class="icon">🩺</span>
-            <span class="name">Clinic ($2,000)</span>
+            <span class="name">Hospital ($300)</span>
           </button>
           <button class="tool-btn" data-tool="producer_school">
             <span class="icon">🏫</span>
@@ -537,7 +539,14 @@
             <hr />
             <h4>Producer Info</h4>
             <div class="info-row"><span class="label">Type:</span><span class="val" id="inspect-producer-type">-</span></div>
+            <div class="info-row" id="producer-tier-row" hidden><span class="label">Tier:</span><span class="val" id="inspect-producer-tier">1 / 3</span></div>
+            <div class="info-row" id="producer-vehicles-row" hidden><span class="label">Vehicles:</span><span class="val" id="inspect-producer-vehicles">-</span></div>
+            <div class="info-row" id="producer-cells-row" hidden><span class="label">Cells:</span><span class="val" id="inspect-producer-cells">-</span></div>
             <div class="info-row"><span class="label" id="inspect-producer-cap-label">Load / Capacity:</span><span class="val" id="inspect-producer-cap">-</span></div>
+            <div class="zone-capacity-row" id="producer-upgrade-row" hidden>
+              <span class="zone-capacity-status" id="producer-upgrade-status"></span>
+              <button class="btn-primary zone-upgrade-button" id="btn-upgrade-producer" type="button">Upgrade</button>
+            </div>
           </div>
         </div>
       </aside>

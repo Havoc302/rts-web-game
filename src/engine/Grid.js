@@ -1,4 +1,6 @@
-import { TERRAIN, TERRAIN_TYPE, ZONE, DENSITY, GROWTH_CONFIG, RESIDENTIAL_CAPACITY, isZoneAtCapacity, MAP_WIDTH, MAP_HEIGHT, PRODUCER_CONFIG, PRODUCER_TYPE, ORE_CONFIG, ORE_GENERATION, SERVICE_GLOBAL_CONFIG, TERRAIN_GENERATION_CONFIG, MAP_SEED_STORAGE_KEY, MAP_SEED_STORAGE_KEY_LEGACY, BIOME_CONFIG, BIOME_TERRAIN_CONFIG, BIOME_LAKE_CONFIG, BIOME_GENERATION_VERSION } from '../config.js';
+import { TERRAIN, TERRAIN_TYPE, ZONE, DENSITY, GROWTH_CONFIG, RESIDENTIAL_CAPACITY, MAP_WIDTH, MAP_HEIGHT, PRODUCER_CONFIG, PRODUCER_TYPE, ORE_CONFIG, ORE_GENERATION, SERVICE_GLOBAL_CONFIG, TERRAIN_GENERATION_CONFIG, MAP_SEED_STORAGE_KEY, MAP_SEED_STORAGE_KEY_LEGACY, BIOME_CONFIG, BIOME_TERRAIN_CONFIG, BIOME_LAKE_CONFIG, BIOME_GENERATION_VERSION, PRODUCER_TIER_MAX, clampTier, getProducerTier, isTieredService, isTieredPowerProducer, getBatteryStorageForTier, getWindPeakForTier, getSolarPeakForTier, getServiceTierStat } from '../config.js';
+
+const TIER_DENSITY = [DENSITY.LIGHT, DENSITY.MEDIUM, DENSITY.HIGH];
 
 export function producerTypeForTool(tool) {
   if (!tool?.startsWith('producer_')) return null;
@@ -725,15 +727,50 @@ export class Grid {
     return true;
   }
 
+  // Upgrades are always purchasable; reaching capacity is now only informational and
+  // drives the "full" marker on the tile.
   canUpgradeZone(tile) {
     return Boolean(
       tile &&
       this.activeZonedTiles.has(tile) &&
       !tile.destroyed &&
       [ZONE.RESIDENTIAL, ZONE.COMMERCIAL, ZONE.INDUSTRIAL, ZONE.AGRICULTURAL].includes(tile.zone) &&
-      tile.density !== DENSITY.HIGH &&
-      isZoneAtCapacity(tile)
+      tile.density !== DENSITY.HIGH
     );
+  }
+
+  canUpgradeProducer(tile) {
+    const producer = tile?.producer;
+    if (!producer || tile.destroyed) return false;
+    if (!isTieredService(producer.type) && !isTieredPowerProducer(producer.type)) return false;
+    return getProducerTier(producer) < PRODUCER_TIER_MAX;
+  }
+
+  upgradeProducer(tile) {
+    if (!this.canUpgradeProducer(tile)) return false;
+    const producer = tile.producer;
+    const nextTier = clampTier(getProducerTier(producer) + 1);
+    producer.tier = nextTier;
+
+    if (producer.type === PRODUCER_TYPE.BATTERY) {
+      producer.maxStorage = getBatteryStorageForTier(nextTier);
+      producer.storedEnergy = Math.min(producer.storedEnergy || 0, producer.maxStorage);
+      producer.capacity = 0;
+    } else if (producer.type === PRODUCER_TYPE.WINDMILL) {
+      producer.peakCapacity = getWindPeakForTier(nextTier);
+      producer.capacity = 0;
+    } else if (producer.type === PRODUCER_TYPE.SOLAR_PANEL) {
+      producer.peakCapacity = getSolarPeakForTier(nextTier);
+      producer.capacity = 0;
+    } else {
+      producer.density = TIER_DENSITY[nextTier - 1];
+      producer.totalJobs = Math.min(producer.totalJobs || 0, getServiceTierStat('maxStaff', nextTier));
+      producer.filledJobs = Math.min(producer.filledJobs || 0, producer.totalJobs);
+    }
+
+    this.coverageVersion++;
+    this.pollutionDirty = true;
+    return true;
   }
 
   upgradeZone(tile) {
@@ -752,12 +789,14 @@ export class Grid {
     return true;
   }
 
-  placeProducer(x, y, producerType, capacity) {
+  placeProducer(x, y, producerType, capacity, tier = 1) {
     if (!this.canPlaceProducer(x, y, producerType)) return null;
     const tile = this.getTile(x, y);
+    const resolvedTier = clampTier(tier);
     const producer = {
       id: this.nextProducerId++,
       type: producerType,
+      tier: resolvedTier,
       capacity: capacity ?? 0,
       usedCapacity: 0,
       contaminated: false,
@@ -776,12 +815,25 @@ export class Grid {
       y,
     };
     if (producerType === PRODUCER_TYPE.BATTERY) {
-      producer.maxStorage = capacity;
+      producer.maxStorage = capacity > 0 ? capacity : getBatteryStorageForTier(resolvedTier);
       producer.storedEnergy = 0;
       producer.capacity = 0;
     }
     if (producerType === PRODUCER_TYPE.WINDMILL || producerType === PRODUCER_TYPE.SOLAR_PANEL) {
+      const defaultPeak = producerType === PRODUCER_TYPE.WINDMILL
+        ? getWindPeakForTier(resolvedTier)
+        : getSolarPeakForTier(resolvedTier);
+      producer.peakCapacity = capacity > 0 ? capacity : defaultPeak;
+      producer.capacity = 0;
       producer.hasBatteryConnection = this.hasAdjacentBattery(x, y);
+    }
+    if (isTieredService(producerType)) {
+      producer.filledJobs = 0;
+      producer.totalJobs = 0;
+      producer.density = TIER_DENSITY[resolvedTier - 1];
+      producer.patients = 0;
+      producer.prisoners = 0;
+      producer.prisonerTimers = [];
     }
     tile.producer = producer;
     this.producers.push(producer);

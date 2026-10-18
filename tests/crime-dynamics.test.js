@@ -1,7 +1,7 @@
 import assert from 'assert';
 import { Grid } from '../src/engine/Grid.js';
 import { CrimeManager } from '../src/engine/CrimeManager.js';
-import { CRIME_CONFIG, DENSITY, TERRAIN, ZONE } from '../src/config.js';
+import { CRIME_CONFIG, DENSITY, PRODUCER_TYPE, TERRAIN, ZONE } from '../src/config.js';
 
 console.log('=== crime-dynamics.test.js ===');
 
@@ -59,7 +59,7 @@ function setupGrid() {
   }
 }
 
-// 3. Police Suppression
+// 3. Each incident runs for four ticks, then leaves its crime behind.
 {
   const grid = setupGrid();
   const tile = grid.getTile(3, 3);
@@ -72,50 +72,100 @@ function setupGrid() {
   try {
     Math.random = () => 0;
     CrimeManager.updateCrime(grid, stats);
-    assert.strictEqual(tile.crime, CRIME_CONFIG.CRIME_INCREMENT_PER_EVENT);
+    assert.strictEqual(tile.crime, CRIME_CONFIG.CRIME_INCREMENT_PER_EVENT, 'A crime raises the tile by one incident');
+    assert.strictEqual(tile.crimeIncidentTicks, CRIME_CONFIG.CRIME_INCIDENT_TICKS, 'The incident begins its four-tick life');
+
     Math.random = () => 0.99;
+    for (let tick = 1; tick <= CRIME_CONFIG.CRIME_INCIDENT_TICKS; tick++) {
+      CrimeManager.updateCrime(grid, stats);
+    }
+    assert.strictEqual(tile.crimeIncidentTicks, 0, 'The incident ends after four ticks');
+    assert.strictEqual(tile.crime, CRIME_CONFIG.CRIME_INCREMENT_PER_EVENT, 'Unresolved crime remains on the tile');
+
     for (let tick = 1; tick <= CRIME_CONFIG.CRIME_MEMORY_TICKS; tick++) {
       CrimeManager.updateCrime(grid, stats);
-      assert.ok(Math.abs(tile.crime - CRIME_CONFIG.CRIME_INCREMENT_PER_EVENT * (1 - tick / CRIME_CONFIG.CRIME_MEMORY_TICKS)) < 1e-9, 'Crime fades evenly over five ticks');
     }
-    assert.strictEqual(tile.crime, 0, 'The crime overlay clears after five no-event ticks');
-    Math.random = () => 0;
-    CrimeManager.updateCrime(grid, stats);
-    Math.random = () => 0.99;
-    CrimeManager.updateCrime(grid, stats);
-    Math.random = () => 0;
-    CrimeManager.updateCrime(grid, stats);
-    assert.strictEqual(tile.crimeDecayTicks, CRIME_CONFIG.CRIME_MEMORY_TICKS, 'Another incident restarts the fade');
+    assert.strictEqual(tile.crime, 0, 'The crime trace fades after the memory window');
   } finally {
     Math.random = origRandom;
   }
 }
 
-// 4. Police Suppression
+// 4. A nearby police station arrests the offender and keeps a cell occupied.
 {
   const grid = setupGrid();
-  const tile = grid.getTile(4, 4);
-  tile.zone = ZONE.COMMERCIAL;
-  tile.density = DENSITY.HIGH;
-  tile.filledJobs = 50;
+  const station = grid.placeProducer(5, 5, PRODUCER_TYPE.POLICE_STATION, 0);
+  for (let x = 6; x <= 12; x++) grid.placeRoad(x, 5);
+  station.filledJobs = 5;
+  const tile = grid.getTile(7, 6);
+  tile.zone = ZONE.RESIDENTIAL;
+  tile.population = 50;
   tile.maxPopulation = 100;
-  tile.crime = 4;
-  tile.services = { police: true };
   grid.activeZonedTiles.add(tile);
+  tile.crime = CRIME_CONFIG.CRIME_INCREMENT_PER_EVENT;
+  tile.crimeIncidentTicks = CRIME_CONFIG.CRIME_INCIDENT_TICKS;
 
+  const stats = { totalEmployablePopulation: 100, unemployedWorkers: 0, catchAndReleasePenaltyTicks: 0 };
   const origRandom = Math.random;
   try {
-    // Suppression check: random < 0.85 triggers suppression
-    Math.random = () => 0.1;
-    const stats = { totalEmployablePopulation: 100, unemployedWorkers: 50 };
+    Math.random = () => 0;
     CrimeManager.updateCrime(grid, stats);
-    assert.strictEqual(tile.crime, 3.2, 'Police suppression fades the incident instead of erasing it immediately');
+    assert.strictEqual(tile.crimeIncidentTicks, 0, 'A successful response ends the incident');
+    assert.strictEqual(tile.crime, 0, 'A caught crime removes its penalty from the tile');
+    assert.strictEqual(station.prisoners, 1, 'The offender occupies a cell');
+    assert.deepStrictEqual(station.prisonerTimers, [CRIME_CONFIG.PRISONER_HOLD_TICKS], 'The sentence lasts ten ticks');
   } finally {
     Math.random = origRandom;
   }
 }
 
-// 5. Crime Diffusion to Adjacent Occupied Tiles
+// 5. Full cells produce a catch-and-release: crime is prevented, but with a mood hit.
+{
+  const grid = setupGrid();
+  const station = grid.placeProducer(5, 5, PRODUCER_TYPE.POLICE_STATION, 0);
+  for (let x = 6; x <= 12; x++) grid.placeRoad(x, 5);
+  station.filledJobs = 5;
+  station.prisonerTimers = [10, 10, 10, 10, 10];
+  station.prisoners = 5;
+  const tile = grid.getTile(7, 6);
+  tile.zone = ZONE.RESIDENTIAL;
+  tile.population = 50;
+  tile.maxPopulation = 100;
+  grid.activeZonedTiles.add(tile);
+  tile.crime = CRIME_CONFIG.CRIME_INCREMENT_PER_EVENT;
+  tile.crimeIncidentTicks = CRIME_CONFIG.CRIME_INCIDENT_TICKS;
+
+  const stats = { totalEmployablePopulation: 100, unemployedWorkers: 0, catchAndReleasePenaltyTicks: 0 };
+  const origRandom = Math.random;
+  try {
+    Math.random = () => 0;
+    CrimeManager.updateCrime(grid, stats);
+    assert.strictEqual(tile.crime, 0, 'Catch-and-release still prevents the crime');
+    assert.strictEqual(station.prisoners, 5, 'No additional prisoner is held when cells are full');
+    assert.strictEqual(
+      stats.catchAndReleasePenaltyTicks,
+      CRIME_CONFIG.CATCH_AND_RELEASE_PENALTY_TICKS,
+      'Releasing an offender costs a brief citywide mood penalty',
+    );
+  } finally {
+    Math.random = origRandom;
+  }
+}
+
+// 6. Prisoners are released when their sentence expires.
+{
+  const grid = setupGrid();
+  const station = grid.placeProducer(5, 5, PRODUCER_TYPE.POLICE_STATION, 0);
+  station.filledJobs = 5;
+  station.prisonerTimers = [1];
+  station.prisoners = 1;
+  const stats = { totalEmployablePopulation: 100, unemployedWorkers: 0, catchAndReleasePenaltyTicks: 0 };
+  CrimeManager.updateCrime(grid, stats);
+  assert.strictEqual(station.prisoners, 0, 'A completed sentence frees the cell');
+  assert.deepStrictEqual(station.prisonerTimers, []);
+}
+
+// 7. Crime Diffusion to Adjacent Occupied Tiles
 {
   const grid = setupGrid();
   const neighborOccupied = grid.getTile(2, 1);

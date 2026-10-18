@@ -1,4 +1,5 @@
 import {
+  CRIME_CONFIG,
   DEMOGRAPHICS_CONFIG,
   FUEL_CONFIG,
   HAPPINESS_CONFIG,
@@ -327,6 +328,10 @@ export class ResourceManager {
       pollutedShare * HAPPINESS_CONFIG.POLLUTED_WATERFRONT_MAX_PENALTY;
     // Hot and cold weather is a small, capped ding: past the cap it is simply cold.
     const temperaturePenalty = temperatureHappinessPenalty(temperature);
+    // When every police cell is full the offender is released, costing a brief mood hit.
+    const catchAndReleasePenalty = (stats.catchAndReleasePenaltyTicks || 0) > 0
+      ? CRIME_CONFIG.CATCH_AND_RELEASE_HAPPINESS_PENALTY
+      : 0;
     return Math.min(
       HAPPINESS_CONFIG.MAX_SCORE,
       Math.max(
@@ -335,7 +340,7 @@ export class ResourceManager {
           avgServiceRatio * HAPPINESS_CONFIG.SERVICE_MAX_BONUS +
           goodsRatio * HAPPINESS_CONFIG.CONSUMER_GOODS_MAX_BONUS -
           averagePollution * HAPPINESS_CONFIG.POLLUTION_PENALTY_PER_POINT -
-          crimePenalty - medicalPenalty - firePenalty - utilityPenalty - temperaturePenalty -
+          crimePenalty - medicalPenalty - firePenalty - utilityPenalty - temperaturePenalty - catchAndReleasePenalty -
           (hasFoodShortfall ? HAPPINESS_CONFIG.FOOD_SHORTFALL_PENALTY : 0) -
           (this.foodShortfallTicks >= HAPPINESS_CONFIG.FAMINE_TICKS ? HAPPINESS_CONFIG.FAMINE_PENALTY : 0),
       ),

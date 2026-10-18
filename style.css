@@ -412,6 +412,47 @@ span.stat-icon {
   display: block;
 }
 
+/* Shown while a city map or the planet globe is generated. Generation is synchronous,
+   so the label is painted first and the heavy work runs on the next task. */
+.map-loading {
+  position: absolute;
+  inset: 0;
+  z-index: 12;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  background: rgba(9, 13, 22, 0.88);
+  color: #e5edf7;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  pointer-events: none;
+}
+
+.map-loading[hidden] {
+  display: none;
+}
+
+.map-loading-spinner {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 3px solid rgba(148, 163, 184, 0.25);
+  border-top-color: #38bdf8;
+  animation: map-loading-spin 0.9s linear infinite;
+}
+
+@keyframes map-loading-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .map-loading-spinner {
+    animation-duration: 2.4s;
+  }
+}
+
 /* Overlay Picker */
 .view-overlay-picker {
   position: absolute;
@@ -664,6 +705,10 @@ span.stat-icon {
   display: flex;
   justify-content: space-between;
   margin-bottom: 6px;
+}
+
+.info-row[hidden] {
+  display: none;
 }
 
 .info-row .label {

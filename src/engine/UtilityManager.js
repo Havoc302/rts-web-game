@@ -1,4 +1,4 @@
-import { PRODUCER_TYPE, PRODUCER_CONFIG, SERVICE_GLOBAL_CONFIG, USAGE_RATES, POWER_PRODUCER_TYPES, WIND_CONFIG, SOLAR_CONFIG, BATTERY_CONFIG, DAY_START_HOUR, NIGHT_START_HOUR, WEATHER_CONFIG, temperaturePowerFactor } from '../config.js';
+import { PRODUCER_TYPE, PRODUCER_CONFIG, SERVICE_GLOBAL_CONFIG, USAGE_RATES, POWER_PRODUCER_TYPES, BATTERY_CONFIG, DAY_START_HOUR, NIGHT_START_HOUR, WEATHER_CONFIG, temperaturePowerFactor, getProducerUtilityUsage, getProducerTier, getWindPeakForTier, getSolarPeakForTier } from '../config.js';
 import { RoadNetwork } from './RoadNetwork.js';
 
 export class UtilityManager {
@@ -80,12 +80,15 @@ export class UtilityManager {
         p.gridConnectionX = battery.x;
         p.gridConnectionY = battery.y;
         if (p.type === PRODUCER_TYPE.WINDMILL) {
-          p.capacity = Math.round((WIND_CONFIG.MAX_CAPACITY || 65) * windIntensity);
+          const peak = p.peakCapacity || getWindPeakForTier(getProducerTier(p));
+          p.capacity = Math.round(peak * windIntensity);
         } else {
-          p.capacity = Math.round(SOLAR_CONFIG.PEAK_CAPACITY * this.solarOutputFactor(hourOfDay) * solarEfficiency);
+          const peak = p.peakCapacity || getSolarPeakForTier(getProducerTier(p));
+          p.capacity = Math.round(peak * this.solarOutputFactor(hourOfDay) * solarEfficiency);
         }
       } else if (p.type === PRODUCER_TYPE.BATTERY) {
-        p.capacity = Math.min(BATTERY_CONFIG.DISCHARGE_RATE, Math.floor(p.storedEnergy || 0));
+        const dischargeRate = Math.max(1, Math.round((p.maxStorage || 0) / BATTERY_CONFIG.DISCHARGE_DIVISOR));
+        p.capacity = Math.min(dischargeRate, Math.floor(p.storedEnergy || 0));
       }
     }
   }
@@ -173,8 +176,8 @@ export class UtilityManager {
 
     for (const producer of grid.producers) {
       const config = PRODUCER_CONFIG[producer.type];
-      const usage = config?.utilityUsage;
-      if (!usage) continue;
+      if (!config) continue;
+      const usage = getProducerUtilityUsage(producer);
 
       producer.utilityShortfall = { power: false, water: false, sewage: false };
       const activeUsage = producer.type === PRODUCER_TYPE.SURVEY_STATION && producer.surveyTarget
@@ -232,7 +235,7 @@ export class UtilityManager {
     for (const producer of grid.producers) {
       const config = PRODUCER_CONFIG[producer.type];
       const active = producer.type === PRODUCER_TYPE.SURVEY_STATION && producer.surveyTarget ? config?.activeUtilityUsage?.power || 0 : 0;
-      const required = this.scaleUtilityUsage((config?.utilityUsage?.power || 0) + active, 'power', powerFactor);
+      const required = this.scaleUtilityUsage((getProducerUtilityUsage(producer).power || 0) + active, 'power', powerFactor);
       if (required <= 0) continue;
       const choices = new Map();
       for (const neighbor of grid.getNeighbors(producer.x, producer.y)) {

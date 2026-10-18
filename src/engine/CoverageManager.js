@@ -1,4 +1,4 @@
-import { COVERAGE_CONFIG, SERVICE_TYPE } from '../config.js';
+import { SERVICE_TYPE, getProducerTier, getServiceTierStat } from '../config.js';
 
 export class CoverageManager {
   static lastGrid = null;
@@ -6,6 +6,14 @@ export class CoverageManager {
     fire: new Set(),
     police: new Set(),
     medical: new Set(),
+  };
+
+  // "x,y" -> { stationId, distance, maxDistance } for the closest covering station.
+  // Police response uses this to turn distance into a response chance.
+  static coverageInfo = {
+    fire: new Map(),
+    police: new Map(),
+    medical: new Map(),
   };
 
   static dirtyFlags = {
@@ -44,6 +52,15 @@ export class CoverageManager {
     return this.coverageSets[gridOrKey] || new Set();
   }
 
+  static getCoverageInfo(grid, key) {
+    this.updateService(grid, key);
+    return this.coverageInfo[key] || new Map();
+  }
+
+  static getCoverageSource(grid, key, x, y) {
+    return this.getCoverageInfo(grid, key).get(`${x},${y}`) || null;
+  }
+
   static prepareGrid(grid) {
     if (this.lastGrid !== grid) {
       this.lastGrid = grid;
@@ -70,7 +87,7 @@ export class CoverageManager {
       case 'police':
         return [SERVICE_TYPE.POLICE_STATION];
       case 'medical':
-        return [SERVICE_TYPE.HOSPITAL, SERVICE_TYPE.CLINIC];
+        return [SERVICE_TYPE.HOSPITAL];
       default:
         return [];
     }
@@ -83,7 +100,7 @@ export class CoverageManager {
     for (const p of producers) {
       const filled = p.filledJobs || 0;
       const op = p.operational !== false ? 1 : 0;
-      hash += `${p.id || p.x + ',' + p.y}:${p.type}:${p.x},${p.y}:${filled}:${op};`;
+      hash += `${p.id || p.x + ',' + p.y}:${p.type}:${p.x},${p.y}:${filled}:${getProducerTier(p)}:${op};`;
     }
     return hash;
   }
@@ -105,23 +122,37 @@ export class CoverageManager {
     const types = this.getBuildingTypesForKey(key);
     const producers = (grid.producers || []).filter((p) => types.includes(p.type));
     const coverageSet = new Set();
+    const info = new Map();
 
     for (const prod of producers) {
       if (prod.operational === false || (prod.filledJobs || 0) <= 0) continue;
       const filledJobs = prod.filledJobs || 0;
-      const bonus = Math.max(0, filledJobs - 1) * COVERAGE_CONFIG.JOB_BONUS_PER_FILLED;
+      const tier = getProducerTier(prod);
+      const staffBonus = Math.max(0, filledJobs - 1);
 
-      const directRange = COVERAGE_CONFIG.BASE_DIRECT_RANGE + bonus;
-      const roadRange = COVERAGE_CONFIG.BASE_ROAD_RANGE + bonus;
-      const roadAdjRange = COVERAGE_CONFIG.BASE_ROAD_ADJACENT_RANGE + bonus;
+      // Tier base plus one block per additional staff member.
+      const directRange = 1;
+      const roadRange = getServiceTierStat('roadReach', tier) + staffBonus;
+      const sideRange = getServiceTierStat('sideReach', tier) + staffBonus;
+      const maxDistance = Math.max(1, roadRange + sideRange);
+
+      const record = (x, y, distance) => {
+        if (!grid.isInBounds(x, y)) return;
+        const location = `${x},${y}`;
+        coverageSet.add(location);
+        const previous = info.get(location);
+        if (!previous || distance < previous.distance) {
+          info.set(location, { stationId: prod.id, distance, maxDistance });
+        }
+      };
 
       const bWidth = prod.width || 1;
       const bHeight = prod.height || 1;
 
-      // 1. Direct Manhattan range around the building footprint.
+      // 1. Direct Manhattan range around the building footprint (station block + neighbours).
       for (let by = 0; by < bHeight; by++) {
         for (let bx = 0; bx < bWidth; bx++) {
-          this.addManhattanArea(coverageSet, grid, prod.x + bx, prod.y + by, directRange);
+          this.addManhattanAreaWithInfo(record, prod.x + bx, prod.y + by, directRange, 0);
         }
       }
 
@@ -144,8 +175,10 @@ export class CoverageManager {
             if (grid.isInBounds(n.x, n.y) && grid.getTile(n.x, n.y)?.hasRoad) {
               const posKey = n.y * grid.width + n.x;
               if (!visitedRoads.has(posKey)) {
-                visitedRoads.set(posKey, 1);
-                startingRoads.push({ x: n.x, y: n.y, dist: 1 });
+                // The road tile touching the building is the zero point, so a tier-1
+                // base reach of 3 covers three road blocks in each direction.
+                visitedRoads.set(posKey, 0);
+                startingRoads.push({ x: n.x, y: n.y, dist: 0 });
               }
             }
           }
@@ -180,15 +213,27 @@ export class CoverageManager {
         }
       }
 
-      // 3. For each reached road tile, add surrounding tiles within roadSideRange.
+      // 3. For each reached road tile, add surrounding tiles within the side width.
       for (const rTile of reachedRoads) {
-        this.addManhattanArea(coverageSet, grid, rTile.x, rTile.y, roadAdjRange);
+        this.addManhattanAreaWithInfo(record, rTile.x, rTile.y, sideRange, rTile.dist);
       }
     }
 
     this.coverageSets[key] = coverageSet;
+    this.coverageInfo[key] = info;
     this.dirtyFlags[key] = false;
     this.stateHashes[key] = currentHash;
+  }
+
+  static addManhattanAreaWithInfo(record, centerX, centerY, radius, baseDistance) {
+    for (let y = centerY - radius; y <= centerY + radius; y++) {
+      for (let x = centerX - radius; x <= centerX + radius; x++) {
+        const offset = Math.abs(x - centerX) + Math.abs(y - centerY);
+        if (offset <= radius) {
+          record(x, y, baseDistance + offset);
+        }
+      }
+    }
   }
 
   static addManhattanArea(coverage, grid, centerX, centerY, radius) {

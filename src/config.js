@@ -60,7 +60,6 @@ export const SERVICE_TYPE = {
   POLICE_STATION: 'police_station',
   FIRE_STATION: 'fire_station',
   HOSPITAL: 'hospital',
-  CLINIC: 'clinic',
   SCHOOL: 'school',
   LIBRARY: 'library',
   UNIVERSITY: 'university',
@@ -110,18 +109,37 @@ export const DAY_START_HOUR = 6;
 export const NIGHT_START_HOUR = 18;
 export const NIGHT_TINT_ALPHA = 0.35;
 
+// Energy producers and storage are player-upgradable in three tiers. Each tier's
+// capacity doubles, matching the doubling construction cost.
+export const WIND_TIER_CONFIG = {
+  peak: [16, 32, 64],                    // output at windIntensity 1.0
+  cost: [500, 1000, 2000],
+};
+
+export const SOLAR_TIER_CONFIG = {
+  peak: [15, 30, 60],                    // output at clear midday
+  cost: [100, 200, 400],
+};
+
+export const BATTERY_TIER_CONFIG = {
+  storage: [100, 200, 400],
+  cost: [250, 500, 1000],
+};
+
+// Tier-3 compatibility aliases (the top tier is the previous fixed building).
 export const WIND_CONFIG = {
-  BASE_CAPACITY: 40,
-  MAX_CAPACITY: 65, // output at windIntensity 1.0
+  BASE_CAPACITY: WIND_TIER_CONFIG.peak[0],
+  MAX_CAPACITY: WIND_TIER_CONFIG.peak[2],
 };
 
 export const SOLAR_CONFIG = {
-  PEAK_CAPACITY: 60,
+  PEAK_CAPACITY: SOLAR_TIER_CONFIG.peak[2],
 };
 
 export const BATTERY_CONFIG = {
-  MAX_STORAGE: 400,
-  DISCHARGE_RATE: 40,
+  MAX_STORAGE: BATTERY_TIER_CONFIG.storage[2],
+  DISCHARGE_RATE: BATTERY_TIER_CONFIG.storage[2] / 10,
+  DISCHARGE_DIVISOR: 10,                // a full battery always empties in ten ticks
 };
 
 export const COAL_CONFIG = {
@@ -325,57 +343,36 @@ export const SERVICE_CONFIG = {
   [SERVICE_TYPE.POLICE_STATION]: {
     name: 'Police Station',
     category: 'service',
-    cost: 4000,
+    cost: 200,                         // tier 1; see SERVICE_TIER_CONFIG.costs
     color: '#3b82f6',
-    radius: { light: 10, medium: 50, high: 200 },
-    jobs: { light: 10, medium: 50, high: 200 },
-    popThresholds: { medium: 500, high: 2500 },
+    jobs: { light: 5, medium: 10, high: 20 },
     officersPerPopulation: 1000,
     utilityUsage: { power: 1, water: 1, sewage: 1 },
-    runningCost: { light: 20, medium: 80, high: 240 },
+    baseUtilityDemand: 3,
     runningCostPerJob: 2,
     unique: false,
   },
   [SERVICE_TYPE.FIRE_STATION]: {
     name: 'Fire Department',
     category: 'service',
-    cost: 4000,
+    cost: 500,                         // tier 1; see SERVICE_TIER_CONFIG.costs
     color: '#ef4444',
-    radius: { light: 25, medium: 80, high: 220 },
-    jobs: { light: 10, medium: 50, high: 200 },
-    popThresholds: { medium: 500, high: 2500 },
+    jobs: { light: 5, medium: 10, high: 20 },
     officersPerPopulation: 1000,
     utilityUsage: { power: 1, water: 1, sewage: 1 },
-    runningCost: { light: 20, medium: 80, high: 240 },
+    baseUtilityDemand: 3,
     runningCostPerJob: 2,
     unique: false,
   },
   [SERVICE_TYPE.HOSPITAL]: {
     name: 'Hospital & Ambulance',
     category: 'service',
-    cost: 6000,
+    cost: 300,                         // tier 1; see SERVICE_TIER_CONFIG.costs
     color: '#10b981',
-    radius: { light: 10, medium: 50, high: 200 },
-    jobs: { light: 10, medium: 50, high: 200 },
-    popThresholds: { medium: 750, high: 3500 },
+    jobs: { light: 5, medium: 10, high: 20 },
     officersPerPopulation: 1000,
     utilityUsage: { power: 2, water: 2, sewage: 2 },
-    runningCost: { light: 40, medium: 140, high: 400 },
-    runningCostPerJob: 4,
-    unique: false,
-  },
-  [SERVICE_TYPE.CLINIC]: {
-    name: 'Medical Clinic',
-    category: 'service',
-    cost: 2000,
-    color: '#34d399',
-    radius: { light: 10, medium: 10, high: 10 },
-    jobs: { light: 5, medium: 5, high: 5 },
-    popThresholds: { medium: Infinity, high: Infinity },
-    maxPopulationServed: 5000,
-    officersPerPopulation: 1000,
-    utilityUsage: { power: 1, water: 1, sewage: 1 },
-    runningCost: { light: 20, medium: 20, high: 20 },
+    baseUtilityDemand: 6,
     runningCostPerJob: 4,
     unique: false,
   },
@@ -434,6 +431,123 @@ export const SERVICE_CONFIG = {
   },
 };
 
+// Fire, police and hospital buildings are upgraded by the player instead of growing
+// automatically. The tier sets the staff cap, coverage base, vehicle count, cells or
+// patient beds, and the cost of reaching it (1.5x the previous tier).
+export const PRODUCER_TIER_MAX = 3;
+export const TIERED_SERVICE_TYPES = [
+  SERVICE_TYPE.POLICE_STATION,
+  SERVICE_TYPE.FIRE_STATION,
+  SERVICE_TYPE.HOSPITAL,
+];
+export const SERVICE_TIER_CONFIG = {
+  maxStaff: [5, 10, 20],
+  roadReach: [3, 6, 12],
+  sideReach: [1, 2, 4],
+  vehicles: [1, 2, 3],
+  cells: [5, 10, 20],
+  costs: {
+    [SERVICE_TYPE.FIRE_STATION]: [500, 750, 1125],
+    [SERVICE_TYPE.HOSPITAL]: [300, 450, 675],
+    [SERVICE_TYPE.POLICE_STATION]: [200, 300, 450],
+  },
+  // Dynamic utility load. The fixed building load stays at config.utilityUsage;
+  // people add to it while they are inside the building.
+  utilityPerStaff: { power: 0.2, water: 0.1, sewage: 0.1 },
+  utilityPerPatient: { power: 0.02, water: 0.05, sewage: 0.05 },
+  utilityPerPrisoner: { power: 0.1, water: 0.1, sewage: 0.1 },
+};
+
+export function isTieredService(type) {
+  return TIERED_SERVICE_TYPES.includes(type);
+}
+
+export function clampTier(tier) {
+  const value = Math.round(Number(tier) || 1);
+  return Math.min(PRODUCER_TIER_MAX, Math.max(1, value));
+}
+
+export function getProducerTier(producer) {
+  return clampTier(producer?.tier ?? 1);
+}
+
+export function getServiceTierStat(key, tier) {
+  const values = SERVICE_TIER_CONFIG[key] || [];
+  return values[clampTier(tier) - 1] ?? values[0] ?? 0;
+}
+
+export function getServiceTierCost(type, tier) {
+  return SERVICE_TIER_CONFIG.costs[type]?.[clampTier(tier) - 1] ?? 0;
+}
+
+/** Cost to move from `tier` to the next tier, or 0 at the maximum. */
+export function getServiceUpgradeCost(type, tier) {
+  const current = clampTier(tier);
+  return current >= PRODUCER_TIER_MAX ? 0 : getServiceTierCost(type, current + 1);
+}
+
+/** Power/storage tiers share the same 1..3 model. */
+export function isTieredPowerProducer(type) {
+  return type === PRODUCER_TYPE.WINDMILL || type === PRODUCER_TYPE.SOLAR_PANEL || type === PRODUCER_TYPE.BATTERY;
+}
+
+export function getPowerTierTable(type) {
+  if (type === PRODUCER_TYPE.WINDMILL) return WIND_TIER_CONFIG;
+  if (type === PRODUCER_TYPE.SOLAR_PANEL) return SOLAR_TIER_CONFIG;
+  if (type === PRODUCER_TYPE.BATTERY) return BATTERY_TIER_CONFIG;
+  return null;
+}
+
+export function getPowerTierCost(type, tier) {
+  const table = getPowerTierTable(type);
+  return table?.cost?.[clampTier(tier) - 1] ?? 0;
+}
+
+export function getPowerUpgradeCost(type, tier) {
+  const current = clampTier(tier);
+  return current >= PRODUCER_TIER_MAX ? 0 : getPowerTierCost(type, current + 1);
+}
+
+export function getBatteryStorageForTier(tier) {
+  return BATTERY_TIER_CONFIG.storage[clampTier(tier) - 1];
+}
+
+export function getWindPeakForTier(tier) {
+  return WIND_TIER_CONFIG.peak[clampTier(tier) - 1];
+}
+
+export function getSolarPeakForTier(tier) {
+  return SOLAR_TIER_CONFIG.peak[clampTier(tier) - 1];
+}
+
+/** Dynamic utility draw for a tiered emergency service. */
+export function getServiceUtilityUsage(type, tier, { filledJobs = 0, patients = 0, prisoners = 0 } = {}) {
+  const config = SERVICE_CONFIG[type];
+  if (!config) return { power: 0, water: 0, sewage: 0 };
+  if (!isTieredService(type)) return { ...(config.utilityUsage || { power: 0, water: 0, sewage: 0 }) };
+  const usage = {};
+  for (const key of ['power', 'water', 'sewage']) {
+    usage[key] = (config.utilityUsage?.[key] || 0)
+      + filledJobs * (SERVICE_TIER_CONFIG.utilityPerStaff[key] || 0)
+      + patients * (SERVICE_TIER_CONFIG.utilityPerPatient[key] || 0)
+      + prisoners * (SERVICE_TIER_CONFIG.utilityPerPrisoner[key] || 0);
+  }
+  return usage;
+}
+
+/** One helper for every producer's current utility draw. */
+export function getProducerUtilityUsage(producer) {
+  const type = producer?.type;
+  if (isTieredService(type)) {
+    return getServiceUtilityUsage(type, getProducerTier(producer), {
+      filledJobs: producer.filledJobs || 0,
+      patients: producer.patients || 0,
+      prisoners: producer.prisoners || 0,
+    });
+  }
+  return { ...(PRODUCER_CONFIG[type]?.utilityUsage || { power: 0, water: 0, sewage: 0 }) };
+}
+
 export const PRODUCER_CONFIG = {
   [PRODUCER_TYPE.POWER_PLANT]: {
     name: 'Power Plant',
@@ -450,8 +564,8 @@ export const PRODUCER_CONFIG = {
     name: 'Windmill',
     category: PRODUCER_CATEGORY.POWER,
     utility: 'power',
-    capacity: WIND_CONFIG.BASE_CAPACITY,
-    cost: 1500,
+    capacity: WIND_TIER_CONFIG.peak[0],
+    cost: WIND_TIER_CONFIG.cost[0],
     color: '#94a3b8',
     requiresWaterAdjacent: false,
     requiresBatteryAdjacent: true,
@@ -460,8 +574,8 @@ export const PRODUCER_CONFIG = {
     name: 'Solar Panel',
     category: PRODUCER_CATEGORY.POWER,
     utility: 'power',
-    capacity: SOLAR_CONFIG.PEAK_CAPACITY,
-    cost: 2000,
+    capacity: SOLAR_TIER_CONFIG.peak[0],
+    cost: SOLAR_TIER_CONFIG.cost[0],
     color: '#fbbf24',
     requiresWaterAdjacent: false,
     requiresBatteryAdjacent: true,
@@ -470,8 +584,8 @@ export const PRODUCER_CONFIG = {
     name: 'Battery Storage',
     category: PRODUCER_CATEGORY.POWER,
     utility: 'power',
-    capacity: BATTERY_CONFIG.MAX_STORAGE,
-    cost: 3000,
+    capacity: BATTERY_TIER_CONFIG.storage[0],
+    cost: BATTERY_TIER_CONFIG.cost[0],
     color: '#22c55e',
     requiresWaterAdjacent: false,
     utilityUsage: { water: 1, sewage: 1 },
@@ -838,13 +952,22 @@ export const CRIME_CONFIG = {
   BASE_CRIME_CHANCE: 0.05,            // Baseline probability of crime spawning per tick
   JOB_SCARCITY_CRIME_SCALER: 2.5,     // Scales crime probability with job scarcity (residents who want work but have none), not raw unemployment
   CRIME_EVENTS_PER_TICK_MAX: 15,      // Max zoned tiles hit per tick
-  POLICE_SUPPRESSION_CHANCE: 0.85,    // 85% chance police presence cancels a crime event on a tile
+
+  // Every crime is an incident that runs for four ticks. Police roll to respond each
+  // tick; the chance falls with distance from the station across its coverage area.
+  CRIME_INCIDENT_TICKS: 4,
+  CRIME_RESPONSE_MIN_CHANCE: 0.07,    // per-tick chance at the edge of coverage
+  CRIME_RESPONSE_MAX_CHANCE: 0.44,    // per-tick chance beside the station
+  CRIME_RESPONSE_CURVE: 1.2,          // >1 keeps close response even faster than linear
+  PRISONER_HOLD_TICKS: 10,            // a caught criminal occupies a cell this long
+  CATCH_AND_RELEASE_HAPPINESS_PENALTY: 1,
+  CATCH_AND_RELEASE_PENALTY_TICKS: 2, // citywide mood hit when all cells are full
 
   // Crime severity, spread, decay, and growth impact.
   CRIME_PENALTY_THRESHOLD: 3,         // Crime level triggering growth score penalties
   CRIME_MEMORY_TICKS: 5,              // Ticks for an incident to fade after the last event
   CRIME_GROWTH_PENALTY: -2,           // Growth delta applied when crime reaches the penalty threshold
-  CRIME_INCREMENT_PER_EVENT: 2,        // Crime points added by a successful event
+  CRIME_INCREMENT_PER_EVENT: 3,        // Crime points added by a successful event
   CRIME_DIFFUSION_THRESHOLD: 4,        // Crime level required before spreading to neighbors
   CRIME_DIFFUSION_INCREMENT: 1,        // Crime points added to each diffused neighbor
   MAX_CRIME_LEVEL: 10,                 // Maximum crime points on one tile
@@ -859,7 +982,7 @@ export const MEDICAL_CONFIG = {
   PATIENTS_PER_INDUSTRIAL_JOB: 0.05,      // Higher injury rate per filled industrial job
   PATIENTS_PER_CRIME_POINT: 0.5,          // Additional trauma patients per point of tile crime
   PATIENTS_PER_POLLUTION_POINT: 0.2,      // Additional sickness per point of tile pollution
-  HOSPITAL_PATIENT_CAPACITY_PER_JOB: 15,  // Patient capacity provided per staffed hospital job
+  HOSPITAL_PATIENT_CAPACITY_PER_JOB: 10,  // Patient capacity provided per staffed hospital job
   UNHEALTHY_GROWTH_PENALTY: -2,           // Growth penalty on residential tiles during hospital shortfall
 };
 

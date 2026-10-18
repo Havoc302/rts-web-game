@@ -21,7 +21,7 @@ import { AudioManager } from './engine/AudioManager.js';
 import { LoanManager, loanTerms, shouldEndGame } from './engine/LoanManager.js';
 import { advanceWorldEconomy } from './engine/WorldFinance.js';
 import { TutorialManager } from './engine/TutorialManager.js';
-import { APP_VERSION, ZONE, TERRAIN, PRODUCER_TYPE, PRODUCER_CONFIG, SERVICE_CONFIG, COSTS, TILE_SIZE, STARTING_TREASURY, RESIDENTIAL_CAPACITY, JOBS_PROVIDED, FOREST_POLLUTION_ABSORPTION, FOREST_DESIRABILITY_RADIUS, CRIME_CONFIG, MEDICAL_CONFIG, POWER_PRODUCER_TYPES, POLLUTION_CONFIG, COAL_CONFIG, WIND_CONFIG, SOLAR_CONFIG, BATTERY_CONFIG, RESOURCE_CONFIG, UTILITY_OPERATING_COST, SURVEY_COST_PER_TICK, TICKS_PER_HOUR, DENSITY, RENDERER_CONFIG, TERRAIN_GENERATION_CONFIG, MAP_SEED_STORAGE_KEY, EDUCATION_CONFIG, LOAN_CONFIG, splitDemographics, getZoneUpgradeCost, isZoneAtCapacity } from './config.js';
+import { APP_VERSION, ZONE, TERRAIN, PRODUCER_TYPE, PRODUCER_CONFIG, SERVICE_CONFIG, COSTS, TILE_SIZE, STARTING_TREASURY, RESIDENTIAL_CAPACITY, JOBS_PROVIDED, FOREST_POLLUTION_ABSORPTION, FOREST_DESIRABILITY_RADIUS, CRIME_CONFIG, MEDICAL_CONFIG, POWER_PRODUCER_TYPES, POLLUTION_CONFIG, COAL_CONFIG, BATTERY_CONFIG, RESOURCE_CONFIG, UTILITY_OPERATING_COST, SURVEY_COST_PER_TICK, TICKS_PER_HOUR, DENSITY, RENDERER_CONFIG, TERRAIN_GENERATION_CONFIG, MAP_SEED_STORAGE_KEY, EDUCATION_CONFIG, LOAN_CONFIG, splitDemographics, getZoneUpgradeCost, isZoneAtCapacity, PRODUCER_TIER_MAX, isTieredService, isTieredPowerProducer, getProducerTier, getServiceTierStat, getServiceUpgradeCost, getPowerUpgradeCost, getBatteryStorageForTier, getWindPeakForTier, getSolarPeakForTier } from './config.js';
 
 const nowMs = typeof performance !== 'undefined' ? () => performance.now() : () => Date.now();
 
@@ -114,12 +114,49 @@ class GameApp {
   }
 
   initCanvasSize() {
-    const resize = () => {
-      this.canvas.width = this.canvas.parentElement.clientWidth;
-      this.canvas.height = this.canvas.parentElement.clientHeight;
-    };
+    const resize = () => this.resizeCanvas();
     window.addEventListener('resize', resize);
     resize();
+  }
+
+  /**
+   * Matches the drawing buffer to the viewport. A zero-size parent (for example while
+   * the title screen hides #app) is ignored so the previous buffer is kept, and the
+   * canvas is only resized when the size actually changed (resizing clears it).
+   */
+  resizeCanvas() {
+    const parent = this.canvas?.parentElement;
+    if (!parent) return;
+    const width = parent.clientWidth;
+    const height = parent.clientHeight;
+    if (width <= 0 || height <= 0) return;
+    if (this.canvas.width !== width || this.canvas.height !== height) {
+      this.canvas.width = width;
+      this.canvas.height = height;
+    }
+  }
+
+  showMapLoading(label = 'Loading map…') {
+    const overlay = document.getElementById('map-loading');
+    if (!overlay) return;
+    const text = document.getElementById('map-loading-label');
+    if (text) text.textContent = label;
+    overlay.hidden = false;
+  }
+
+  hideMapLoading() {
+    const overlay = document.getElementById('map-loading');
+    if (overlay) overlay.hidden = true;
+  }
+
+  /**
+   * Repaints the city canvas once the DOM has settled. Entering a city from the globe
+   * or resizing while the world map covered the canvas can otherwise leave the first
+   * frame stale until the next animation tick.
+   */
+  refreshCityCanvas() {
+    this.resizeCanvas();
+    this.renderer.render(this.simulation);
   }
 
   bindUIEvents() {
@@ -188,7 +225,7 @@ class GameApp {
         const budget = parseInt(e.target.value, 10);
         const type = e.target.dataset.serviceBudget;
         this.grid.producers
-          .filter((producer) => producer.type === type || (type === 'hospital' && producer.type === 'clinic'))
+          .filter((producer) => producer.type === type)
           .forEach((producer) => { producer.budget = budget; });
         const value = document.getElementById(`${type}-budget-value`);
         if (value) value.textContent = `${budget}%`;
@@ -280,6 +317,7 @@ class GameApp {
       document.getElementById('inspector-panel').classList.remove('visible');
     });
     document.getElementById('btn-upgrade-zone')?.addEventListener('click', () => this.upgradeSelectedZone());
+    document.getElementById('btn-upgrade-producer')?.addEventListener('click', () => this.upgradeSelectedProducer());
 
     document.addEventListener('pointerdown', (e) => {
       const canvas = document.getElementById('game-canvas');
@@ -311,6 +349,7 @@ class GameApp {
     this.worldActive = !idle;
     document.body.classList.toggle('app-idle', idle);
     if (idle) {
+      this.hideMapLoading();
       const overworld = document.getElementById('overworld-view');
       if (overworld) overworld.hidden = true;
       document.getElementById('game-over-modal')?.setAttribute('hidden', '');
@@ -494,6 +533,10 @@ class GameApp {
     if (this.overworldView?.isOpen) return;
     const button = document.getElementById('btn-overworld');
     button.disabled = true;
+    // The first open imports Three.js and builds the whole planet synchronously; give
+    // the player feedback instead of what looks like a frozen screen.
+    const buildingGlobe = !this.overworldView;
+    if (buildingGlobe) this.showMapLoading('Loading world map…');
     this.setSpeed(0);
     try {
       if (!this.overworldView) {
@@ -514,7 +557,7 @@ class GameApp {
         }
         this.overworldView = new OverworldView(document.getElementById('overworld-view'), this.planet, {
           onEnter: (id) => this.enterOverworldCell(id),
-          onClose: () => this.renderer.render(this.simulation),
+          onClose: () => this.refreshCityCanvas(),
           onRegenerate: (seed) => this.regenerateOverworld(seed),
           onSelect: (cell) => {
             this.selectedCellId = cell?.id ?? null;
@@ -538,6 +581,7 @@ class GameApp {
       window.alert('Unable to open the world map. Check your connection to the map libraries.');
     } finally {
       button.disabled = false;
+      if (buildingGlobe) this.hideMapLoading();
     }
   }
 
@@ -575,6 +619,33 @@ class GameApp {
 
   enterOverworldCell(id) {
     if (this.gameOver) return;
+    const cell = this.planet?.getCell(id);
+    if (!cell || cell.ocean) return;
+    // A hex that has never been visited needs a full terrain/ore generation plus one
+    // simulation tick. That work is synchronous, so paint the loading overlay first and
+    // move the generation to the next task; otherwise a slow device looks frozen.
+    const needsGeneration = id !== this.currentCellId && !this.cityStates.has(id);
+    if (!needsGeneration) {
+      this.enterOverworldCellNow(id);
+      return;
+    }
+    if (this.pendingMapCellId === id) return;
+    this.pendingMapCellId = id;
+    this.showMapLoading('Generating map…');
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        try {
+          this.enterOverworldCellNow(id);
+        } finally {
+          this.pendingMapCellId = null;
+          // Keep the overlay up until the freshly drawn city has been composited.
+          requestAnimationFrame(() => this.hideMapLoading());
+        }
+      }, 0);
+    });
+  }
+
+  enterOverworldCellNow(id) {
     const cell = this.planet?.getCell(id);
     if (!cell || cell.ocean) return;
     if (id !== this.currentCellId) {
@@ -735,7 +806,7 @@ class GameApp {
 
     document.querySelectorAll('[data-service-budget]').forEach((slider) => {
       const type = slider.dataset.serviceBudget;
-      const producer = this.grid.producers.find((p) => p.type === type || (type === 'hospital' && p.type === 'clinic'));
+      const producer = this.grid.producers.find((p) => p.type === type);
       const budget = producer?.budget ?? 100;
       slider.value = budget;
       const valueEl = document.getElementById(`${type}-budget-value`);
@@ -1283,6 +1354,21 @@ class GameApp {
     return true;
   }
 
+  upgradeSelectedProducer() {
+    const tile = this.renderer.selectedTile;
+    if (!this.grid.canUpgradeProducer(tile)) return false;
+    const producer = tile.producer;
+    const cost = isTieredService(producer.type)
+      ? getServiceUpgradeCost(producer.type, getProducerTier(producer))
+      : getPowerUpgradeCost(producer.type, getProducerTier(producer));
+    if (cost <= 0 || this.treasury < cost || !this.grid.upgradeProducer(tile)) return false;
+    this.treasury -= cost;
+    this.simulation.tick(false);
+    this.updateHUD({ force: true });
+    this.updateInspector(tile, { force: true });
+    return true;
+  }
+
   updateBuildInfoPanel(tool) {
     const panel = document.getElementById('build-info-panel');
     const title = document.getElementById('build-info-title');
@@ -1308,7 +1394,7 @@ class GameApp {
           const staff = config.jobs[density];
           return ServiceManager.getOperatingCost(pType, density, staff, staff) * TICKS_PER_HOUR;
         });
-        rows.push(row('Operating / Hour (L/M/H)', hourly.some(Boolean)
+        rows.push(row('Operating / Hour (T1/T2/T3)', hourly.some(Boolean)
           ? `${hourly.map((cost) => `$${cost.toLocaleString()}`).join(' / ')} (full staff & budget; actual varies)`
           : '$0 (no direct running cost)'));
       } else if (pType === PRODUCER_TYPE.REFINERY) {
@@ -1318,14 +1404,17 @@ class GameApp {
 
       if (config.utility === 'power') {
         if (pType === PRODUCER_TYPE.WINDMILL) {
-          rows.push(row('Power Output', `0-${WIND_CONFIG.MAX_CAPACITY || 65} MW (scales with wind intensity)`));
+          rows.push(row('Peak Output (T1/T2/T3)', `${getWindPeakForTier(1)} / ${getWindPeakForTier(2)} / ${getWindPeakForTier(3)} MW (scales with wind intensity)`));
+          rows.push(row('Upgrade Cost (T2/T3)', `$${getPowerUpgradeCost(pType, 1).toLocaleString()} / $${getPowerUpgradeCost(pType, 2).toLocaleString()}`));
           rows.push(row('Requires', 'Adjacent (incl. diagonals) to Battery Storage to transmit power'));
         } else if (pType === PRODUCER_TYPE.SOLAR_PANEL) {
-          rows.push(row('Power Output', `0-${SOLAR_CONFIG.PEAK_CAPACITY} (day only, peaks at noon, reduced by cloud cover)`));
+          rows.push(row('Peak Output (T1/T2/T3)', `${getSolarPeakForTier(1)} / ${getSolarPeakForTier(2)} / ${getSolarPeakForTier(3)} (day only, peaks at noon, reduced by cloud cover)`));
+          rows.push(row('Upgrade Cost (T2/T3)', `$${getPowerUpgradeCost(pType, 1).toLocaleString()} / $${getPowerUpgradeCost(pType, 2).toLocaleString()}`));
           rows.push(row('Requires', 'Adjacent (incl. diagonals) to Battery Storage to transmit power'));
         } else if (pType === PRODUCER_TYPE.BATTERY) {
-          rows.push(row('Storage Capacity', `${BATTERY_CONFIG.MAX_STORAGE}`));
-          rows.push(row('Discharge Rate', `${BATTERY_CONFIG.DISCHARGE_RATE} / tick`));
+          rows.push(row('Storage (T1/T2/T3)', `${getBatteryStorageForTier(1)} / ${getBatteryStorageForTier(2)} / ${getBatteryStorageForTier(3)}`));
+          rows.push(row('Discharge (T1/T2/T3)', `${getBatteryStorageForTier(1) / BATTERY_CONFIG.DISCHARGE_DIVISOR} / ${getBatteryStorageForTier(2) / BATTERY_CONFIG.DISCHARGE_DIVISOR} / ${getBatteryStorageForTier(3) / BATTERY_CONFIG.DISCHARGE_DIVISOR} per tick`));
+          rows.push(row('Upgrade Cost (T2/T3)', `$${getPowerUpgradeCost(pType, 1).toLocaleString()} / $${getPowerUpgradeCost(pType, 2).toLocaleString()}`));
         } else {
           rows.push(row('Power Output', `${config.capacity}`));
         }
@@ -1341,16 +1430,21 @@ class GameApp {
       } else if (config.utility === 'water' || config.utility === 'sewage') {
         rows.push(row('Capacity', `${config.capacity}`));
       } else if (config.jobs) {
-        rows.push(row('Jobs (Light/Medium/High)', `${config.jobs.light} / ${config.jobs.medium} / ${config.jobs.high}`));
-        if (config.radius) rows.push(row('Coverage Radius (L/M/H)', `${config.radius.light} / ${config.radius.medium} / ${config.radius.high}`));
-        if (pType === PRODUCER_TYPE.HOSPITAL || pType === PRODUCER_TYPE.CLINIC) {
-          const cap = (staff) => staff * MEDICAL_CONFIG.HOSPITAL_PATIENT_CAPACITY_PER_JOB;
-          if (pType === PRODUCER_TYPE.CLINIC) {
-            rows.push(row('Max Population Served', 'Up to 5,000 residents'));
-            rows.push(row('Patient Capacity', `${cap(config.jobs.light)} (fixed size)`));
-          } else {
-            rows.push(row('Patient Capacity (L/M/H)', `${cap(config.jobs.light)} / ${cap(config.jobs.medium)} / ${cap(config.jobs.high)}`));
+        if (isTieredService(pType)) {
+          rows.push(row('Staff Cap (T1/T2/T3)', `${getServiceTierStat('maxStaff', 1)} / ${getServiceTierStat('maxStaff', 2)} / ${getServiceTierStat('maxStaff', 3)}`));
+          rows.push(row('Coverage Road/Side (T1/T2/T3)', `${getServiceTierStat('roadReach', 1)}/${getServiceTierStat('sideReach', 1)} · ${getServiceTierStat('roadReach', 2)}/${getServiceTierStat('sideReach', 2)} · ${getServiceTierStat('roadReach', 3)}/${getServiceTierStat('sideReach', 3)} (+1 per extra staff)`));
+          rows.push(row('Vehicles (T1/T2/T3)', `${getServiceTierStat('vehicles', 1)} / ${getServiceTierStat('vehicles', 2)} / ${getServiceTierStat('vehicles', 3)}`));
+          rows.push(row('Upgrade Cost (T2/T3)', `$${getServiceUpgradeCost(pType, 1).toLocaleString()} / $${getServiceUpgradeCost(pType, 2).toLocaleString()}`));
+          if (pType === PRODUCER_TYPE.POLICE_STATION) {
+            rows.push(row('Cells (T1/T2/T3)', `${getServiceTierStat('cells', 1)} / ${getServiceTierStat('cells', 2)} / ${getServiceTierStat('cells', 3)}`));
           }
+        } else {
+          rows.push(row('Jobs (Light/Medium/High)', `${config.jobs.light} / ${config.jobs.medium} / ${config.jobs.high}`));
+          if (config.radius) rows.push(row('Coverage Radius (L/M/H)', `${config.radius.light} / ${config.radius.medium} / ${config.radius.high}`));
+        }
+        if (pType === PRODUCER_TYPE.HOSPITAL) {
+          const cap = (staff) => staff * MEDICAL_CONFIG.HOSPITAL_PATIENT_CAPACITY_PER_JOB;
+          rows.push(row('Patient Capacity (T1/T2/T3)', `${cap(getServiceTierStat('maxStaff', 1))} / ${cap(getServiceTierStat('maxStaff', 2))} / ${cap(getServiceTierStat('maxStaff', 3))}`));
         } else if (pType === PRODUCER_TYPE.SCHOOL || pType === PRODUCER_TYPE.UNIVERSITY) {
           const seats = (jobs) => jobs * EDUCATION_CONFIG.STUDENT_CAPACITY_PER_JOB;
           rows.push(row('Student Seats (L/M/H)', `${seats(config.jobs.light)} / ${seats(config.jobs.medium)} / ${seats(config.jobs.high)} at full staff`));
@@ -1454,15 +1548,16 @@ class GameApp {
     const upgradeCost = getZoneUpgradeCost(tile.zone, tile.density);
     const canUpgrade = this.grid.canUpgradeZone(tile);
     if (capacityRow && capacityStatus && upgradeButton) {
-      capacityRow.hidden = !atCapacity;
+      // The "full" marker stays informational; the upgrade is always purchasable.
+      capacityRow.hidden = !canUpgrade && !atCapacity;
       upgradeButton.hidden = !canUpgrade;
       upgradeButton.disabled = !canUpgrade || this.treasury < upgradeCost;
       upgradeButton.textContent = `Upgrade ($${upgradeCost.toLocaleString()})`;
       capacityStatus.textContent = tile.density === DENSITY.HIGH
-        ? 'Full · maximum tier'
-        : this.treasury < upgradeCost
-          ? 'Full · insufficient funds'
-          : 'Full capacity';
+        ? 'Maximum tier'
+        : atCapacity
+          ? (this.treasury < upgradeCost ? 'Full · insufficient funds' : 'Full capacity')
+          : 'Upgrade available';
     }
 
     const popJobsEl = document.getElementById('inspect-pop-jobs');
@@ -1610,11 +1705,11 @@ class GameApp {
         capLabel.textContent = 'Output:';
         const resources = this.simulation.resourceManager;
         capVal.textContent = formatDerrickOutput(tile.producer, resources.stockpile, resources.capacity);
-      } else if (tile.producer.type === PRODUCER_TYPE.HOSPITAL || tile.producer.type === PRODUCER_TYPE.CLINIC) {
+      } else if (tile.producer.type === PRODUCER_TYPE.HOSPITAL) {
         const staff = tile.producer.filledJobs || 0;
         const patientCap = staff * MEDICAL_CONFIG.HOSPITAL_PATIENT_CAPACITY_PER_JOB;
-        capLabel.textContent = 'Patient Capacity:';
-        capVal.textContent = `${patientCap} (${staff} staffed)`;
+        capLabel.textContent = 'Patients (treated / beds):';
+        capVal.textContent = `${tile.producer.patients || 0} / ${patientCap} (${staff} staffed)`;
       } else if (config?.utility === 'power' || config?.utility === 'water' || config?.utility === 'sewage') {
         capLabel.textContent = 'Load / Capacity:';
         capVal.textContent = formatProducerCapacity(tile.producer, this.grid);
@@ -1631,6 +1726,56 @@ class GameApp {
       }
     } else {
       prodPanel.style.display = 'none';
+    }
+
+    const producerTierRow = document.getElementById('producer-tier-row');
+    const producerVehiclesRow = document.getElementById('producer-vehicles-row');
+    const producerCellsRow = document.getElementById('producer-cells-row');
+    const producerUpgradeRow = document.getElementById('producer-upgrade-row');
+    const producerUpgradeStatus = document.getElementById('producer-upgrade-status');
+    const producerUpgradeButton = document.getElementById('btn-upgrade-producer');
+    if (tile.producer) {
+      const type = tile.producer.type;
+      const tier = getProducerTier(tile.producer);
+      const tiered = isTieredService(type) || isTieredPowerProducer(type);
+      if (producerTierRow) producerTierRow.hidden = !tiered;
+      const tierValue = document.getElementById('inspect-producer-tier');
+      if (tierValue) tierValue.textContent = `${tier} / ${PRODUCER_TIER_MAX}`;
+
+      const isService = isTieredService(type);
+      const vehicles = isService ? getServiceTierStat('vehicles', tier) : 0;
+      const vehicleLabel = type === PRODUCER_TYPE.FIRE_STATION ? 'fire truck'
+        : type === PRODUCER_TYPE.POLICE_STATION ? 'police car'
+        : 'ambulance';
+      if (producerVehiclesRow) producerVehiclesRow.hidden = !isService;
+      const vehiclesValue = document.getElementById('inspect-producer-vehicles');
+      if (vehiclesValue && isService) {
+        vehiclesValue.textContent = `${vehicles} ${vehicleLabel}${vehicles === 1 ? '' : 's'}`;
+      }
+
+      if (producerCellsRow) producerCellsRow.hidden = type !== PRODUCER_TYPE.POLICE_STATION;
+      const cellsValue = document.getElementById('inspect-producer-cells');
+      if (cellsValue && type === PRODUCER_TYPE.POLICE_STATION) {
+        const cells = getServiceTierStat('cells', tier);
+        cellsValue.textContent = `${tile.producer.prisoners || 0} / ${cells} occupied`;
+      }
+
+      if (producerUpgradeRow && producerUpgradeStatus && producerUpgradeButton) {
+        const upgradeCost = isService ? getServiceUpgradeCost(type, tier) : getPowerUpgradeCost(type, tier);
+        const canUpgradeProducer = this.grid.canUpgradeProducer(tile);
+        producerUpgradeRow.hidden = !tiered;
+        producerUpgradeButton.hidden = !canUpgradeProducer;
+        producerUpgradeButton.disabled = !canUpgradeProducer || this.treasury < upgradeCost;
+        producerUpgradeButton.textContent = `Upgrade ($${upgradeCost.toLocaleString()})`;
+        producerUpgradeStatus.textContent = !canUpgradeProducer
+          ? 'Maximum tier'
+          : this.treasury < upgradeCost ? 'Insufficient funds' : 'Upgrade available';
+      }
+    } else {
+      if (producerTierRow) producerTierRow.hidden = true;
+      if (producerVehiclesRow) producerVehiclesRow.hidden = true;
+      if (producerCellsRow) producerCellsRow.hidden = true;
+      if (producerUpgradeRow) producerUpgradeRow.hidden = true;
     }
 
     this._inspectorTile = tile;

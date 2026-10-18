@@ -28,25 +28,25 @@ assert.strictEqual(police.operational, true, 'Police should be operational with 
 assert.strictEqual(police.utilityShortfall.power, false);
 assert.strictEqual(police.utilityShortfall.water, false);
 assert.strictEqual(police.utilityShortfall.sewage, false);
-assert.strictEqual(SERVICE_CONFIG[PRODUCER_TYPE.POLICE_STATION].cost, 4000, 'Police construction cost should remain fixed');
-assert.strictEqual(SERVICE_CONFIG[PRODUCER_TYPE.FIRE_STATION].cost, 4000, 'Fire construction cost should remain fixed');
-assert.strictEqual(SERVICE_CONFIG[PRODUCER_TYPE.HOSPITAL].cost, 6000, 'Hospital construction cost should remain fixed');
+assert.strictEqual(SERVICE_CONFIG[PRODUCER_TYPE.POLICE_STATION].cost, 200, 'Police tier-1 construction cost should be $200');
+assert.strictEqual(SERVICE_CONFIG[PRODUCER_TYPE.FIRE_STATION].cost, 500, 'Fire tier-1 construction cost should be $500');
+assert.strictEqual(SERVICE_CONFIG[PRODUCER_TYPE.HOSPITAL].cost, 300, 'Hospital tier-1 construction cost should be $300');
 
 ServiceManager.updateServices(grid, 0, 1);
 const lightJobs = police.totalJobs;
 const lightRadius = police.effectiveRadius;
-assert.strictEqual(lightJobs, 2, 'Police should start with a minimum of two officers');
-assert.strictEqual(fire.totalJobs, 2, 'Fire should start with a minimum of two firefighters');
-assert.strictEqual(hospital.totalJobs, 2, 'Hospital should start with a minimum of two staff');
+assert.strictEqual(lightJobs, 1, 'Police should start with one officer slot');
+assert.strictEqual(fire.totalJobs, 1, 'Fire should start with one firefighter slot');
+assert.strictEqual(hospital.totalJobs, 1, 'Hospital should start with one staff slot');
 
 const offlineFire = grid.placeProducer(5, 5, PRODUCER_TYPE.FIRE_STATION, 0);
 offlineFire.operational = false;
 ServiceManager.updateServices(grid, 0, 0);
-assert.strictEqual(offlineFire.totalJobs, 2, 'Offline fire stations should retain minimum staffing jobs');
+assert.strictEqual(offlineFire.totalJobs, 1, 'Offline fire stations should retain the minimum staffing slot');
 assert.strictEqual(offlineFire.filledJobs, 0, 'Offline fire stations should not fill jobs without residents');
 
 ServiceManager.updateServices(grid, 6, 1, 6);
-assert.strictEqual(fire.filledJobs, 2, 'Fire station should receive two workers when the city has enough workers');
+assert.strictEqual(fire.filledJobs, 1, 'Fire station should receive one worker when the city has six residents');
 power.capacity = 0;
 for (let tick = 1; tick <= SERVICE_GLOBAL_CONFIG.UTILITY_FAILURE_GRACE_TICKS; tick++) {
   UtilityManager.allocateAll(grid);
@@ -54,7 +54,7 @@ for (let tick = 1; tick <= SERVICE_GLOBAL_CONFIG.UTILITY_FAILURE_GRACE_TICKS; ti
 }
 UtilityManager.allocateAll(grid);
 assert.strictEqual(fire.operational, false, 'Fire station should go offline after the utility grace period');
-assert.strictEqual(fire.filledJobs, 2, 'Fire station staffing should remain visible while utilities are offline');
+assert.strictEqual(fire.filledJobs, 1, 'Fire station staffing should remain visible while utilities are offline');
 power.capacity = 100;
 UtilityManager.allocateAll(grid);
 assert.strictEqual(fire.operational, true, 'Fire station should recover when utilities return');
@@ -67,12 +67,12 @@ FireManager.updateFires(grid, { fireInjuries: 0, displacedPopulation: 0 });
 assert.strictEqual(burningTile.onFire, false, 'Operational staffed fire station should extinguish a nearby fire');
 assert.strictEqual(burningTile.fireDamage, 0, 'Suppressed fire should have no remaining damage');
 ServiceManager.updateServices(grid, 5000, 1);
-assert.strictEqual(police.density, DENSITY.HIGH, 'Police density should grow with population');
-assert.strictEqual(police.totalJobs, 5, 'Police should staff one officer per thousand residents');
-assert.strictEqual(fire.totalJobs, 5, 'Fire should staff one firefighter per thousand residents');
-assert.strictEqual(hospital.totalJobs, 5, 'Hospital should staff one worker per thousand residents');
+assert.strictEqual(police.density, DENSITY.LIGHT, 'Tier 1 police stay at light density until upgraded');
+assert.strictEqual(police.totalJobs, 5, 'Tier 1 police should cap at five officers');
+assert.strictEqual(fire.totalJobs, 5, 'Tier 1 fire should cap at five firefighters');
+assert.strictEqual(hospital.totalJobs, 5, 'Tier 1 hospital should cap at five staff');
 assert.ok(police.totalJobs > lightJobs, 'Police jobs should grow with population');
-assert.ok(police.effectiveRadius > lightRadius, 'Police coverage should grow with population');
+assert.ok(police.effectiveRadius > lightRadius, 'Police coverage should grow with staffing');
 const fullBudgetJobs = police.totalJobs;
 const fullBudgetCoverage = CoverageManager.getCoverageSet(grid, 'police').size;
 const fullBudgetCost = police.runningCost;
@@ -92,9 +92,11 @@ const cachedAfter = ServiceManager.previousEmergencyCoverage.get(grid);
 assert.strictEqual(cachedAfter, cachedBefore, 'Unchanged state should skip coverage/assignment and keep cached metadata');
 assert.strictEqual(sentinelTile.testMarker, 'preserved', 'Skipped coverage should not re-wipe tile state');
 
-// Population/workforce change updates running cost and staffing correctly
+// Population/workforce changes stop at the tier-1 cap once the budget is restored.
+police.budget = 100;
 ServiceManager.updateServices(grid, 10000, 1);
-assert.ok(police.runningCost >= fullBudgetCost * 0.5, 'Higher population should scale service running cost');
+assert.strictEqual(police.totalJobs, 5, 'Tier 1 staffing stays capped at five as population grows');
+assert.ok(police.runningCost > 0, 'A capped station still pays its staff wages');
 
 // Building operational change invalidates cache
 police.operational = false;

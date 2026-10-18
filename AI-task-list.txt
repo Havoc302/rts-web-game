@@ -1657,3 +1657,50 @@ Validation:
 - `tests/temperature-load.test.js` asserts: the comfort band is a no-op at 10/20/35 °C; the excursion is 10 at 0/45 °C and 20 at -10/55 °C; power is 1.5x at 0/45 °C, 2x at -10/55 °C, 3.5x at -40 °C, and 2.75x at 70 °C (uncapped); happiness is 5 at 0/45 °C and pinned to the 10-point cap from -10 °C and 55 °C outward; an unknown temperature changes nothing; zoned power demand scales while water and sewage do not; a live 7-unit city (pump 2 + sewage plant 2 + high-density home 3) draws 7/10.5/14/3.5x-free 7 units at 20/45/55 °C and charges exactly that to the plant; a plant sized at 7 covers the city at 20 °C but browns out at -40 °C; and two identical simulations differing only in climate end 10 happiness apart through the real tick.
 - Browser verification (Playwright, port 4173, `v0.2.20`): the arctic city reported `Sunny, Breezy (-31.3°C)` with the snow ground, and the weather tooltip now shows the Power Load row alongside Conditions, Wind, Cloud Cover, Temperature, and Solar Efficiency.
 - `config.js`, `UtilityManager.js`, `Simulation.js`, `ResourceManager.js`, `UiRefresh.js`, and `index.html` report no editor diagnostics.
+
+Current task: Show progress while a city map or the world globe is generated (`0.2.21`).
+
+The user reported that selecting a hex and choosing `Open Map` sometimes appeared to do nothing until another hex was opened, and asked whether there is an initial generation delay and whether a loading bar or "Loading..." text is needed.
+
+- [done] Confirm there is no artificial delay: generation is the same synchronous terrain/ore/simulation work as before, measured at ~50-130 ms per city in Node and 278 ms at 10x CPU throttle in the browser; the first world-map build (Three.js import + 5,882-cell planet + globe geometry) measured 3.5 s at 10x CPU throttle with no on-screen feedback.
+- [done] Add a `#map-loading` status overlay (spinner plus label, `role="status"`, `aria-live="polite"`) inside the city viewport, with `.map-loading[hidden] { display: none; }` and a reduced-motion spinner variant.
+- [done] Split `enterOverworldCell` into a scheduler plus `enterOverworldCellNow`, so `Generating map...` paints first and the blocking generation runs on the next task; already-visited cities still switch synchronously with no overlay.
+- [done] Show `Loading world map...` while `openOverworld` builds the globe for the first time, and hide it in the `finally` block; hide any overlay when the game returns to the idle title state.
+- [done] Add `resizeCanvas()` (ignores zero-size parents, only resizes on change) and `refreshCityCanvas()`; the globe's `onClose` now resizes and repaints the city canvas so the first frame after a switch does not depend on the next animation tick.
+- [done] Bump every version source to `0.2.21` and record the loading feedback in `docs/DESIGN.md`.
+
+Validation:
+- `npm test` passes all 49 test files.
+- Browser verification (Playwright, local dev server, `v0.2.21`, 10x CPU throttle with cache disabled): the `Loading world map...` overlay was visible for 3,187 ms during the first globe build and then hidden; `Generating map...` was visible for 357 ms on a first-time hex and 260 ms on another, then hidden with a fully painted city canvas (1,650/1,650 and 928/928 sampled pixels non-background); revisiting an already-generated city produced no overlay mutation and closed the globe immediately.
+- Screenshot check: the overlay covers the canvas and HUD panels with the spinner and label centered, and the reduced-motion rule is present.
+- `style.css` brace scan reports final depth 0 and minimum depth 0; the browser parsed 192 same-origin CSS rules including `.map-loading`, `.map-loading[hidden]`, and `.map-loading-spinner`.
+- `main.js`, `style.css`, and `index.html` report no editor diagnostics.
+
+Current task: Tiered civic services and power producers (`0.3.0`).
+
+The user asked for three player-bought tiers on fire stations, police stations, hospitals, windmills, solar panels and batteries; removal of the clinic; a distance-based police response; and always-available zone upgrades.
+
+- [done] Remove the clinic from config, service keys, coverage, simulation, inspector, budgets, renderer art, sidebar and tests.
+- [done] Add `SERVICE_TIER_CONFIG`, power tier tables, `PRODUCER_TIER_MAX`, and shared helpers for tier costs, staff caps, coverage reach, cells, patient beds, power peaks, battery storage and dynamic utility usage.
+- [done] Add `tier` to producers and `Grid.canUpgradeProducer` / `upgradeProducer`; upgrades preserve stored battery energy and clamp service staffing to the new cap.
+- [done] Service staffing is population scaled (`clamp(ceil(pop/1000), 1, cap)`) and still budget scaled; tier caps are 5 / 10 / 20. Running cost uses the fixed building utility load so dynamic staff/patient/prisoner draw does not multiply wages.
+- [done] Road coverage is tier reach 3 / 6 / 12 plus one per extra staff, and side width 1 / 2 / 4 plus one per extra staff, with a one-tile direct radius. Coverage now records the responding station and distance for each covered tile.
+- [done] Crime is a four-tick incident worth +3. Police roll to respond each tick using `0.07 + 0.37 * (1 - distance/maxDistance)^1.2`; a catch removes the crime and holds the offender for 10 ticks. Cells are 5 / 10 / 20; full cells give catch-and-release with a 1-point happiness penalty for 2 ticks.
+- [done] Hospital beds are 10 per staff member (50 / 100 / 200 by tier) and treated patients are shared across hospitals to drive utility use.
+- [done] Wind is 16 / 32 / 64 MW at $500 / $1,000 / $2,000; solar is 15 / 30 / 60 at $100 / $200 / $400; batteries are 100 / 200 / 400 storage at $250 / $500 / $1,000, discharging one tenth per tick.
+- [done] Civics cost $200 police, $500 fire, $300 hospital, with 1.5x upgrades. The inspector shows tier, staff, vehicles (1/2/3), cells or beds, and a costed upgrade button.
+- [done] Tiered building art now starts small and fills the tile at tier 3, with no tier number badge; the clinic art is gone.
+- [done] Zone upgrades are available at all times. Full zones still show the capacity marker, so output visibly scales with the higher density's job slots.
+- [done] Version bumped to `0.3.0`; saves from 0.2.x are retired by the existing exact-build gate.
+- [done] Tests: removed `clinic-service.test.js`; added `service-tiers.test.js`; updated coverage, crime, service-building, service-expense, staffing, wind/solar and zone-upgrade expectations.
+
+Notes:
+- Agricultural and industrial output already scale with the density's job slots (`JOBS_PROVIDED` 13/65/260 industrial, 7/33/130 agricultural; food yield 4/20/80), so no extra multiplier was needed. The build-info panel now states the tier caps and costs.
+- Police response is deliberately distance-based; staffing changes the coverage extent, not the per-tick formula.
+- Catch-and-release still prevents the crime; only holding the offender is blocked when cells are full.
+
+Validation:
+- `npm test` passes all 49 test files.
+- Browser verification (Playwright, local dev server, `v0.3.0`): the clinic button is absent; a tier-1 fire station shows `Tier 1 / 3`, `1 fire truck`, and `Upgrade ($750)`; police shows `1 police car` and `0 / 5 occupied`; hospital shows `0 / 50` beds; tier-1 upgrades charged exactly $750/$300/$450/$500/$1,000/$200 and raised fire/police/hospital to tier 2 with 2 vehicles and 10 staff; battery storage rose to 200 while keeping 100 stored; wind peak rose to 32. A second upgrade pass reached tier 3 for $8,850 total, showing 3 police cars and 20 cells. A residential zone at 5/25 population still offered `Upgrade ($400)`.
+- `style.css` brace scan reports final depth 0 and minimum depth 0; the browser parsed `.info-row[hidden]`, fixing the stale inspector rows.
+- `main.js`, `config.js`, `Grid.js`, `ServiceManager.js`, `CoverageManager.js`, `CrimeManager.js`, `Simulation.js`, `UtilityManager.js`, `Renderer.js`, and the changed tests report no editor diagnostics.

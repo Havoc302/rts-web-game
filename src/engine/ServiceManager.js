@@ -1,4 +1,4 @@
-import { SERVICE_TYPE, SERVICE_CONFIG, SERVICE_GLOBAL_CONFIG, LABOR_TAX_GROWTH_CONFIG, DENSITY, DEMOGRAPHICS_CONFIG } from '../config.js';
+import { SERVICE_TYPE, SERVICE_CONFIG, SERVICE_GLOBAL_CONFIG, LABOR_TAX_GROWTH_CONFIG, DENSITY, DEMOGRAPHICS_CONFIG, isTieredService, getProducerTier, getServiceTierStat } from '../config.js';
 import { RoadNetwork } from './RoadNetwork.js';
 import { CoverageManager } from './CoverageManager.js';
 
@@ -6,10 +6,11 @@ const POPULATION_STAFFED_TYPES = new Set([
   SERVICE_TYPE.POLICE_STATION,
   SERVICE_TYPE.FIRE_STATION,
   SERVICE_TYPE.HOSPITAL,
-  SERVICE_TYPE.CLINIC,
   SERVICE_TYPE.SCHOOL,
   SERVICE_TYPE.UNIVERSITY,
 ]);
+
+const TIER_DENSITY = [DENSITY.LIGHT, DENSITY.MEDIUM, DENSITY.HIGH];
 
 export class ServiceManager {
   static previousEmergencyCoverage = new WeakMap();
@@ -18,7 +19,10 @@ export class ServiceManager {
     const config = SERVICE_CONFIG[type];
     if (!config) return 0;
     const maxJobs = config.jobs[density] || SERVICE_GLOBAL_CONFIG.MIN_STAFFING_BASELINE;
-    const utilityDemand = Object.values(config.utilityUsage || {}).reduce((sum, amount) => sum + amount, 0);
+    // Tiered services price their overhead from the fixed building load only. Their
+    // dynamic staff/patient/prisoner demand still shows up in the utility meters, but
+    // it must not multiply the wage bill a second time.
+    const utilityDemand = config.baseUtilityDemand ?? Object.values(config.utilityUsage || {}).reduce((sum, amount) => sum + amount, 0);
     const demandFactor = 1 + utilityDemand * SERVICE_GLOBAL_CONFIG.UTILITY_DEMAND_COST_MULTIPLIER;
     const staffingFactor = POPULATION_STAFFED_TYPES.has(type) && maxJobs > 0 ? totalJobs / maxJobs : 1;
     return config.runningCostPerJob
@@ -31,7 +35,6 @@ export class ServiceManager {
       { type: SERVICE_TYPE.POLICE_STATION, key: 'police' },
       { type: SERVICE_TYPE.FIRE_STATION, key: 'fire' },
       { type: SERVICE_TYPE.HOSPITAL, key: 'hospital' },
-      { type: SERVICE_TYPE.CLINIC, key: 'hospital' },
       { type: SERVICE_TYPE.SCHOOL, key: 'school' },
       { type: SERVICE_TYPE.LIBRARY, key: 'library' },
       { type: SERVICE_TYPE.UNIVERSITY, key: 'university' },
@@ -51,23 +54,28 @@ export class ServiceManager {
       if (producers.length === 0) continue;
 
       producers.forEach((prod) => {
-        if (!prod.operational) {
-          prod.density = DENSITY.LIGHT;
-        }
+        const tiered = isTieredService(type);
+        const tier = getProducerTier(prod);
 
-        // Determine building density/tier based on city population thresholds
-        let density = DENSITY.LIGHT;
-        if (totalPopulation >= config.popThresholds.high) {
-          density = DENSITY.HIGH;
-        } else if (totalPopulation >= config.popThresholds.medium) {
-          density = DENSITY.MEDIUM;
+        // Tiered services keep the tier the player bought. Other services still grow
+        // with city population as before.
+        let density = tiered ? TIER_DENSITY[tier - 1] : DENSITY.LIGHT;
+        if (!tiered) {
+          if (totalPopulation >= config.popThresholds.high) {
+            density = DENSITY.HIGH;
+          } else if (totalPopulation >= config.popThresholds.medium) {
+            density = DENSITY.MEDIUM;
+          }
         }
         prod.density = density;
 
         const budgetRatio = Math.max(0, Math.min(SERVICE_GLOBAL_CONFIG.BUDGET_MAX_VALUE, prod.budget ?? SERVICE_GLOBAL_CONFIG.BUDGET_MAX_VALUE)) / SERVICE_GLOBAL_CONFIG.BUDGET_MAX_VALUE;
-        const maxJobs = config.jobs[density] || SERVICE_GLOBAL_CONFIG.MIN_STAFFING_BASELINE;
+        const maxJobs = tiered
+          ? getServiceTierStat('maxStaff', tier)
+          : (config.jobs[density] || SERVICE_GLOBAL_CONFIG.MIN_STAFFING_BASELINE);
         const effectivePop = config.maxPopulationServed ? Math.min(totalPopulation, config.maxPopulationServed) : totalPopulation;
-        const populationOfficers = Math.max(SERVICE_GLOBAL_CONFIG.MIN_STAFFING_BASELINE, Math.ceil(effectivePop / (config.officersPerPopulation || Infinity)));
+        const minimumStaff = tiered ? 1 : SERVICE_GLOBAL_CONFIG.MIN_STAFFING_BASELINE;
+        const populationOfficers = Math.max(minimumStaff, Math.ceil(effectivePop / (config.officersPerPopulation || Infinity)));
         const staffedBase = POPULATION_STAFFED_TYPES.has(type)
           ? Math.min(maxJobs, populationOfficers)
           : maxJobs;
@@ -85,9 +93,12 @@ export class ServiceManager {
         // Fully funded essential services receive workers before commercial and industrial jobs.
         prod.filledJobs = Math.min(budgetedJobs, availableWorkers);
         availableWorkers -= prod.filledJobs;
-        const maxRadius = config.radius[density] || SERVICE_GLOBAL_CONFIG.DEFAULT_SERVICE_RADIUS;
-        // Emergency coverage is calculated by CoverageManager from staffed jobs.
-        prod.effectiveRadius = maxRadius;
+        const maxRadius = config.radius?.[density] || SERVICE_GLOBAL_CONFIG.DEFAULT_SERVICE_RADIUS;
+        // Emergency coverage is calculated by CoverageManager from tier and staffed jobs;
+        // this field is only an informational radius for the inspector/build panel.
+        prod.effectiveRadius = tiered
+          ? getServiceTierStat('roadReach', tier) + getServiceTierStat('sideReach', tier) + Math.max(0, prod.filledJobs - 1)
+          : maxRadius;
         prod.runningCost = this.getOperatingCost(type, density, prod.filledJobs, prod.totalJobs, budgetRatio);
 
         producerStateSignature += `${prod.id}:${prod.x},${prod.y}:1:${prod.filledJobs}:${prod.effectiveRadius}:${prod.budget};`;

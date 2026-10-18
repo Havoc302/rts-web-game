@@ -18,8 +18,8 @@ function clone(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
-function assertNumber(value, name, { integer = false, min = -Infinity } = {}) {
-  if (typeof value !== 'number' || !Number.isFinite(value) || value < min || (integer && !Number.isInteger(value))) {
+function assertNumber(value, name, { integer = false, min = -Infinity, max = Infinity } = {}) {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < min || value > max || (integer && !Number.isInteger(value))) {
     throw new Error(`Invalid save field: ${name}`);
   }
 }
@@ -201,6 +201,7 @@ function validateProducers(producers, width, height) {
     assertNumber(producer.id, 'producer.id', { integer: true, min: 1 });
     assertNumber(producer.x, 'producer.x', { integer: true, min: 0 });
     assertNumber(producer.y, 'producer.y', { integer: true, min: 0 });
+    if (producer.tier != null) assertNumber(producer.tier, 'producer.tier', { integer: true, min: 1, max: 3 });
     if (producer.x >= width || producer.y >= height || producerIds.has(producer.id)) {
       throw new Error('Invalid producer position or duplicate id');
     }
@@ -247,6 +248,7 @@ function finishGridRestore(grid, producers, nextProducerId) {
   grid.nextProducerId = nextProducerId;
   for (const saved of producers) {
     const producer = clone(saved);
+    producer.tier = Math.min(3, Math.max(1, Math.round(Number(producer.tier) || 1)));
     const tile = grid.getTile(producer.x, producer.y);
     if (!tile || tile.producer) throw new Error('Producer position collision');
     tile.producer = producer;

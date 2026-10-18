@@ -1,4 +1,4 @@
-import { TERRAIN, ZONE, DENSITY, PRODUCER_TYPE, PRODUCER_CONFIG, TILE_SIZE, ORE_CONFIG, NIGHT_TINT_ALPHA, RENDERER_CONFIG, POLLUTION_CONFIG, BIOME_TYPES, isZoneAtCapacity } from '../config.js';
+import { TERRAIN, ZONE, DENSITY, PRODUCER_TYPE, PRODUCER_CONFIG, TILE_SIZE, ORE_CONFIG, NIGHT_TINT_ALPHA, RENDERER_CONFIG, POLLUTION_CONFIG, BIOME_TYPES, isZoneAtCapacity, isTieredService, isTieredPowerProducer, getProducerTier } from '../config.js';
 import { UtilityManager } from './UtilityManager.js';
 import { TrafficManager } from './TrafficManager.js';
 import { WeatherOverlay } from './WeatherOverlay.js';
@@ -796,7 +796,12 @@ export class Renderer {
 
   renderProducerTile(ctx, tile, px, py) {
     const prod = tile.producer;
-    const serviceScale = prod.density === DENSITY.HIGH ? 1.18 : prod.density === DENSITY.MEDIUM ? 1.08 : 1;
+    // Tiered buildings start as a small structure and grow to fill the tile at tier 3,
+    // matching how zone art grows with density.
+    const tiered = isTieredService(prod.type) || isTieredPowerProducer(prod.type);
+    const serviceScale = tiered
+      ? [0.72, 0.86, 1][getProducerTier(prod) - 1]
+      : (prod.density === DENSITY.HIGH ? 1.18 : prod.density === DENSITY.MEDIUM ? 1.08 : 1);
     ctx.save();
     ctx.translate(px + TILE_SIZE / 2, py + TILE_SIZE / 2);
     ctx.scale(serviceScale, serviceScale);
@@ -964,15 +969,6 @@ export class Renderer {
       ctx.fillStyle = '#ef4444';
       ctx.fillRect(px + 14, py + 9, 4, 14);
       ctx.fillRect(px + 9, py + 14, 14, 4);
-    } else if (prod.type === PRODUCER_TYPE.CLINIC) {
-      ctx.fillStyle = '#047857';
-      ctx.fillRect(px + 3, py + 3, 26, 26);
-      ctx.fillStyle = '#f0fdf4';
-      ctx.fillRect(px + 6, py + 6, 20, 20);
-
-      ctx.fillStyle = '#10b981';
-      ctx.fillRect(px + 14, py + 10, 4, 12);
-      ctx.fillRect(px + 10, py + 14, 12, 4);
     } else if (prod.type === PRODUCER_TYPE.SCHOOL) {
       ctx.fillStyle = '#9a3412';
       ctx.fillRect(px + 2, py + 2, 28, 28);

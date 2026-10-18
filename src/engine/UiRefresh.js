@@ -195,9 +195,10 @@ export function buildInspectorSignature(grid, tile, resources = null, treasury =
       producerCap = formatSiloStorage(producer, resources?.stockpile, resources?.capacity);
     } else if (producer.type === PRODUCER_TYPE.OIL_DERRICK) {
       producerCap = formatDerrickOutput(producer, resources?.stockpile, resources?.capacity);
-    } else if (producer.type === PRODUCER_TYPE.HOSPITAL || producer.type === PRODUCER_TYPE.CLINIC) {
+    } else if (producer.type === PRODUCER_TYPE.HOSPITAL) {
       const staff = producer.filledJobs || 0;
-      producerCap = `patients:${staff * MEDICAL_CONFIG.HOSPITAL_PATIENT_CAPACITY_PER_JOB}:${staff}`;
+      const capacity = staff * MEDICAL_CONFIG.HOSPITAL_PATIENT_CAPACITY_PER_JOB;
+      producerCap = `patients:${capacity}:${staff}:${producer.patients || 0}`;
     } else if (config?.utility === 'power' || config?.utility === 'water' || config?.utility === 'sewage' || producer.type === PRODUCER_TYPE.BATTERY) {
       producerCap = formatProducerCapacity(producer, grid);
     } else if (config?.jobs) {
@@ -234,6 +235,10 @@ export function buildInspectorSignature(grid, tile, resources = null, treasury =
     getTileUtilityStatus(grid, tile, 'water'),
     getTileUtilityStatus(grid, tile, 'sewage'),
     producer?.type || '',
+    producer?.tier || 1,
+    producer?.prisoners || 0,
+    producer?.patients || 0,
+    producer?.maxStorage || 0,
     producer?.operational ? 1 : 0,
     producer?.contaminated ? 1 : 0,
     producer?.hasBatteryConnection ? 1 : 0,

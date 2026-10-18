@@ -37,7 +37,7 @@ function makeZone(grid, x, zone, density = DENSITY.LIGHT) {
   const residential = makeZone(grid, 1, ZONE.RESIDENTIAL);
   residential.population = RESIDENTIAL_CAPACITY[DENSITY.LIGHT] - 1;
   assert.strictEqual(isZoneAtCapacity(residential), false);
-  assert.strictEqual(grid.canUpgradeZone(residential), false);
+  assert.strictEqual(grid.canUpgradeZone(residential), true, 'Upgrades are available before the tile fills');
 
   residential.population++;
   assert.strictEqual(isZoneAtCapacity(residential), true);
@@ -62,7 +62,7 @@ for (const zone of zones.slice(1)) {
   tile.totalJobs = JOBS_PROVIDED[zone][DENSITY.LIGHT];
   tile.filledJobs = tile.totalJobs - 1;
   assert.strictEqual(isZoneAtCapacity(tile), false, `${zone} should not be full with an open job slot`);
-  assert.strictEqual(grid.canUpgradeZone(tile), false);
+  assert.strictEqual(grid.canUpgradeZone(tile), true, `${zone} upgrades should be available at any time`);
   tile.filledJobs++;
   assert.strictEqual(isZoneAtCapacity(tile), true);
   assert.strictEqual(grid.upgradeZone(tile), true);

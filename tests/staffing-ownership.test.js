@@ -20,9 +20,9 @@ for (let y = 1; y <= 5; y++) grid.placeRoad(2, y);
 const sim = new Simulation(grid);
 sim.tick();
 
-assert.ok(hospital.totalJobs >= 2, 'Hospital should keep ServiceManager job count after a full tick');
-assert.notStrictEqual(hospital.totalJobs, 10, 'Hospital jobs must not be clobbered to jobs.light');
-assert.ok(police.totalJobs >= 2, 'Police should keep ServiceManager job count after a full tick');
-assert.notStrictEqual(police.totalJobs, 10, 'Police jobs must not be clobbered to jobs.light');
+assert.ok(hospital.totalJobs >= 1, 'Hospital should keep ServiceManager job count after a full tick');
+assert.ok(hospital.totalJobs <= 5, 'Hospital jobs must stay within the tier-1 staff cap');
+assert.ok(police.totalJobs >= 1, 'Police should keep ServiceManager job count after a full tick');
+assert.ok(police.totalJobs <= 5, 'Police jobs must stay within the tier-1 staff cap');
 
 console.log('Staffing ownership tests passed.');

@@ -1,4 +1,4 @@
-import { GROWTH_CONFIG, DENSITY, ZONE, TERRAIN, USAGE_RATES, POLLUTION_CONFIG, JOBS_PROVIDED, RESIDENTIAL_CAPACITY, LABOR_TAX_GROWTH_CONFIG, FOREST_DESIRABILITY_RADIUS, PRODUCER_TYPE, PRODUCER_CONFIG, POWER_PRODUCER_TYPES, ROAD_MAINTENANCE_COST, ROAD_MAINTENANCE_CONFIG, UTILITY_OPERATING_COST, TAX_REVENUE_CONFIG, CRIME_CONFIG, MEDICAL_CONFIG, HAPPINESS_CONFIG, SERVICE_GLOBAL_CONFIG, TICKS_PER_HOUR, HOURS_PER_DAY, DAY_START_HOUR, NIGHT_START_HOUR, DEMOGRAPHICS_CONFIG, FUEL_CONFIG, SURVEY_COST_PER_TICK, POPULATION_STABILIZATION_CONFIG, TEMPERATURE_CONFIG, temperaturePowerFactor, EDUCATION_CONFIG, splitDemographics } from '../config.js';
+import { GROWTH_CONFIG, DENSITY, ZONE, TERRAIN, USAGE_RATES, POLLUTION_CONFIG, JOBS_PROVIDED, RESIDENTIAL_CAPACITY, LABOR_TAX_GROWTH_CONFIG, FOREST_DESIRABILITY_RADIUS, PRODUCER_TYPE, PRODUCER_CONFIG, POWER_PRODUCER_TYPES, ROAD_MAINTENANCE_COST, ROAD_MAINTENANCE_CONFIG, UTILITY_OPERATING_COST, TAX_REVENUE_CONFIG, CRIME_CONFIG, MEDICAL_CONFIG, HAPPINESS_CONFIG, SERVICE_GLOBAL_CONFIG, TICKS_PER_HOUR, HOURS_PER_DAY, DAY_START_HOUR, NIGHT_START_HOUR, DEMOGRAPHICS_CONFIG, FUEL_CONFIG, SURVEY_COST_PER_TICK, POPULATION_STABILIZATION_CONFIG, TEMPERATURE_CONFIG, temperaturePowerFactor, EDUCATION_CONFIG, splitDemographics, getProducerUtilityUsage } from '../config.js';
 import { UtilityManager } from './UtilityManager.js';
 import { PollutionManager } from './PollutionManager.js';
 import { ServiceManager } from './ServiceManager.js';
@@ -60,6 +60,7 @@ export class Simulation {
       patientDemand: 0,
       patientCapacity: 0,
       untreatedPatients: 0,
+      catchAndReleasePenaltyTicks: 0,
       fireInjuries: 0,
       displacedPopulation: 0,
       happiness: HAPPINESS_CONFIG.BASE_SCORE,
@@ -441,6 +442,7 @@ export class Simulation {
       patientDemand: 0,
       patientCapacity: 0,
       untreatedPatients: 0,
+      catchAndReleasePenaltyTicks: this.stats.catchAndReleasePenaltyTicks || 0,
       fireInjuries,
       displacedPopulation: 0,
       happiness,
@@ -470,7 +472,7 @@ export class Simulation {
     const powerFactor = temperaturePowerFactor(this.weatherManager?.temperature);
 
     for (const p of this.grid.producers) {
-      stats.powerDemand += (PRODUCER_CONFIG[p.type]?.utilityUsage?.power || 0) * powerFactor;
+      stats.powerDemand += (getProducerUtilityUsage(p).power || 0) * powerFactor;
       if (p.type === PRODUCER_TYPE.SURVEY_STATION && p.surveyTarget) {
         stats.powerDemand += PRODUCER_CONFIG[p.type].activeUtilityUsage.power * powerFactor;
       }
@@ -490,7 +492,7 @@ export class Simulation {
         stats.serviceExpenseBreakdown[serviceName] = (stats.serviceExpenseBreakdown[serviceName] || 0) + p.runningCost;
       }
       if (p.totalJobs && p.totalJobs > 0) stats.totalJobsProvided += p.totalJobs;
-      if ((p.type === PRODUCER_TYPE.HOSPITAL || p.type === PRODUCER_TYPE.CLINIC) && p.operational) {
+      if (p.type === PRODUCER_TYPE.HOSPITAL && p.operational) {
         stats.patientCapacity += (p.filledJobs || 0) * MEDICAL_CONFIG.HOSPITAL_PATIENT_CAPACITY_PER_JOB;
       }
     }
@@ -624,12 +626,36 @@ export class Simulation {
     totalPatientDemand += fireInjuries;
     stats.patientDemand = Math.round(totalPatientDemand);
     stats.untreatedPatients = Math.max(0, stats.patientDemand - stats.patientCapacity);
+    this.assignHospitalPatients(stats);
     if (stats.patientDemand > 0 && stats.patientCapacity / stats.patientDemand < 0.25) {
       if (!stats.alerts.some((alert) => alert.id === 'medical')) stats.alerts.push({ id: 'medical', message: 'Medical coverage is critically low', x: null, y: null });
     }
 
     stats.incomePerTick = Math.round(income);
     this.stats = stats;
+  }
+
+  /**
+   * Distribute the patients actually being treated across operational hospitals, in
+   * proportion to each hospital's bed capacity. The per-hospital count drives its
+   * utility draw and the inspector readout.
+   */
+  assignHospitalPatients(stats) {
+    for (const producer of this.grid.producers) {
+      if (producer.type === PRODUCER_TYPE.HOSPITAL) producer.patients = 0;
+    }
+    const hospitals = this.grid.producers.filter((p) => (
+      p.type === PRODUCER_TYPE.HOSPITAL && p.operational && (p.filledJobs || 0) > 0
+    ));
+    const totalBeds = hospitals.reduce(
+      (sum, p) => sum + (p.filledJobs || 0) * MEDICAL_CONFIG.HOSPITAL_PATIENT_CAPACITY_PER_JOB,
+      0,
+    );
+    const treated = Math.min(stats.patientDemand || 0, totalBeds);
+    for (const hospital of hospitals) {
+      const beds = (hospital.filledJobs || 0) * MEDICAL_CONFIG.HOSPITAL_PATIENT_CAPACITY_PER_JOB;
+      hospital.patients = totalBeds > 0 ? Math.round(treated * (beds / totalBeds)) : 0;
+    }
   }
 
   computeEducation(stats) {
