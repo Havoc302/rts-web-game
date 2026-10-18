@@ -380,7 +380,7 @@ export class Renderer {
         : tile.zone === ZONE.AGRICULTURAL ? '#84cc1688'
         : '#f59e0b88';
       ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
-      if (!tile.destroyed && isZoneAtCapacity(tile)) this.renderZoneCapacityMarker(ctx, px, py);
+      if (this.showsCapacityMarker(tile)) this.renderZoneCapacityMarker(ctx, px, py);
     } else if (tile.hasRoad) {
       ctx.fillStyle = '#475569';
       ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
@@ -608,7 +608,13 @@ export class Renderer {
     } else if (tile.zone === ZONE.AGRICULTURAL) {
       this.renderAgriculturalArt(ctx, tile.density, px, py);
     }
-    if (!tile.destroyed && isZoneAtCapacity(tile)) this.renderZoneCapacityMarker(ctx, px, py);
+    if (this.showsCapacityMarker(tile)) this.renderZoneCapacityMarker(ctx, px, py);
+  }
+
+  // The corner tick advertises that the block can still be upgraded, so a high-density zone
+  // already at its maximum tier must not show it even when it is full.
+  showsCapacityMarker(tile) {
+    return Boolean(tile) && !tile.destroyed && tile.density !== DENSITY.HIGH && isZoneAtCapacity(tile);
   }
 
   renderZoneCapacityMarker(ctx, px, py) {

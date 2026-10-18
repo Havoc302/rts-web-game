@@ -156,6 +156,27 @@ function makeRenderer(grid, width = 800, height = 600) {
   partialCtx.fillRect = (x, y, width, height) => partialFills.push({ color: partialCtx.fillStyle, x, y, width, height });
   renderer.renderZoneTile(partialCtx, tile, 32, 48);
   assert.ok(!partialFills.some(({ color }) => color === '#fde047'), 'Under-capacity zone should not draw the full marker');
+
+  // A high-density block is already at maximum tier, so the "upgrade available" tick would
+  // be a lie even though the block is full.
+  const maxedTile = {
+    x: 1,
+    y: 1,
+    zone: ZONE.RESIDENTIAL,
+    density: DENSITY.HIGH,
+    population: RESIDENTIAL_CAPACITY[DENSITY.HIGH],
+  };
+  const maxedCtx = createMockCtx(new MockCanvas());
+  const maxedFills = [];
+  maxedCtx.fillRect = (x, y, width, height) => maxedFills.push({ color: maxedCtx.fillStyle, x, y, width, height });
+  renderer.renderZoneTile(maxedCtx, maxedTile, 32, 48);
+  assert.ok(!maxedFills.some(({ color }) => color === '#fde047'), 'Max-density zone should not draw the upgrade tick');
+
+  const maxedLowDetailCtx = createMockCtx(new MockCanvas());
+  const maxedLowDetailFills = [];
+  maxedLowDetailCtx.fillRect = (x, y, width, height) => maxedLowDetailFills.push({ color: maxedLowDetailCtx.fillStyle });
+  renderer.renderLowDetailTile(maxedLowDetailCtx, maxedTile, 32, 48);
+  assert.ok(!maxedLowDetailFills.some(({ color }) => color === '#fde047'), 'Max-density tick should stay hidden at low detail');
 }
   const chunkCanvas = chunk.canvas;
   simulation.tick();

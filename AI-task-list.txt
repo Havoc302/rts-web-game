@@ -9,7 +9,7 @@ Agent handoff protocol:
 
 Open handoff (2026-10-19):
 - Active task: none in progress; the next item is to pick up the Phase 1 follow-ups listed in `docs/DESIGN.md`.
-- Latest completed task: wobbled ice coastline plus per-hex weather variation (`0.3.6`); see the final task entry in this log.
+- Latest completed task: maxed zones no longer show the upgrade-available tick (`0.3.7`); see the final task entry in this log.
 - Verified baseline: `npm test` passes all 51 test files.
 - Phase 1 follow-ups are tracked in `docs/DESIGN.md`; in particular, localStorage autosave and named tick-stage extraction are not implemented. Do not treat historical `Current task` headings below as active.
 
@@ -1817,3 +1817,19 @@ Notes:
 Validation:
 - `node tests/run-all.js` passes all 51 test files.
 - Browser verification (`v0.3.6`): both poles now show an irregular lobed ice coastline instead of a circle, with the arctic strip meeting the cap on the continent; five sampled ice hexes reported distinct temperatures (-41.0 to -47.1 °C), wind means (0.74-0.86), gale chances (0.21-0.26), and cloud mixes (0.57-0.67).
+
+Current task: Hide the upgrade-available tick on maxed zones (`0.3.7`).
+
+The user reported that something already at maximum upgrade still showed the upgrade-available tick on the map.
+
+- [done] The corner capacity tick now renders only on zoned tiles that can still be upgraded: new `Renderer.showsCapacityMarker(tile)` requires an at-capacity tile that is not high density, and both the full-detail and low-detail paths use it.
+- [done] High-density blocks therefore never draw the tick; medium-density full blocks keep it and keep the inspector Upgrade action. Tier-3 producers already reported `Maximum tier` with the button hidden.
+- [done] Add renderer-cache assertions for the max-density case. Bump every version source to `0.3.7`.
+
+Notes:
+- The tick came from `isZoneAtCapacity` alone, which is still true for a full high-density block even though `canUpgradeZone` is false. The marker is deliberately keyed on density rather than treasury or grid membership so it stays a pure "this block can still grow" signal.
+- The inspector row still shows `Maximum tier` for a high-density block, which is informational rather than a call to action.
+
+Validation:
+- `node tests/run-all.js` passes all 51 test files.
+- Browser verification (`v0.3.7`): a full medium-density block shows the yellow tick, `Full capacity`, and a visible Upgrade button; a full high-density block draws no tick, reports `Maximum tier`, and hides Upgrade; a tier-3 fire station reports `Maximum tier` with no upgrade button. A screenshot of the three blocks side by side shows the tick on the medium block only.

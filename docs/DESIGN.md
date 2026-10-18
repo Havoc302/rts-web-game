@@ -112,7 +112,7 @@ Implemented; automated coverage is listed below, with browser-level gaps called 
 
 - Pause-safe placement previews, treasury accounting, famine recovery, agriculture occupancy, resource consumption, fuel/refining, crime, fire, civic staffing, mobile input/layout, wind/solar/battery connectivity, version synchronization, chunked terrain rendering, and bounded HUD/inspector updates.
 - Unified test execution through `npm test`; all 46 test files pass.
-- Residential, commercial, industrial, and agricultural zone tiers can be upgraded at any time from the inspector; full tiles still show the corner capacity marker, and output scales with the higher density's job slots and population capacity.
+- Residential, commercial, industrial, and agricultural zone tiers can be upgraded at any time from the inspector; full tiles below high density show the corner capacity marker, and output scales with the higher density's job slots and population capacity.
 - Global Finance: treasury and loan ledger are shared across visited cities, whose economies tick together; loans amortize over 720 ticks and loan-backed game over checks combined population across all cities.
 - Road maintenance budget and deterioration: underfunded road tiles are randomly selected for 10% damage per tick; destroyed roads leave the active network and sever utilities/pathing unless an alternate route exists.
 - Versioned sparse city JSON export/import, seeded planet/world saves, the survey overlay and survey expense/cancellation flow, and School/University education tax bonuses are implemented.
@@ -313,7 +313,7 @@ Art is 100% procedural canvas (houses, fields, spinning windmill blades, battery
 
 **Zones** (`ZONE`): residential, commercial, industrial, agricultural. Densities are light, medium, and high. Growth-score thresholds 10 and 25 define residential occupancy bands, with a cap of 50; they no longer promote density automatically. Density never downgrades.
 
-**Manual zone tier upgrades (implemented):** Upgrades are available at all times; reaching full occupancy is no longer a prerequisite. Full zones still display the small corner marker so the player can see when a tile is at capacity. Clicking the tile in Pan or Inspect mode opens the inspector, where non-high-density zones offer an Upgrade action. Upgrade prices are the zone's base placement cost ×2 for light → medium and ×4 for medium → high; the action is disabled when the treasury is insufficient. Base zone prices are residential/commercial `$200` and industrial/agricultural `$300`. Density raises employment and residential capacity, and agricultural food yield/building output scale with those job slots.
+**Manual zone tier upgrades (implemented):** Upgrades are available at all times; reaching full occupancy is no longer a prerequisite. Full zones below high density display the small corner marker so the player can see that a tile is at capacity and still upgradeable; high-density tiles are at the maximum tier, so they never draw that marker. Clicking the tile in Pan or Inspect mode opens the inspector, where non-high-density zones offer an Upgrade action. Upgrade prices are the zone's base placement cost ×2 for light → medium and ×4 for medium → high; the action is disabled when the treasury is insufficient. Base zone prices are residential/commercial `$200` and industrial/agricultural `$300`. Density raises employment and residential capacity, and agricultural food yield/building output scale with those job slots.
 
 **Residential population** (`computeTilePopulation`): linear in growth score within the current density band, capacity `25 / 125 / 500`. No free population at growth 0.
 
@@ -1112,7 +1112,7 @@ Resolved by the user (rev 4): Conquer hybrid + world map + Firebase (Q1), victor
 
 - Product title: `index.html` `<title>SimConquer 2000</title>`, brand `SimConquer 2000`.
 - Onboarding: `src/engine/TutorialManager.js` shows a `#tutorial-banner` with six milestone steps (select a map tile, roads, utilities, residential + agriculture, jobs, population). The main menu owns the `Guided Tutorial` toggle button; switching it on and pressing `New Game` begins at Step 1, and the banner stays hidden while no world is loaded. State persists in `localStorage` keys `simconquer_tutorial_enabled` and `simconquer_tutorial_step`. Already-satisfied steps on the chosen map advance automatically after starting or loading a world. Map seed key is `simconquer_map_seed` (one-time legacy read of `bc2000_map_seed`). Save downloads are `simconquer2000-save-YYYY-MM-DD-HHMMSS-seed-<seed>.json`.
-- Version: `APP_VERSION` `0.3.6` in `src/version.js`; `package.json` is synchronized and version/cache-busting behavior is covered by the version-sync test.
+- Version: `APP_VERSION` `0.3.7` in `src/version.js`; `package.json` is synchronized and version/cache-busting behavior is covered by the version-sync test.
 - Entry / orchestration: `src/main.js` (`GameApp`), `src/engine/Simulation.js` (`tick`, `computeStats`, `updateGrowthAndDensity`).
 - Spatial model: `src/engine/Grid.js` (`createDefaultTile`, `generateProceduralTerrain`, placement).
 - View: `src/engine/Renderer.js`, `style.css`, overlay buttons in `index.html`.
