@@ -1245,6 +1245,15 @@ export const CLIMATE_CONFIG = {
   // continent reached it: polar ocean is frozen over and becomes buildable ice too. This
   // is the band where the seeded temperature spread stays below freezing all year.
   ICE_CAP_LATITUDE: 78,
+  // The cap edge is not a latitude line: a seeded, smooth wobble moves the boundary by up
+  // to this many degrees so the ice sheet has an irregular coastline instead of a circle.
+  ICE_CAP_WOBBLE: 3.5,
+  // Per-cell (seeded) variation mixed into biome weather so two hexes of the same biome do
+  // not share an identical forecast mix. Only biomes that define an explicit mix use these.
+  // BIOME_WEATHER_JITTER is a relative spread (±15% of each probability).
+  BIOME_WEATHER_JITTER: 0.15,
+  BIOME_WIND_JITTER: 0.12,
+  BIOME_GALE_JITTER: 0.1,
   TEMP_SEED_VARIATION: 3,
   TEMP_STDDEV_MIN: 3,
   TEMP_STDDEV_MAX: 6,

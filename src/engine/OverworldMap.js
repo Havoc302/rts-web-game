@@ -39,9 +39,37 @@ export function isPolarLatitude(lat) {
   return Math.abs(lat) >= CLIMATE_CONFIG.POLAR_CAP_LATITUDE;
 }
 
-// Poleward of this latitude the surface is permanent ice, land or ocean alike.
+// Poleward of this latitude the surface is permanent ice, land or ocean alike. This is the
+// nominal cap latitude; the actual edge wobbles per planet (see createIceCapBoundary).
 export function isIceCapLatitude(lat) {
   return Math.abs(lat) >= CLIMATE_CONFIG.ICE_CAP_LATITUDE;
+}
+
+// The polar caps are climate bands, but their edge is drawn with a seeded wobble so the ice
+// sheet reads as a natural coastline rather than a perfect circle. Three low-order waves in
+// longitude and latitude give a smooth, seam-free boundary that neighboring cells share.
+export function createIceCapBoundary(seed) {
+  const random = createPRNG(hashSeed(seed, 'ice-cap-phases'));
+  const phases = Array.from({ length: 5 }, () => random() * Math.PI * 2);
+  return (lat, lng) => {
+    const longitude = lng * Math.PI / 180;
+    const latitude = lat * Math.PI / 180;
+    const wobble = 0.5 * Math.sin(3 * longitude + phases[0]) * Math.cos(2 * latitude + phases[1]) +
+      0.3 * Math.sin(5 * longitude + phases[2]) * Math.cos(3 * latitude + phases[3]) +
+      0.2 * Math.sin(7 * longitude + phases[4]);
+    return Math.abs(lat) >= CLIMATE_CONFIG.ICE_CAP_LATITUDE - wobble * CLIMATE_CONFIG.ICE_CAP_WOBBLE;
+  };
+}
+
+// Biome weather mixes vary slightly from hex to hex, so a whole ice sheet does not share one
+// identical forecast. The jitter only reallocates cloud and rain; the mix stays normalized.
+function jitterWeatherChances(weather, random) {
+  const jitter = CLIMATE_CONFIG.BIOME_WEATHER_JITTER;
+  const sunny = clamp(weather.sunny * (1 + (random() - 0.5) * 2 * jitter), 0.002, 0.12);
+  const cloudy = clamp(weather.cloudy * (1 + (random() - 0.5) * 2 * jitter), 0.2, 0.9);
+  const rainy = clamp(1 - sunny - cloudy, 0.05, 0.9);
+  const total = sunny + cloudy + rainy;
+  return { sunny: sunny / total, cloudy: cloudy / total, rainy: rainy / total };
 }
 
 function baseClimate(cell) {
@@ -86,7 +114,8 @@ export function buildClimateProfile(worldSeed, cell, neighbors = []) {
     1
   );
   const windMean = clamp(
-    local.windMean + (neighborWind - local.windMean) * CLIMATE_CONFIG.TEMP_NEIGHBOR_INFLUENCE,
+    local.windMean + (neighborWind - local.windMean) * CLIMATE_CONFIG.TEMP_NEIGHBOR_INFLUENCE +
+      (random() - 0.5) * CLIMATE_CONFIG.BIOME_WIND_JITTER,
     0,
     1
   );
@@ -100,9 +129,13 @@ export function buildClimateProfile(worldSeed, cell, neighbors = []) {
     temperatureStdDev,
     temperatureMin: Math.max(CLIMATE_CONFIG.TEMP_MIN, temperatureMean - temperatureStdDev * 2.5),
     temperatureMax: Math.min(CLIMATE_CONFIG.TEMP_MAX, temperatureMean + temperatureStdDev * 2.5),
-    weatherChances: local.weather ? { ...local.weather } : { sunny: 1 - rainy - cloudy, cloudy, rainy },
+    weatherChances: local.weather
+      ? jitterWeatherChances(local.weather, random)
+      : { sunny: 1 - rainy - cloudy, cloudy, rainy },
     windMean,
-    galeChance: local.galeChance,
+    galeChance: local.galeChance
+      ? clamp(local.galeChance + (random() - 0.5) * CLIMATE_CONFIG.BIOME_GALE_JITTER, 0, 1)
+      : 0,
   };
 }
 
@@ -157,6 +190,7 @@ export class OverworldMap {
     this.seed = Number(seed) || 1;
     const random = createPRNG(hashSeed(this.seed, 'landmasses'));
     const continents = createContinents(random);
+    this.iceCapBoundary = createIceCapBoundary(this.seed);
     this.homeCellId = latLngToCell(continents[0].lat, continents[0].lng, OVERWORLD_RESOLUTION);
     const islands = new Set();
     for (let chain = 0; chain < 8; chain++) {
@@ -174,7 +208,7 @@ export class OverworldMap {
         const biome = regionAt(lat, lng, continents);
         // The permanent ice cap freezes open ocean as well as any land that reaches it, so
         // ice hexes are ordinary buildable ground even where no continent was generated.
-        const iceCap = isIceCapLatitude(lat);
+        const iceCap = this.iceCapBoundary(lat, lng);
         const cell = {
           id,
           lat,

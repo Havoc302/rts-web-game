@@ -8,7 +8,7 @@ import {
   ZONE,
 } from '../src/config.js';
 import { Grid } from '../src/engine/Grid.js';
-import { buildClimateProfile, isIceCapLatitude, OverworldMap } from '../src/engine/OverworldMap.js';
+import { buildClimateProfile, createIceCapBoundary, isIceCapLatitude, OverworldMap } from '../src/engine/OverworldMap.js';
 import { Renderer } from '../src/engine/Renderer.js';
 import { WeatherManager } from '../src/engine/WeatherManager.js';
 
@@ -25,12 +25,40 @@ assert.strictEqual(isIceCapLatitude(CLIMATE_CONFIG.ICE_CAP_LATITUDE), true, 'The
 assert.strictEqual(isIceCapLatitude(-(CLIMATE_CONFIG.ICE_CAP_LATITUDE + 4)), true, 'Both poles are ice');
 assert.strictEqual(isIceCapLatitude(CLIMATE_CONFIG.ICE_CAP_LATITUDE - 0.01), false, 'Just outside the cap is not ice');
 assert.strictEqual(isIceCapLatitude(0), false, 'The equator is not ice');
+assert.ok(CLIMATE_CONFIG.ICE_CAP_WOBBLE > 0, 'The cap edge must be able to wobble away from a latitude line');
+
+// --- The cap edge wobbles smoothly instead of tracing a circle of latitude ----------------
+for (const worldSeed of [424242, 424243, 12345]) {
+  const world = new OverworldMap(worldSeed);
+  const cells = Array.from(world.cells.values());
+  const iceCells = cells.filter((cell) => cell.biome === BIOME_TYPES.ICE);
+  const nominalBand = cells.filter((cell) => isIceCapLatitude(cell.lat));
+  assert.ok(iceCells.some((cell) => !isIceCapLatitude(cell.lat)),
+    `Seed ${worldSeed}: some ice should reach equatorward of the nominal cap`);
+  assert.ok(nominalBand.some((cell) => cell.biome !== BIOME_TYPES.ICE),
+    `Seed ${worldSeed}: some cells poleward of the nominal cap should miss the wobbly ice edge`);
+
+  const coast = (planet) => Array.from(planet.cells.values())
+    .filter((cell) => cell.biome === BIOME_TYPES.ICE)
+    .map((cell) => cell.id)
+    .sort()
+    .join(',');
+  assert.strictEqual(coast(new OverworldMap(worldSeed)), coast(world),
+    `Seed ${worldSeed}: the ice coastline must be deterministic for the same planet seed`);
+  assert.notStrictEqual(coast(new OverworldMap(worldSeed + 1)), coast(world),
+    `Seed ${worldSeed}: a different planet seed must draw a different ice coastline`);
+
+  // Neighboring cells share the boundary: the wobble is smooth, not per-cell noise.
+  const boundary = createIceCapBoundary(worldSeed);
+  assert.strictEqual(boundary(77.5, 10), boundary(77.6, 10.4),
+    `Seed ${worldSeed}: adjacent points should agree about the cap edge`);
+}
 
 // --- Every polar cell becomes buildable ice, including frozen ocean ----------------------
 for (const worldSeed of [424242, 424243, 12345, 77764, 77767, 2185603]) {
   const world = new OverworldMap(worldSeed);
   const cells = Array.from(world.cells.values());
-  const iceCells = cells.filter((cell) => isIceCapLatitude(cell.lat));
+  const iceCells = cells.filter((cell) => world.iceCapBoundary(cell.lat, cell.lng));
   assert.ok(iceCells.length > 0, `Seed ${worldSeed}: the ice cap should cover part of the globe`);
   assert.ok(iceCells.every((cell) => cell.biome === BIOME_TYPES.ICE),
     `Seed ${worldSeed}: every cell inside the ice cap should be ice`);
@@ -38,7 +66,7 @@ for (const worldSeed of [424242, 424243, 12345, 77764, 77767, 2185603]) {
     `Seed ${worldSeed}: ice is walkable ground, not ocean`);
   assert.ok(iceCells.every((cell) => Number.isInteger(cell.seed)),
     `Seed ${worldSeed}: ice hexes keep a city seed so a city can be founded`);
-  assert.ok(cells.filter((cell) => !isIceCapLatitude(cell.lat)).every((cell) => cell.biome !== BIOME_TYPES.ICE),
+  assert.ok(cells.filter((cell) => !world.iceCapBoundary(cell.lat, cell.lng)).every((cell) => cell.biome !== BIOME_TYPES.ICE),
     `Seed ${worldSeed}: ice should never appear outside the ice cap`);
   assert.ok(cells.filter((cell) => cell.ocean).every((cell) => !('biome' in cell) && !('seed' in cell)),
     `Seed ${worldSeed}: open ocean outside the cap still has no city info`);
@@ -46,12 +74,15 @@ for (const worldSeed of [424242, 424243, 12345, 77764, 77767, 2185603]) {
   // Build the same planet with the ice cap switched off to prove that open polar water was
   // frozen over rather than only polar land being relabelled.
   const capLatitude = CLIMATE_CONFIG.ICE_CAP_LATITUDE;
+  const capWobble = CLIMATE_CONFIG.ICE_CAP_WOBBLE;
   CLIMATE_CONFIG.ICE_CAP_LATITUDE = 90.001;
+  CLIMATE_CONFIG.ICE_CAP_WOBBLE = 0;
   let reference;
   try {
     reference = new OverworldMap(worldSeed);
   } finally {
     CLIMATE_CONFIG.ICE_CAP_LATITUDE = capLatitude;
+    CLIMATE_CONFIG.ICE_CAP_WOBBLE = capWobble;
   }
   const frozenOcean = iceCells.filter((cell) => reference.getCell(cell.id).ocean);
   assert.ok(frozenOcean.length > 0,
@@ -82,6 +113,26 @@ for (const worldSeed of [424242, 424243, 12345, 77764, 77767, 2185603]) {
   const nearIce = buildClimateProfile(456, fixture, iceNeighbors);
   const nearArctic = buildClimateProfile(456, fixture, arcticNeighbors);
   assert.ok(nearIce.windMean > nearArctic.windMean, 'Blustery ice neighbors should raise nearby windiness');
+}
+
+// --- Each ice hex gets its own seeded weather variation -----------------------------------
+{
+  const world = new OverworldMap(424242);
+  const iceCells = Array.from(world.cells.values()).filter((cell) => cell.biome === BIOME_TYPES.ICE);
+  const distinct = (values) => new Set(values.map((value) => value.toFixed(4))).size;
+  assert.ok(distinct(iceCells.map((cell) => cell.climate.temperatureMean)) > 50,
+    'Ice hexes should vary in mean temperature');
+  assert.ok(distinct(iceCells.map((cell) => cell.climate.windMean)) > 10,
+    'Ice hexes should vary in mean wind');
+  assert.ok(distinct(iceCells.map((cell) => cell.climate.galeChance)) > 10,
+    'Ice hexes should vary in gale frequency');
+  assert.ok(distinct(iceCells.map((cell) => cell.climate.weatherChances.cloudy)) > 10,
+    'Ice hexes should vary in how overcast they are');
+  for (const cell of iceCells) {
+    const chances = cell.climate.weatherChances;
+    assert.ok(Math.abs(chances.sunny + chances.cloudy + chances.rainy - 1) < 1e-9,
+      'Per-hex weather mix must stay normalized');
+  }
 }
 
 // --- Ice cities are flat, empty, unminable ground ----------------------------------------

@@ -9,7 +9,7 @@ Agent handoff protocol:
 
 Open handoff (2026-10-19):
 - Active task: none in progress; the next item is to pick up the Phase 1 follow-ups listed in `docs/DESIGN.md`.
-- Latest completed task: permanent polar ice biome with gale-prone overcast weather (`0.3.5`); see the final task entry in this log.
+- Latest completed task: wobbled ice coastline plus per-hex weather variation (`0.3.6`); see the final task entry in this log.
 - Verified baseline: `npm test` passes all 51 test files.
 - Phase 1 follow-ups are tracked in `docs/DESIGN.md`; in particular, localStorage autosave and named tick-stage extraction are not implemented. Do not treat historical `Current task` headings below as active.
 
@@ -1799,3 +1799,21 @@ Notes:
 Validation:
 - `node tests/run-all.js` passes all 51 test files.
 - Browser verification (`v0.3.5`): the globe at each pole shows the light-blue ice cap covering open water with arctic hexes on the adjacent continent; the info panel reports biome `ice` with 0.0% water/forest/mountain and offers Open Map; entering a -79° ice hex generated 40,000 flat tiles with 0 ore and `canSurvey` false; roads placed, a water pump and sewage plant were allowed and placed with no open water, and a nuclear plant was refused; 200 simulated weather ticks peaked at wind 1.00 with 75% of ticks above 0.7 and 68% of ticks cloudier than 0.4.
+
+Current task: Wobble the ice coastline and vary weather per tile (`0.3.6`).
+
+The user noticed the polar caps were perfectly shaped and asked whether a tile has any weather variability at generation time. Temperature already varied per hex, but the ice/arctic edge was a pure latitude line and every ice hex shared one identical forecast mix.
+
+- [done] Add `createIceCapBoundary(seed)`: three seeded low-order waves over longitude and latitude wobble the cap edge by up to `ICE_CAP_WOBBLE` (3.5°), giving a smooth, seam-free, deterministic coastline that neighboring cells agree on. `OverworldMap` stores it as `iceCapBoundary` and uses it for cell biomes.
+- [done] Keep `isIceCapLatitude` as the nominal band helper and document that the real edge wobbles.
+- [done] Add seeded per-hex weather variation: every cell jitters its wind mean, and biomes that define an explicit weather mix (ice) also jitter their sunny/cloudy/rainy split and gale chance, renormalized so the mix still sums to 1.
+- [done] Update `tests/ice-biome.test.js` (wobble shape, determinism, seed sensitivity, adjacency smoothness, per-hex weather spread) and `tests/arctic-biome.test.js` (use the actual cap boundary). Bump every version source to `0.3.6`.
+
+Notes:
+- The wobble draws its phases from a separate PRNG keyed on the planet seed, so continent and island geography is unchanged by this feature.
+- Cap size stays about the same (119-124 hexes across seeds) because the wave field is roughly zero-mean.
+- Ice cells now differ per hex: for one seed, wind means spanned 0.74-0.86, gale chance 0.21-0.26, and cloud chance 0.57-0.67, on top of the existing per-hex temperature spread.
+
+Validation:
+- `node tests/run-all.js` passes all 51 test files.
+- Browser verification (`v0.3.6`): both poles now show an irregular lobed ice coastline instead of a circle, with the arctic strip meeting the cap on the continent; five sampled ice hexes reported distinct temperatures (-41.0 to -47.1 °C), wind means (0.74-0.86), gale chances (0.21-0.26), and cloud mixes (0.57-0.67).
