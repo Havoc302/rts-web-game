@@ -63,7 +63,7 @@ function fakeDocument() {
   assert.strictEqual(stormy['stat-weather'], '🌧️🌪️', 'Rain and gale should show rain and tornado icons');
   assert.strictEqual(stormy['stat-weather-wind'], '95%');
   assert.strictEqual(stormy['stat-weather-cloud'], '90%');
-  assert.strictEqual(stormy['stat-weather-temp'], `${simulation.weatherManager.temperature}°C`);
+  assert.strictEqual(stormy['stat-weather-temp'], `${Math.round(simulation.weatherManager.temperature)}°C`);
   assert.strictEqual(stormy['stat-weather-label'], simulation.weatherManager.getWeatherLabel());
 }
 

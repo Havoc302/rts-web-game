@@ -116,15 +116,20 @@ console.log('=== weather-manager.test.js ===');
   wm.cloudCover = 0.2;
   wm.windIntensity = 0.1;
   wm.temperature = 22;
-  assert.strictEqual(wm.getWeatherLabel(), 'Sunny, Calm (22°C)');
+  assert.strictEqual(wm.getWeatherLabel(), 'Sunny, Calm');
 
   wm.cloudCover = 0.5;
   wm.windIntensity = 0.5;
-  assert.strictEqual(wm.getWeatherLabel(), 'Cloudy, Breezy (22°C)');
+  assert.strictEqual(wm.getWeatherLabel(), 'Cloudy, Breezy');
 
   wm.cloudCover = 0.9;
   wm.windIntensity = 0.95;
-  assert.strictEqual(wm.getWeatherLabel(), 'Raining, Gale Force (22°C)');
+  assert.strictEqual(wm.getWeatherLabel(), 'Raining, Gale Force');
+
+  // Temperature has its own tooltip row, so the label must never repeat it.
+  wm.temperature = -41.87604358294907;
+  assert.strictEqual(wm.getWeatherLabel(), 'Snowing, Gale Force', 'Freezing precipitation reads as snow');
+  assert.ok(!wm.getWeatherLabel().includes('°'), 'Conditions must not include a temperature');
 }
 
 // 7. Simulation Extreme Temperature Patient Demand

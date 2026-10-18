@@ -120,10 +120,12 @@ export class WeatherManager {
     return min + (max - min) * this.getRainIntensity();
   }
 
+  // Sky and wind only. The tooltip already has a dedicated Temperature row, so repeating
+  // the value here just duplicated it (with float precision).
   getWeatherLabel() {
     const precipitation = this.isSnowing() ? 'Snowing' : 'Raining';
     const cloud = this.cloudCover <= 0.4 ? 'Sunny' : this.cloudCover <= 0.7 ? 'Cloudy' : precipitation;
     const wind = this.windIntensity <= 0.2 ? 'Calm' : this.windIntensity <= 0.7 ? 'Breezy' : 'Gale Force';
-    return `${cloud}, ${wind} (${this.temperature}°C)`;
+    return `${cloud}, ${wind}`;
   }
 }

@@ -140,20 +140,20 @@ assert.ok(Array.from(new OverworldMap(424242).cells.values()).some((cell) => cel
   wm.windIntensity = 0.1;
   wm.cloudCover = 0.2;
   assert.strictEqual(wm.isSnowing(), false, 'Clear polar skies are not snowing');
-  assert.strictEqual(wm.getWeatherLabel(), 'Sunny, Calm (-30°C)');
+  assert.strictEqual(wm.getWeatherLabel(), 'Sunny, Calm');
 
   wm.cloudCover = 0.5;
   wm.windIntensity = 0.5;
-  assert.strictEqual(wm.getWeatherLabel(), 'Cloudy, Breezy (-30°C)');
+  assert.strictEqual(wm.getWeatherLabel(), 'Cloudy, Breezy');
 
   wm.cloudCover = 0.9;
   wm.windIntensity = 0.95;
   assert.strictEqual(wm.isSnowing(), true, 'Freezing precipitation is snow');
-  assert.strictEqual(wm.getWeatherLabel(), 'Snowing, Gale Force (-30°C)');
+  assert.strictEqual(wm.getWeatherLabel(), 'Snowing, Gale Force');
 
   wm.temperature = 5;
   assert.strictEqual(wm.isSnowing(), false, 'Precipitation above freezing stays rain');
-  assert.strictEqual(wm.getWeatherLabel(), 'Raining, Gale Force (5°C)');
+  assert.strictEqual(wm.getWeatherLabel(), 'Raining, Gale Force');
 }
 
 console.log('Arctic biome tests passed.');

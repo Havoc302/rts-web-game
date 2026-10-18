@@ -1872,3 +1872,19 @@ Notes:
 Validation:
 - `node tests/run-all.js` passes all 52 test files.
 - Browser verification (`v0.3.9`): the finance panel showed 11.0% / +0% before borrowing, then 21.0% / +10%, 31.0% / +20%, 41.0% / +30%, and 51.0% / +40% after one through four loans, with locked rates 0.11 / 0.21 / 0.31 / 0.41; the emergency-loan modal with four loans outstanding showed 49.2% and +40%.
+
+Current task: Remove duplicate temperature from the weather tooltip (`0.3.10`).
+
+The user reported a long decimal in the weather hover. They first called it the temperature, then clarified it was the temperature shown in brackets after the wind on the Conditions line, and finally that Conditions should not show a temperature at all because the tooltip already has its own Temperature row.
+
+- [done] `WeatherManager.getWeatherLabel()` now returns only `Sky, wind` (for example `Snowing, Gale Force`); the temperature is no longer embedded there.
+- [done] The dedicated `Temperature` tooltip row keeps showing whole degrees via `Math.round`, while the simulation keeps full precision.
+- [done] Update the label assertions in `weather-manager.test.js` and `arctic-biome.test.js`, add a guard that the label never contains `°`, and bump every version source to `0.3.10`.
+
+Notes:
+- The other tooltip rows were already rounded (`Wind 63%`, `Cloud Cover 63%`, `Temperature -42°C`, `Power Load`, `Solar Efficiency`); only the Conditions string duplicated the temperature.
+- Display-only change: power load, happiness, and fire thresholds still use the exact temperature.
+
+Validation:
+- `node tests/run-all.js` passes all 52 test files.
+- Browser verification (`v0.3.10`): with the temperature forced to -41.87604358294907 and wind to 0.63456789012345, the tooltip showed Conditions `Sunny, Breezy`, wind `63%`, temperature `-42°C`, power load `359%`.
