@@ -1,4 +1,4 @@
-import { TERRAIN, ZONE, DENSITY, PRODUCER_TYPE, PRODUCER_CONFIG, TILE_SIZE, ORE_CONFIG, NIGHT_TINT_ALPHA, RENDERER_CONFIG, POLLUTION_CONFIG, BIOME_TYPES, isZoneAtCapacity, isTieredService, isTieredPowerProducer, getProducerTier } from '../config.js';
+import { TERRAIN, ZONE, DENSITY, PRODUCER_TYPE, PRODUCER_CONFIG, TILE_SIZE, ORE_CONFIG, NIGHT_TINT_ALPHA, RENDERER_CONFIG, POLLUTION_CONFIG, BIOME_TYPES, isZoneAtCapacity, isTieredProducer, getProducerTier } from '../config.js';
 import { UtilityManager } from './UtilityManager.js';
 import { TrafficManager } from './TrafficManager.js';
 import { WeatherOverlay } from './WeatherOverlay.js';
@@ -798,7 +798,7 @@ export class Renderer {
     const prod = tile.producer;
     // Tiered buildings start as a small structure and grow to fill the tile at tier 3,
     // matching how zone art grows with density.
-    const tiered = isTieredService(prod.type) || isTieredPowerProducer(prod.type);
+    const tiered = isTieredProducer(prod.type);
     const serviceScale = tiered
       ? [0.72, 0.86, 1][getProducerTier(prod) - 1]
       : (prod.density === DENSITY.HIGH ? 1.18 : prod.density === DENSITY.MEDIUM ? 1.08 : 1);

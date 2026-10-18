@@ -22,7 +22,7 @@ import { AudioManager } from './engine/AudioManager.js';
 import { LoanManager, loanTerms, shouldEndGame } from './engine/LoanManager.js';
 import { advanceWorldEconomy } from './engine/WorldFinance.js';
 import { TutorialManager } from './engine/TutorialManager.js';
-import { APP_VERSION, ZONE, TERRAIN, PRODUCER_TYPE, PRODUCER_CONFIG, SERVICE_CONFIG, COSTS, TILE_SIZE, STARTING_TREASURY, RESIDENTIAL_CAPACITY, JOBS_PROVIDED, FOREST_POLLUTION_ABSORPTION, FOREST_DESIRABILITY_RADIUS, CRIME_CONFIG, MEDICAL_CONFIG, POWER_PRODUCER_TYPES, POLLUTION_CONFIG, COAL_CONFIG, BATTERY_CONFIG, RESOURCE_CONFIG, UTILITY_OPERATING_COST, SURVEY_COST_PER_TICK, TICKS_PER_HOUR, DENSITY, RENDERER_CONFIG, TERRAIN_GENERATION_CONFIG, MAP_SEED_STORAGE_KEY, EDUCATION_CONFIG, LOAN_CONFIG, splitDemographics, getZoneUpgradeCost, isZoneAtCapacity, PRODUCER_TIER_MAX, isTieredService, isTieredPowerProducer, getProducerTier, getServiceTierStat, getServiceUpgradeCost, getPowerUpgradeCost, getBatteryStorageForTier, getWindPeakForTier, getSolarPeakForTier } from './config.js';
+import { APP_VERSION, ZONE, TERRAIN, PRODUCER_TYPE, PRODUCER_CONFIG, SERVICE_CONFIG, COSTS, TILE_SIZE, STARTING_TREASURY, RESIDENTIAL_CAPACITY, JOBS_PROVIDED, FOREST_POLLUTION_ABSORPTION, FOREST_DESIRABILITY_RADIUS, CRIME_CONFIG, MEDICAL_CONFIG, POWER_PRODUCER_TYPES, POLLUTION_CONFIG, COAL_CONFIG, BATTERY_CONFIG, RESOURCE_CONFIG, UTILITY_OPERATING_COST, SURVEY_COST_PER_TICK, TICKS_PER_HOUR, DENSITY, RENDERER_CONFIG, TERRAIN_GENERATION_CONFIG, MAP_SEED_STORAGE_KEY, EDUCATION_CONFIG, LOAN_CONFIG, splitDemographics, getZoneUpgradeCost, isZoneAtCapacity, PRODUCER_TIER_MAX, isTieredService, isTieredProducer, getProducerTier, getServiceTierStat, getServiceUpgradeCost, getPowerUpgradeCost, getProducerUpgradeCost, getBatteryStorageForTier, getWindPeakForTier, getSolarPeakForTier, getWaterCapacityForTier, getSewageCapacityForTier } from './config.js';
 
 const nowMs = typeof performance !== 'undefined' ? () => performance.now() : () => Date.now();
 
@@ -1372,9 +1372,7 @@ class GameApp {
     const tile = this.renderer.selectedTile;
     if (!this.grid.canUpgradeProducer(tile)) return false;
     const producer = tile.producer;
-    const cost = isTieredService(producer.type)
-      ? getServiceUpgradeCost(producer.type, getProducerTier(producer))
-      : getPowerUpgradeCost(producer.type, getProducerTier(producer));
+    const cost = getProducerUpgradeCost(producer.type, getProducerTier(producer));
     if (cost <= 0 || this.treasury < cost || !this.grid.upgradeProducer(tile)) return false;
     this.treasury -= cost;
     this.simulation.tick(false);
@@ -1442,7 +1440,9 @@ class GameApp {
           rows.push(row('Pollution', 'None'));
         }
       } else if (config.utility === 'water' || config.utility === 'sewage') {
-        rows.push(row('Capacity', `${config.capacity}`));
+        const capacityForTier = pType === PRODUCER_TYPE.WATER_TOWER ? getWaterCapacityForTier : getSewageCapacityForTier;
+        rows.push(row('Capacity (T1/T2/T3)', `${capacityForTier(1)} / ${capacityForTier(2)} / ${capacityForTier(3)}`));
+        rows.push(row('Upgrade Cost (T2/T3)', `$${getPowerUpgradeCost(pType, 1).toLocaleString()} / $${getPowerUpgradeCost(pType, 2).toLocaleString()}`));
       } else if (config.jobs) {
         if (isTieredService(pType)) {
           rows.push(row('Staff Cap (T1/T2/T3)', `${getServiceTierStat('maxStaff', 1)} / ${getServiceTierStat('maxStaff', 2)} / ${getServiceTierStat('maxStaff', 3)}`));
@@ -1751,7 +1751,7 @@ class GameApp {
     if (tile.producer) {
       const type = tile.producer.type;
       const tier = getProducerTier(tile.producer);
-      const tiered = isTieredService(type) || isTieredPowerProducer(type);
+      const tiered = isTieredProducer(type);
       if (producerTierRow) producerTierRow.hidden = !tiered;
       const tierValue = document.getElementById('inspect-producer-tier');
       if (tierValue) tierValue.textContent = `${tier} / ${PRODUCER_TIER_MAX}`;

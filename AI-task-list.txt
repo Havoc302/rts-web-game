@@ -1741,3 +1741,22 @@ Notes:
 Validation:
 - `npm test` passes all 49 test files, including new per-unit-cheaper assertions and `formatMoney`/HUD whole-dollar checks.
 - `service-tiers.test.js` asserts the exact civic and power ladders, that each upgrade price is a multiple of $10, and that tier-2 and tier-3 upgrades beat the equivalent new-build cost.
+
+Current task: Tiered water pumps and sewage plants (`0.3.3`).
+
+The user asked for the same three-tier upgrade path on the water pump and sewage plant that the other civic services use.
+
+- [done] Add `WATER_TIER_CONFIG` and `SEWAGE_TIER_CONFIG` with capacity 120/240/480 and price ladders from `tierPriceLadder`: water $3,000/$5,400/$9,720 and sewage $4,000/$7,200/$12,960.
+- [done] Add `isTieredUtilityProducer`, `isTieredProducer`, `getWaterCapacityForTier`, `getSewageCapacityForTier` and `getProducerUpgradeCost`; add water/sewage to `getPowerTierTable` so the shared upgrade-price helper works.
+- [done] `Grid.placeProducer` defaults tier-1 capacity to 120 while still honouring an explicit capacity (including 0 for tests); `Grid.upgradeProducer` sets 240/480 at tiers 2/3.
+- [done] Scale utility draw with tier: a tier-3 pump uses 8 power and 4 sewage; a tier-3 plant uses 8 power and 4 water. The flat $2/tick operating charge is unchanged.
+- [done] Show tier, capacity, and the costed upgrade button in the inspector; add capacity and upgrade-cost rows to the build info panel; scale the art 0.72/0.86/1.0 like the other tiered buildings.
+- [done] Add `tests/water-sewage-tiers.test.js`; bump every version source to `0.3.3`.
+
+Notes:
+- Water and sewage still require an adjacent water tile; upgrading does not change placement.
+- Zone upgrades, tier-1 prices, and the civic/power ladders are untouched.
+
+Validation:
+- `npm test` passes all 50 test files.
+- Browser verification (`v0.3.3`): a tier-1 pump and plant showed capacity 120 with upgrades at $5,400/$7,200. Upgrading the pump produced 240 then 480 capacity with usage rising 2/1 -> 4/2 -> 8/4; the sewage plant mirrored this with 2/1 -> 4/2 -> 8/4. Both remained operational and showed `Maximum tier` at tier 3. Build info showed `Capacity (T1/T2/T3): 120 / 240 / 480` and the correct upgrade prices.

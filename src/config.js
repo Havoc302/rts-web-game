@@ -138,6 +138,18 @@ export const BATTERY_TIER_CONFIG = {
   cost: tierPriceLadder(250),            // [250, 450, 810]
 };
 
+// Water and sewage plants double their capacity at each tier and use the same
+// 1.8x upgrade ladder as the other service buildings.
+export const WATER_TIER_CONFIG = {
+  capacity: [120, 240, 480],
+  cost: tierPriceLadder(3000),           // [3000, 5400, 9720]
+};
+
+export const SEWAGE_TIER_CONFIG = {
+  capacity: [120, 240, 480],
+  cost: tierPriceLadder(4000),           // [4000, 7200, 12960]
+};
+
 // Tier-3 compatibility aliases (the top tier is the previous fixed building).
 export const WIND_CONFIG = {
   BASE_CAPACITY: WIND_TIER_CONFIG.peak[0],
@@ -503,10 +515,22 @@ export function isTieredPowerProducer(type) {
   return type === PRODUCER_TYPE.WINDMILL || type === PRODUCER_TYPE.SOLAR_PANEL || type === PRODUCER_TYPE.BATTERY;
 }
 
+/** Water pumps and sewage plants are tiered utility producers. */
+export function isTieredUtilityProducer(type) {
+  return type === PRODUCER_TYPE.WATER_TOWER || type === PRODUCER_TYPE.SEWAGE_PLANT;
+}
+
+/** True for every producer that exposes the tier/upgrade UI. */
+export function isTieredProducer(type) {
+  return isTieredService(type) || isTieredPowerProducer(type) || isTieredUtilityProducer(type);
+}
+
 export function getPowerTierTable(type) {
   if (type === PRODUCER_TYPE.WINDMILL) return WIND_TIER_CONFIG;
   if (type === PRODUCER_TYPE.SOLAR_PANEL) return SOLAR_TIER_CONFIG;
   if (type === PRODUCER_TYPE.BATTERY) return BATTERY_TIER_CONFIG;
+  if (type === PRODUCER_TYPE.WATER_TOWER) return WATER_TIER_CONFIG;
+  if (type === PRODUCER_TYPE.SEWAGE_PLANT) return SEWAGE_TIER_CONFIG;
   return null;
 }
 
@@ -530,6 +554,19 @@ export function getWindPeakForTier(tier) {
 
 export function getSolarPeakForTier(tier) {
   return SOLAR_TIER_CONFIG.peak[clampTier(tier) - 1];
+}
+
+export function getWaterCapacityForTier(tier) {
+  return WATER_TIER_CONFIG.capacity[clampTier(tier) - 1];
+}
+
+export function getSewageCapacityForTier(tier) {
+  return SEWAGE_TIER_CONFIG.capacity[clampTier(tier) - 1];
+}
+
+/** Upgrade price for any tiered producer, service or utility. */
+export function getProducerUpgradeCost(type, tier) {
+  return isTieredService(type) ? getServiceUpgradeCost(type, tier) : getPowerUpgradeCost(type, tier);
 }
 
 /** Dynamic utility draw for a tiered emergency service. */
@@ -557,7 +594,18 @@ export function getProducerUtilityUsage(producer) {
       prisoners: producer.prisoners || 0,
     });
   }
-  return { ...(PRODUCER_CONFIG[type]?.utilityUsage || { power: 0, water: 0, sewage: 0 }) };
+  const base = PRODUCER_CONFIG[type]?.utilityUsage || { power: 0, water: 0, sewage: 0 };
+  if (isTieredUtilityProducer(type)) {
+    // Utility draw rises with capacity, so a tier-2/3 plant is not four times as
+    // efficient as four tier-1 plants for the same load.
+    const factor = 2 ** (getProducerTier(producer) - 1);
+    return {
+      power: (base.power || 0) * factor,
+      water: (base.water || 0) * factor,
+      sewage: (base.sewage || 0) * factor,
+    };
+  }
+  return { ...base };
 }
 
 export const PRODUCER_CONFIG = {
@@ -626,8 +674,8 @@ export const PRODUCER_CONFIG = {
     name: 'Water Pump',
     category: PRODUCER_CATEGORY.WATER,
     utility: 'water',
-    capacity: 120,
-    cost: 3000,
+    capacity: WATER_TIER_CONFIG.capacity[0],
+    cost: WATER_TIER_CONFIG.cost[0],
     color: '#3498db',
     requiresWaterAdjacent: true,
     utilityUsage: { power: 2, sewage: 1 },
@@ -636,8 +684,8 @@ export const PRODUCER_CONFIG = {
     name: 'Sewage Plant',
     category: PRODUCER_CATEGORY.SEWAGE,
     utility: 'sewage',
-    capacity: 120,
-    cost: 4000,
+    capacity: SEWAGE_TIER_CONFIG.capacity[0],
+    cost: SEWAGE_TIER_CONFIG.cost[0],
     color: '#8e44ad',
     requiresWaterAdjacent: true,
     utilityUsage: { power: 2, water: 1 },

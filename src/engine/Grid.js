@@ -1,4 +1,4 @@
-import { TERRAIN, TERRAIN_TYPE, ZONE, DENSITY, GROWTH_CONFIG, RESIDENTIAL_CAPACITY, MAP_WIDTH, MAP_HEIGHT, PRODUCER_CONFIG, PRODUCER_TYPE, ORE_CONFIG, ORE_GENERATION, SERVICE_GLOBAL_CONFIG, TERRAIN_GENERATION_CONFIG, MAP_SEED_STORAGE_KEY, MAP_SEED_STORAGE_KEY_LEGACY, BIOME_CONFIG, BIOME_TERRAIN_CONFIG, BIOME_LAKE_CONFIG, BIOME_GENERATION_VERSION, PRODUCER_TIER_MAX, clampTier, getProducerTier, isTieredService, isTieredPowerProducer, getBatteryStorageForTier, getWindPeakForTier, getSolarPeakForTier, getServiceTierStat } from '../config.js';
+import { TERRAIN, TERRAIN_TYPE, ZONE, DENSITY, GROWTH_CONFIG, RESIDENTIAL_CAPACITY, MAP_WIDTH, MAP_HEIGHT, PRODUCER_CONFIG, PRODUCER_TYPE, ORE_CONFIG, ORE_GENERATION, SERVICE_GLOBAL_CONFIG, TERRAIN_GENERATION_CONFIG, MAP_SEED_STORAGE_KEY, MAP_SEED_STORAGE_KEY_LEGACY, BIOME_CONFIG, BIOME_TERRAIN_CONFIG, BIOME_LAKE_CONFIG, BIOME_GENERATION_VERSION, PRODUCER_TIER_MAX, clampTier, getProducerTier, isTieredService, isTieredProducer, getBatteryStorageForTier, getWindPeakForTier, getSolarPeakForTier, getWaterCapacityForTier, getSewageCapacityForTier, getServiceTierStat } from '../config.js';
 
 const TIER_DENSITY = [DENSITY.LIGHT, DENSITY.MEDIUM, DENSITY.HIGH];
 
@@ -742,7 +742,7 @@ export class Grid {
   canUpgradeProducer(tile) {
     const producer = tile?.producer;
     if (!producer || tile.destroyed) return false;
-    if (!isTieredService(producer.type) && !isTieredPowerProducer(producer.type)) return false;
+    if (!isTieredProducer(producer.type)) return false;
     return getProducerTier(producer) < PRODUCER_TIER_MAX;
   }
 
@@ -762,6 +762,10 @@ export class Grid {
     } else if (producer.type === PRODUCER_TYPE.SOLAR_PANEL) {
       producer.peakCapacity = getSolarPeakForTier(nextTier);
       producer.capacity = 0;
+    } else if (producer.type === PRODUCER_TYPE.WATER_TOWER) {
+      producer.capacity = getWaterCapacityForTier(nextTier);
+    } else if (producer.type === PRODUCER_TYPE.SEWAGE_PLANT) {
+      producer.capacity = getSewageCapacityForTier(nextTier);
     } else {
       producer.density = TIER_DENSITY[nextTier - 1];
       producer.totalJobs = Math.min(producer.totalJobs || 0, getServiceTierStat('maxStaff', nextTier));
@@ -826,6 +830,13 @@ export class Grid {
       producer.peakCapacity = capacity > 0 ? capacity : defaultPeak;
       producer.capacity = 0;
       producer.hasBatteryConnection = this.hasAdjacentBattery(x, y);
+    }
+    if (producerType === PRODUCER_TYPE.WATER_TOWER) {
+      // An explicit capacity (including 0, as some tests use) wins over the tier default.
+      producer.capacity = capacity == null ? getWaterCapacityForTier(resolvedTier) : capacity;
+    }
+    if (producerType === PRODUCER_TYPE.SEWAGE_PLANT) {
+      producer.capacity = capacity == null ? getSewageCapacityForTier(resolvedTier) : capacity;
     }
     if (isTieredService(producerType)) {
       producer.filledJobs = 0;
