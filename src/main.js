@@ -10,6 +10,7 @@ import {
   buildInspectorSignature,
   changedHudFields,
   createUiTimingBucket,
+  formatMoney,
   getHudCadenceMs,
   recordUiTiming,
   shouldRefreshUi,
@@ -922,7 +923,7 @@ class GameApp {
   }
 
   updateFinancePanel() {
-    const treasuryText = `$${this.treasury.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+    const treasuryText = formatMoney(this.treasury);
     const financeTreasury = document.getElementById('finance-treasury');
     const overworldTreasury = document.getElementById('overworld-treasury');
     if (financeTreasury) financeTreasury.textContent = treasuryText;
@@ -942,18 +943,18 @@ class GameApp {
     const terms = loanTerms(Number(principalSelect.value), happiness);
     average.textContent = `${happiness.toFixed(1)} / 100`;
     rate.textContent = `${(terms.interestRate * 100).toFixed(1)}%`;
-    payment.textContent = `$${terms.scheduledPayment.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-    balance.textContent = `$${this.loanManager.outstandingBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-    due.textContent = `$${this.loanManager.scheduledPayment.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    payment.textContent = formatMoney(terms.scheduledPayment);
+    balance.textContent = formatMoney(this.loanManager.outstandingBalance);
+    due.textContent = formatMoney(this.loanManager.scheduledPayment);
     button.disabled = this.gameOver;
     list.replaceChildren();
     for (const loan of this.loanManager.loans) {
       const row = document.createElement('div');
       row.className = 'storage-item';
       const title = document.createElement('span');
-      title.textContent = `$${loan.principal.toLocaleString()} · ${(loan.interestRate * 100).toFixed(1)}%`;
+      title.textContent = `${formatMoney(loan.principal)} · ${(loan.interestRate * 100).toFixed(1)}%`;
       const value = document.createElement('strong');
-      value.textContent = `$${loan.balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} · ${loan.ticksRemaining.toLocaleString()} ticks`;
+      value.textContent = `${formatMoney(loan.balance)} · ${loan.ticksRemaining.toLocaleString()} ticks`;
       row.append(title, value);
       list.appendChild(row);
     }

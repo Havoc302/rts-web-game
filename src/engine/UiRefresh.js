@@ -1,6 +1,13 @@
 import { DAY_START_HOUR, MEDICAL_CONFIG, NIGHT_START_HOUR, PRODUCER_CONFIG, PRODUCER_TYPE, RENDERER_CONFIG, ZONE, temperaturePowerFactor } from '../config.js';
 import { formatDerrickOutput, formatProducerCapacity, formatSiloStorage, getProducerConnectionStatus, getTileUtilityStatus } from './InspectorStatus.js';
 
+// Money is displayed in whole dollars everywhere. The ledger may still carry cents
+// internally (loan interest), but players never see fractional currency.
+export function formatMoney(value) {
+  const rounded = Math.round(Number(value) || 0);
+  return `${rounded < 0 ? '-' : ''}$${Math.abs(rounded).toLocaleString()}`;
+}
+
 function meterView(demand, capacity, formatDecimals) {
   const displayDemand = formatDecimals ? Number(demand).toFixed(2) : demand;
   const displayCapacity = formatDecimals ? Number(capacity).toFixed(2) : capacity;
@@ -72,12 +79,12 @@ export function buildHudSnapshot(simulation, treasury) {
     'alerts-panel-visible': (treasury <= 0 || (stats.alerts || []).length > 0) ? 'block' : 'none',
     'alerts-panel-data': JSON.stringify(treasury <= 0 ? [{ id: 'treasury', message: 'Treasury is empty', x: null, y: null }, ...(stats.alerts || [])] : (stats.alerts || [])),
     'stat-pop': stats.population.toLocaleString(),
-    'stat-cash': `$${Number(treasury).toLocaleString()}`,
-    'stat-income': `+$${stats.incomePerTick.toLocaleString()}`,
-    'stat-service-expenses': `-$${stats.serviceExpenses.toLocaleString()}`,
+    'stat-cash': formatMoney(treasury),
+    'stat-income': `+${formatMoney(stats.incomePerTick)}`,
+    'stat-service-expenses': `-${formatMoney(stats.serviceExpenses)}`,
     'stat-service-breakdown': formatBreakdown(stats.serviceExpenseBreakdown),
-    'stat-road-expenses': `-$${stats.roadExpenses.toLocaleString()}`,
-    'stat-utility-expenses': `-$${(stats.utilityExpenses || 0).toLocaleString()}`,
+    'stat-road-expenses': `-${formatMoney(stats.roadExpenses)}`,
+    'stat-utility-expenses': `-${formatMoney(stats.utilityExpenses || 0)}`,
     'stat-school-seats': `${(stats.schoolCapacity || 0).toLocaleString()} / ${(stats.schoolDemand || 0).toLocaleString()}`,
     'stat-uni-seats': `${(stats.universityCapacity || 0).toLocaleString()} / ${(stats.universityDemand || 0).toLocaleString()}`,
     'stat-education-multiplier': `×${(stats.educationTaxMultiplier ?? 1).toFixed(2)}`,

@@ -7,6 +7,7 @@ import {
   buildHudSnapshot,
   buildInspectorSignature,
   changedHudFields,
+  formatMoney,
   getHudCadenceMs,
   shouldRefreshUi,
   weatherIcons,
@@ -48,6 +49,11 @@ function fakeDocument() {
 
   const cashChanged = buildHudSnapshot(simulation, 24000);
   assert.ok(changedHudFields(afterTick, cashChanged).includes('stat-cash'), 'Treasury changes should dirty the cash display');
+
+  // Money is always shown in whole dollars, even when the ledger carries cents.
+  assert.strictEqual(formatMoney(24999.99), '$25,000');
+  assert.strictEqual(formatMoney(-1234.56), '-$1,235');
+  assert.strictEqual(buildHudSnapshot(simulation, 24999.99)['stat-cash'], '$25,000');
 
   simulation.weatherManager.cloudCover = 0.9;
   simulation.weatherManager.windIntensity = 0.95;

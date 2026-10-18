@@ -11,9 +11,13 @@ import {
   SERVICE_TIER_CONFIG,
   SERVICE_TYPE,
   TERRAIN,
+  BATTERY_TIER_CONFIG,
+  SOLAR_TIER_CONFIG,
+  WIND_TIER_CONFIG,
   getServiceTierCost,
   getServiceUpgradeCost,
   getServiceUtilityUsage,
+  tierPriceLadder,
 } from '../src/config.js';
 
 function flatGrid(size = 30) {
@@ -30,17 +34,40 @@ assert.deepStrictEqual(SERVICE_TIER_CONFIG.sideReach, [1, 2, 4]);
 assert.deepStrictEqual(SERVICE_TIER_CONFIG.cells, [5, 10, 20]);
 assert.deepStrictEqual(SERVICE_TIER_CONFIG.vehicles, [1, 2, 3]);
 
-// Tier prices: first build, then 1.5x the previous tier.
+// Tier prices: first build, then 1.8x the previous tier, rounded to the nearest $10.
+assert.deepStrictEqual(SERVICE_TIER_CONFIG.costs[SERVICE_TYPE.FIRE_STATION], [500, 900, 1620]);
+assert.deepStrictEqual(SERVICE_TIER_CONFIG.costs[SERVICE_TYPE.HOSPITAL], [300, 540, 970]);
+assert.deepStrictEqual(SERVICE_TIER_CONFIG.costs[SERVICE_TYPE.POLICE_STATION], [200, 360, 650]);
 assert.strictEqual(getServiceTierCost(SERVICE_TYPE.FIRE_STATION, 1), 500);
-assert.strictEqual(getServiceUpgradeCost(SERVICE_TYPE.FIRE_STATION, 1), 750);
-assert.strictEqual(getServiceUpgradeCost(SERVICE_TYPE.FIRE_STATION, 2), 1125);
+assert.strictEqual(getServiceUpgradeCost(SERVICE_TYPE.FIRE_STATION, 1), 900);
+assert.strictEqual(getServiceUpgradeCost(SERVICE_TYPE.FIRE_STATION, 2), 1620);
 assert.strictEqual(getServiceUpgradeCost(SERVICE_TYPE.FIRE_STATION, 3), 0);
 assert.strictEqual(getServiceTierCost(SERVICE_TYPE.HOSPITAL, 1), 300);
-assert.strictEqual(getServiceUpgradeCost(SERVICE_TYPE.HOSPITAL, 1), 450);
-assert.strictEqual(getServiceUpgradeCost(SERVICE_TYPE.HOSPITAL, 2), 675);
+assert.strictEqual(getServiceUpgradeCost(SERVICE_TYPE.HOSPITAL, 1), 540);
+assert.strictEqual(getServiceUpgradeCost(SERVICE_TYPE.HOSPITAL, 2), 970);
 assert.strictEqual(getServiceTierCost(SERVICE_TYPE.POLICE_STATION, 1), 200);
-assert.strictEqual(getServiceUpgradeCost(SERVICE_TYPE.POLICE_STATION, 1), 300);
-assert.strictEqual(getServiceUpgradeCost(SERVICE_TYPE.POLICE_STATION, 2), 450);
+assert.strictEqual(getServiceUpgradeCost(SERVICE_TYPE.POLICE_STATION, 1), 360);
+assert.strictEqual(getServiceUpgradeCost(SERVICE_TYPE.POLICE_STATION, 2), 650);
+
+// Upgrading must stay cheaper per unit of capacity than placing new tier-1 buildings.
+for (const [type, ladder] of Object.entries(SERVICE_TIER_CONFIG.costs)) {
+  const [first, second, third] = ladder;
+  assert.ok(second < first * 2, `${type} tier-2 upgrade must beat two new tier-1 buildings`);
+  assert.ok(third < first * 4, `${type} tier-3 upgrade must beat four new tier-1 buildings`);
+}
+
+// Power upgrades use the same 1.8x, $10-rounded ladder.
+assert.deepStrictEqual(tierPriceLadder(500), [500, 900, 1620]);
+assert.deepStrictEqual(WIND_TIER_CONFIG.cost, [500, 900, 1620]);
+assert.deepStrictEqual(SOLAR_TIER_CONFIG.cost, [100, 180, 320]);
+assert.deepStrictEqual(BATTERY_TIER_CONFIG.cost, [250, 450, 810]);
+for (const ladder of [WIND_TIER_CONFIG.cost, SOLAR_TIER_CONFIG.cost, BATTERY_TIER_CONFIG.cost]) {
+  const [first, second, third] = ladder;
+  assert.ok(second < first * 2, 'A tier-2 power upgrade must beat two new tier-1 buildings');
+  assert.ok(third < first * 4, 'A tier-3 power upgrade must beat four new tier-1 buildings');
+  assert.strictEqual(second % 10, 0, 'Upgrade prices are rounded to the nearest $10');
+  assert.strictEqual(third % 10, 0, 'Upgrade prices are rounded to the nearest $10');
+}
 
 // Tier 1 coverage: 3 road blocks each way and 1 side block at one staff member.
 {

@@ -1721,3 +1721,23 @@ Notes:
 Validation:
 - `npm test` passes all 49 test files.
 - Browser verification (Playwright, `v0.3.1`): on the title screen the warning is hidden and a synthetic cancelable `beforeunload` event is not prevented; after New Game the warning is visible and the event is prevented with `returnValue` set; with `gameOver = true` the event is not prevented.
+
+Current task: Cheaper upgrade ladders and whole-dollar money display (`0.3.2`).
+
+The user asked for 1.8x upgrade prices rounded to the nearest $10, and for money to be displayed in whole numbers (the treasury was showing cents).
+
+- [done] Add `UPGRADE_PRICE_MULTIPLIER = 1.8`, `roundPriceToTen`, and `tierPriceLadder`; use it for civic services and for wind/solar/battery ladders.
+- [done] Civic ladders: fire $500/$900/$1,620, hospital $300/$540/$970, police $200/$360/$650.
+- [done] Power ladders: wind $500/$900/$1,620, solar $100/$180/$320, battery $250/$450/$810.
+- [done] Keep tier-1 build prices and zone upgrade prices unchanged. Every upgrade remains cheaper per unit of capacity than placing enough new tier-1 buildings to match it (`second < first * 2`, `third < first * 4`).
+- [done] Add `formatMoney` and use it for every money value in the HUD, Finance panel, loan estimates and loan list; static placeholders now read `$0` rather than `$0.00`.
+- [done] Negative treasury displays as `-$1,235` rather than `$-1,235`.
+- [done] Document the 1.8x/$10 rule and whole-dollar display; bump every version source to `0.3.2`.
+
+Notes:
+- The loan ledger still tracks cents internally so interest accrual remains accurate; only the displayed values are rounded.
+- Utility meters keep two decimals because they represent fractional power/water load, not currency.
+
+Validation:
+- `npm test` passes all 49 test files, including new per-unit-cheaper assertions and `formatMoney`/HUD whole-dollar checks.
+- `service-tiers.test.js` asserts the exact civic and power ladders, that each upgrade price is a multiple of $10, and that tier-2 and tier-3 upgrades beat the equivalent new-build cost.

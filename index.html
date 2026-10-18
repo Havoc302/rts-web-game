@@ -320,8 +320,8 @@
         <section class="utility-hud-tab finance-panel" data-hud-panel="finance">
           <h3>World Finance</h3>
           <div class="storage-item"><span>Shared Treasury</span><strong id="finance-treasury">$25,000</strong></div>
-          <div class="storage-item"><span>Outstanding Loans</span><strong id="loan-outstanding-balance">$0.00</strong></div>
-          <div class="storage-item"><span>Next Tick Payment</span><strong id="loan-next-payment">$0.00</strong></div>
+          <div class="storage-item"><span>Outstanding Loans</span><strong id="loan-outstanding-balance">$0</strong></div>
+          <div class="storage-item"><span>Next Tick Payment</span><strong id="loan-next-payment">$0</strong></div>
           <label class="loan-amount-label" for="loan-principal-select">New loan amount</label>
           <select id="loan-principal-select">
             <option value="1000">$1,000</option>
@@ -334,7 +334,7 @@
           </select>
           <div class="storage-item"><span>Average City Happiness</span><strong id="loan-average-happiness">50 / 100</strong></div>
           <div class="storage-item"><span>Interest Rate</span><strong id="loan-interest-rate">11.0%</strong></div>
-          <div class="storage-item"><span>Estimated Tick Payment</span><strong id="loan-estimated-payment">$0.00</strong></div>
+          <div class="storage-item"><span>Estimated Tick Payment</span><strong id="loan-estimated-payment">$0</strong></div>
           <button class="btn-primary loan-action" id="btn-take-loan" type="button">Take Loan</button>
           <div class="loan-list" id="loan-list"></div>
         </section>

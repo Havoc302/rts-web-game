@@ -109,21 +109,33 @@ export const DAY_START_HOUR = 6;
 export const NIGHT_START_HOUR = 18;
 export const NIGHT_TINT_ALPHA = 0.35;
 
-// Energy producers and storage are player-upgradable in three tiers. Each tier's
-// capacity doubles, matching the doubling construction cost.
+// Capacity doubles at each tier while an upgrade costs 1.8x the previous tier price,
+// rounded to the nearest $10. That keeps upgrading strictly cheaper per unit of
+// capacity than placing enough new tier-1 buildings to match it.
+export const UPGRADE_PRICE_MULTIPLIER = 1.8;
+export function roundPriceToTen(value) {
+  return Math.round(value / 10) * 10;
+}
+export function tierPriceLadder(basePrice) {
+  const second = roundPriceToTen(basePrice * UPGRADE_PRICE_MULTIPLIER);
+  const third = roundPriceToTen(second * UPGRADE_PRICE_MULTIPLIER);
+  return [basePrice, second, third];
+}
+
+// Energy producers and storage are player-upgradable in three tiers.
 export const WIND_TIER_CONFIG = {
   peak: [16, 32, 64],                    // output at windIntensity 1.0
-  cost: [500, 1000, 2000],
+  cost: tierPriceLadder(500),            // [500, 900, 1620]
 };
 
 export const SOLAR_TIER_CONFIG = {
   peak: [15, 30, 60],                    // output at clear midday
-  cost: [100, 200, 400],
+  cost: tierPriceLadder(100),            // [100, 180, 320]
 };
 
 export const BATTERY_TIER_CONFIG = {
   storage: [100, 200, 400],
-  cost: [250, 500, 1000],
+  cost: tierPriceLadder(250),            // [250, 450, 810]
 };
 
 // Tier-3 compatibility aliases (the top tier is the previous fixed building).
@@ -433,7 +445,7 @@ export const SERVICE_CONFIG = {
 
 // Fire, police and hospital buildings are upgraded by the player instead of growing
 // automatically. The tier sets the staff cap, coverage base, vehicle count, cells or
-// patient beds, and the cost of reaching it (1.5x the previous tier).
+// patient beds, and the cost of reaching it (1.8x the previous tier, rounded to $10).
 export const PRODUCER_TIER_MAX = 3;
 export const TIERED_SERVICE_TYPES = [
   SERVICE_TYPE.POLICE_STATION,
@@ -447,9 +459,9 @@ export const SERVICE_TIER_CONFIG = {
   vehicles: [1, 2, 3],
   cells: [5, 10, 20],
   costs: {
-    [SERVICE_TYPE.FIRE_STATION]: [500, 750, 1125],
-    [SERVICE_TYPE.HOSPITAL]: [300, 450, 675],
-    [SERVICE_TYPE.POLICE_STATION]: [200, 300, 450],
+    [SERVICE_TYPE.FIRE_STATION]: tierPriceLadder(500),       // [500, 900, 1620]
+    [SERVICE_TYPE.HOSPITAL]: tierPriceLadder(300),           // [300, 540, 970]
+    [SERVICE_TYPE.POLICE_STATION]: tierPriceLadder(200),     // [200, 360, 650]
   },
   // Dynamic utility load. The fixed building load stays at config.utilityUsage;
   // people add to it while they are inside the building.
