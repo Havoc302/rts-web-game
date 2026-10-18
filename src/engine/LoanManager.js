@@ -88,3 +88,9 @@ export class LoanManager {
 export function shouldEndGame(outstandingBalance, combinedPopulation, hasEverHadPopulation) {
   return hasEverHadPopulation && outstandingBalance > 0 && combinedPopulation <= 0;
 }
+
+// A negative shared treasury means the world cannot pay its next bills. The app pauses on
+// this and forces a choice: borrow to get back above zero, or declare bankruptcy.
+export function isInsolvent(treasury) {
+  return Number.isFinite(treasury) && treasury < 0;
+}

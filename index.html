@@ -602,7 +602,33 @@
   <div id="game-over-modal" class="game-over-modal" hidden role="dialog" aria-modal="true" aria-labelledby="game-over-title">
     <div class="game-over-panel">
       <h2 id="game-over-title">Game over, all your people left</h2>
+      <p id="game-over-message" class="game-over-message"></p>
       <button id="btn-restart-game" class="btn-primary" type="button">Restart</button>
+    </div>
+  </div>
+
+  <div id="insolvency-modal" class="game-over-modal" hidden role="dialog" aria-modal="true" aria-labelledby="insolvency-title">
+    <div class="game-over-panel insolvency-panel">
+      <h2 id="insolvency-title">Treasury empty</h2>
+      <p class="insolvency-copy">
+        The treasury has run out, so the world can no longer pay its bills. Take a loan to keep the
+        cities running, or declare bankruptcy and end this run.
+      </p>
+      <div class="insolvency-stats">
+        <span>Treasury <strong id="insolvency-treasury">$0</strong></span>
+        <span>Outstanding loans <strong id="insolvency-loans">$0</strong></span>
+        <span>Next payment <strong id="insolvency-due">$0</strong></span>
+      </div>
+      <label class="loan-amount-label" for="insolvency-loan-select">Emergency loan amount</label>
+      <select id="insolvency-loan-select"></select>
+      <div class="insolvency-stats">
+        <span>Interest rate <strong id="insolvency-interest-rate">0.0%</strong></span>
+        <span>Estimated tick payment <strong id="insolvency-estimated-payment">$0</strong></span>
+      </div>
+      <div class="insolvency-actions">
+        <button id="btn-emergency-loan" class="btn-primary" type="button">Take Loan</button>
+        <button id="btn-declare-bankruptcy" class="btn-secondary insolvency-bankruptcy" type="button">Declare Bankruptcy</button>
+      </div>
     </div>
   </div>
 

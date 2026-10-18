@@ -1250,6 +1250,62 @@ h4 {
   font-size: 1.35rem;
 }
 
+.game-over-message {
+  margin: 12px 0 0;
+  color: var(--text-muted);
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.insolvency-panel {
+  max-width: 480px;
+  text-align: left;
+  border-color: rgba(251, 191, 36, 0.6);
+}
+
+.insolvency-panel h2 {
+  color: #fde68a;
+  text-align: center;
+}
+
+.insolvency-copy {
+  margin: 12px 0;
+  color: #cbd5e1;
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.insolvency-stats {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 6px 14px;
+  margin: 10px 0;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.insolvency-panel select {
+  width: 100%;
+  margin-top: 4px;
+}
+
+.insolvency-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.insolvency-actions .btn-primary,
+.insolvency-actions .btn-secondary {
+  flex: 1 1 auto;
+}
+
+.insolvency-bankruptcy {
+  border-color: rgba(248, 113, 113, 0.65);
+  color: #fecaca;
+}
+
 .game-over-panel .btn-primary {
   margin-top: 18px;
 }

@@ -9,8 +9,8 @@ Agent handoff protocol:
 
 Open handoff (2026-10-19):
 - Active task: none in progress; the next item is to pick up the Phase 1 follow-ups listed in `docs/DESIGN.md`.
-- Latest completed task: maxed zones no longer show the upgrade-available tick (`0.3.7`); see the final task entry in this log.
-- Verified baseline: `npm test` passes all 51 test files.
+- Latest completed task: forced loan-or-bankruptcy choice when the treasury goes negative (`0.3.8`); see the final task entry in this log.
+- Verified baseline: `npm test` passes all 52 test files.
 - Phase 1 follow-ups are tracked in `docs/DESIGN.md`; in particular, localStorage autosave and named tick-stage extraction are not implemented. Do not treat historical `Current task` headings below as active.
 
 Current task: Add standalone JSON game save export/import.
@@ -1833,3 +1833,23 @@ Notes:
 Validation:
 - `node tests/run-all.js` passes all 51 test files.
 - Browser verification (`v0.3.7`): a full medium-density block shows the yellow tick, `Full capacity`, and a visible Upgrade button; a full high-density block draws no tick, reports `Maximum tier`, and hides Upgrade; a tier-3 fire station reports `Maximum tier` with no upgrade button. A screenshot of the three blocks side by side shows the tick on the medium block only.
+
+Current task: Forced loan-or-bankruptcy choice when the treasury runs out (`0.3.8`).
+
+The user asked that running out of treasury pause the game and force a choice between taking a loan and declaring bankruptcy.
+
+- [done] Add `isInsolvent(treasury)` (strictly below zero) to `LoanManager`.
+- [done] `GameApp.checkInsolvency()` runs after every world tick, after any loan, and after importing a save: it pauses the clock, blocks the speed controls, and opens a modal listing the negative treasury, outstanding loans, and next scheduled payment with a live interest/payment preview.
+- [done] The modal offers an emergency loan from the same `LOAN_CONFIG` options and terms as the finance panel; a deficit larger than one loan keeps the modal open so the player can borrow again.
+- [done] Declaring bankruptcy asks for confirmation, ends the run (`gameOverReason = 'bankruptcy'`), and shows the existing game-over screen with a `Bankrupt` title and explanation.
+- [done] Persist the bankruptcy reason sparsely in the save `finance` block, validate it, and reopen the forced choice when a loaded save has a negative treasury.
+- [done] Add `tests/insolvency.test.js`, extend the save round-trip test, and bump every version source to `0.3.8`.
+
+Notes:
+- The trigger is strictly below zero, so an empty treasury with income still arriving stays playable instead of nagging.
+- Borrowing in the modal is the same operation as the finance panel: the principal is credited immediately and a 720-tick amortized loan is added.
+- The modal cannot be dismissed, so the player must resolve it before using the main menu; the pause stops the clock from deepening the deficit.
+
+Validation:
+- `node tests/run-all.js` passes all 52 test files.
+- Browser verification (`v0.3.8`): setting treasury to -$42 and ticking paused the game, opened `Treasury empty` showing -$42 with a 10.5% / $1 preview, and `setSpeed(1)` returned false; Take Loan credited $1,000 (treasury $958) and hid the modal; a -$25,000 deficit took a $20,000 loan and kept the modal open at -$5,000 with a $29 payment, then a second loan cleared it and speed could resume; Declare Bankruptcy confirmed into a `Bankrupt` game-over screen.

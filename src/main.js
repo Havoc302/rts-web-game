@@ -19,7 +19,7 @@ import {
 import { deserializeGame, deserializeGameFromJson, serializeGameToJson } from './engine/SaveGame.js';
 import { ALL_EVENLY, DEFAULT_INDUSTRIAL_RECIPE, INDUSTRIAL_RECIPE_IDS, RECIPES, SMELTER_RECIPE_IDS } from './recipes.js';
 import { AudioManager } from './engine/AudioManager.js';
-import { LoanManager, loanTerms, shouldEndGame } from './engine/LoanManager.js';
+import { LoanManager, loanTerms, shouldEndGame, isInsolvent } from './engine/LoanManager.js';
 import { advanceWorldEconomy } from './engine/WorldFinance.js';
 import { TutorialManager } from './engine/TutorialManager.js';
 import { APP_VERSION, ZONE, TERRAIN, PRODUCER_TYPE, PRODUCER_CONFIG, SERVICE_CONFIG, COSTS, TILE_SIZE, STARTING_TREASURY, RESIDENTIAL_CAPACITY, JOBS_PROVIDED, FOREST_POLLUTION_ABSORPTION, FOREST_DESIRABILITY_RADIUS, CRIME_CONFIG, MEDICAL_CONFIG, POWER_PRODUCER_TYPES, POLLUTION_CONFIG, COAL_CONFIG, BATTERY_CONFIG, RESOURCE_CONFIG, UTILITY_OPERATING_COST, SURVEY_COST_PER_TICK, TICKS_PER_HOUR, DENSITY, RENDERER_CONFIG, TERRAIN_GENERATION_CONFIG, MAP_SEED_STORAGE_KEY, EDUCATION_CONFIG, LOAN_CONFIG, splitDemographics, getZoneUpgradeCost, isZoneAtCapacity, PRODUCER_TIER_MAX, isTieredService, isTieredProducer, getProducerTier, getServiceTierStat, getServiceUpgradeCost, getPowerUpgradeCost, getProducerUpgradeCost, getBatteryStorageForTier, getWindPeakForTier, getSolarPeakForTier, getWaterCapacityForTier, getSewageCapacityForTier } from './config.js';
@@ -66,6 +66,10 @@ class GameApp {
     this.treasury = STARTING_TREASURY;
     this.loanManager = new LoanManager();
     this.gameOver = false;
+    this.gameOverReason = null;
+    // Set while the shared treasury is below zero: the game pauses until the player either
+    // borrows enough to get back above zero or declares bankruptcy.
+    this.insolvent = false;
     this.hasEverHadPopulation = false;
     // The app boots with no world loaded: the main menu is the entry point, and the
     // city chrome stays hidden on a blank background until New Game or Load World.
@@ -225,6 +229,7 @@ class GameApp {
 
     document.getElementById('loan-principal-select')?.addEventListener('change', () => this.updateFinancePanel());
     document.getElementById('btn-take-loan')?.addEventListener('click', () => this.takeSelectedLoan());
+    this.initInsolvencyUI();
 
     document.getElementById('btn-pause').addEventListener('click', () => this.setSpeed(0));
     document.getElementById('btn-speed-1').addEventListener('click', () => this.setSpeed(1));
@@ -365,6 +370,7 @@ class GameApp {
       const overworld = document.getElementById('overworld-view');
       if (overworld) overworld.hidden = true;
       document.getElementById('game-over-modal')?.setAttribute('hidden', '');
+      document.getElementById('insolvency-modal')?.setAttribute('hidden', '');
       const inspector = document.getElementById('inspector-panel');
       inspector?.classList.remove('visible');
     }
@@ -426,9 +432,13 @@ class GameApp {
     this.treasury = STARTING_TREASURY;
     this.loanManager = new LoanManager();
     this.gameOver = false;
+    this.gameOverReason = null;
+    this.insolvent = false;
     this.hasEverHadPopulation = false;
     const gameOverModal = document.getElementById('game-over-modal');
     if (gameOverModal) gameOverModal.hidden = true;
+    const insolvencyModal = document.getElementById('insolvency-modal');
+    if (insolvencyModal) insolvencyModal.hidden = true;
 
     this.grid = new Grid(undefined, undefined, this.homeSeed);
     this.simulation = new Simulation(this.grid);
@@ -751,6 +761,7 @@ class GameApp {
       this.treasury = imported.treasury;
       this.loanManager = new LoanManager(imported.finance);
       this.gameOver = Boolean(imported.finance?.gameOver);
+      this.gameOverReason = imported.finance?.bankrupt ? 'bankruptcy' : null;
       this.hasEverHadPopulation = Boolean(imported.finance?.hasEverHadPopulation) ||
         this.simulation.stats.population > 0 ||
         Array.from(this.cityStates.values()).some((visitedCity) => visitedCity.simulation.stats.population > 0);
@@ -774,6 +785,7 @@ class GameApp {
       this.setIdleState(false);
       this.hideMainMenu();
       if (this.gameOver) this.showGameOver();
+      else this.checkInsolvency();
       if (imported.overworld) await this.openOverworld();
     } catch (error) {
       window.alert(`Unable to load save: ${error.message}`);
@@ -830,6 +842,8 @@ class GameApp {
 
   setSpeed(speed) {
     if (this.gameOver && speed !== 0) return false;
+    // Insolvency is a hard stop: the player must borrow or declare bankruptcy first.
+    if (this.insolvent && speed !== 0) return false;
     if (!this.worldActive && speed !== 0) return false;
     document.querySelectorAll('.speed-controls .btn-icon').forEach((b) => b.classList.remove('active'));
     if (speed === 0) {
@@ -856,6 +870,7 @@ class GameApp {
     this.treasury = economy.treasury;
     if (this.getWorldSimulations().some((simulation) => simulation.stats.population > 0)) this.hasEverHadPopulation = true;
     this.checkDebtGameOver();
+    this.checkInsolvency();
     this.audioManager?.updatePopulation(this.simulation.stats.population);
     this.updateHUD();
     if (this.renderer.selectedTile) {
@@ -919,6 +934,88 @@ class GameApp {
     if (!loan) return false;
     this.treasury += principal;
     this.updateHUD({ force: true });
+    // Borrowing from the finance panel is a valid way out of insolvency too.
+    this.checkInsolvency();
+    return true;
+  }
+
+  initInsolvencyUI() {
+    const select = document.getElementById('insolvency-loan-select');
+    if (select && select.options.length === 0) {
+      for (const principal of LOAN_CONFIG.PRINCIPAL_OPTIONS) {
+        const option = document.createElement('option');
+        option.value = String(principal);
+        option.textContent = formatMoney(principal);
+        select.appendChild(option);
+      }
+    }
+    select?.addEventListener('change', () => this.updateInsolvencyModal());
+    document.getElementById('btn-emergency-loan')?.addEventListener('click', () => this.takeEmergencyLoan());
+    document.getElementById('btn-declare-bankruptcy')?.addEventListener('click', () => this.declareBankruptcy());
+  }
+
+  // The forced-choice state: negative treasury pauses the world until the player borrows or
+  // gives up. Called after every economy tick, after loans, and after loading a save.
+  checkInsolvency() {
+    if (this.gameOver) return false;
+    if (!isInsolvent(this.treasury)) {
+      this.clearInsolvency();
+      return false;
+    }
+    this.insolvent = true;
+    this.setSpeed(0);
+    this.updateInsolvencyModal();
+    const modal = document.getElementById('insolvency-modal');
+    if (modal) modal.hidden = false;
+    return true;
+  }
+
+  clearInsolvency() {
+    this.insolvent = false;
+    const modal = document.getElementById('insolvency-modal');
+    if (modal) modal.hidden = true;
+  }
+
+  updateInsolvencyModal() {
+    const treasury = document.getElementById('insolvency-treasury');
+    if (treasury) treasury.textContent = formatMoney(this.treasury);
+    const loans = document.getElementById('insolvency-loans');
+    if (loans) loans.textContent = formatMoney(this.loanManager.outstandingBalance);
+    const due = document.getElementById('insolvency-due');
+    if (due) due.textContent = formatMoney(this.loanManager.scheduledPayment);
+
+    const select = document.getElementById('insolvency-loan-select');
+    if (!select) return;
+    const happiness = this.getAverageCityHappiness();
+    const terms = loanTerms(Number(select.value), happiness);
+    const rate = document.getElementById('insolvency-interest-rate');
+    if (rate) rate.textContent = `${(terms.interestRate * 100).toFixed(1)}%`;
+    const payment = document.getElementById('insolvency-estimated-payment');
+    if (payment) payment.textContent = formatMoney(terms.scheduledPayment);
+  }
+
+  takeEmergencyLoan() {
+    if (this.gameOver || !this.insolvent) return false;
+    const principal = Number(document.getElementById('insolvency-loan-select')?.value);
+    const loan = this.loanManager.takeLoan(principal, this.getAverageCityHappiness());
+    if (!loan) return false;
+    this.treasury += principal;
+    this.updateHUD({ force: true });
+    this.updateInsolvencyModal();
+    // A single loan may not cover a deep deficit; the modal stays until the treasury is
+    // back above zero, so the player can borrow again or give up.
+    this.checkInsolvency();
+    return true;
+  }
+
+  declareBankruptcy() {
+    if (this.gameOver) return false;
+    if (!window.confirm('Declare bankruptcy? This ends the run immediately.')) return false;
+    this.clearInsolvency();
+    this.gameOver = true;
+    this.gameOverReason = 'bankruptcy';
+    this.setSpeed(0);
+    this.showGameOver();
     return true;
   }
 
@@ -970,6 +1067,16 @@ class GameApp {
 
   showGameOver() {
     this.setSpeed(0);
+    this.clearInsolvency();
+    const bankrupt = this.gameOverReason === 'bankruptcy';
+    const title = document.getElementById('game-over-title');
+    if (title) title.textContent = bankrupt ? 'Bankrupt' : 'Game over, all your people left';
+    const message = document.getElementById('game-over-message');
+    if (message) {
+      message.textContent = bankrupt
+        ? 'The treasury ran out and you chose to declare bankruptcy instead of borrowing. The run is over.'
+        : 'With loans outstanding and nobody left living in your cities, the world has given up on you.';
+    }
     const modal = document.getElementById('game-over-modal');
     if (modal) modal.hidden = false;
   }

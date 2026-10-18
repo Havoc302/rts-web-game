@@ -123,6 +123,7 @@ for (const biome of Object.values(BIOME_TYPES)) {
   const app = makeApp(grid, simulation);
   app.loanManager = loanManager;
   app.gameOver = true;
+  app.gameOverReason = 'bankruptcy';
   app.hasEverHadPopulation = true;
   const document = serializeGame(app);
   assert.strictEqual(document.saveVersion, SAVE_VERSION, 'New saves should use the sparse save version');
@@ -139,6 +140,7 @@ for (const biome of Object.values(BIOME_TYPES)) {
   assert.strictEqual(restored.finance.loans[0].principal, 1000);
   assert.strictEqual(new LoanManager(restored.finance).outstandingBalance, restored.finance.loans[0].balance, 'The app should restore the full shared loan ledger snapshot');
   assert.strictEqual(restored.finance.gameOver, true, 'Terminal game-over state must survive saves');
+  assert.strictEqual(restored.finance.bankrupt, true, 'A bankruptcy ending must round-trip its reason');
   assert.strictEqual(restored.finance.hasEverHadPopulation, true);
   assert.strictEqual(restored.grid.width, 8);
   assert.strictEqual(restored.grid.getTile(2, 1).zone, ZONE.RESIDENTIAL);
@@ -159,6 +161,9 @@ for (const biome of Object.values(BIOME_TYPES)) {
   assert.strictEqual(deserializeGame(oldSave).simulation.roadMaintenanceBudget, 100, 'Older saves should default to full road funding');
   delete oldSave.finance;
   assert.deepStrictEqual(deserializeGame(oldSave).finance, { nextLoanId: 1, loans: [], gameOver: false, hasEverHadPopulation: false }, 'Legacy saves should restore a shared empty loan ledger and non-terminal state');
+  const badBankruptcy = JSON.parse(JSON.stringify(document));
+  badBankruptcy.finance.bankrupt = 'yes';
+  assert.throws(() => deserializeGame(badBankruptcy), /bankruptcy flag/, 'A non-boolean bankruptcy flag must be rejected');
   assert.strictEqual(restored.treasury, 9876);
   assert.deepStrictEqual(restored.camera, { x: 12, y: -8, zoom: 1.4 });
   assert.strictEqual(restored.ui.overlayMode, 'survey');

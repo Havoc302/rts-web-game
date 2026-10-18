@@ -160,6 +160,9 @@ function validateFinance(finance) {
   if (typeof finance.gameOver !== 'boolean' || typeof finance.hasEverHadPopulation !== 'boolean') {
     throw new Error('Invalid save finance state');
   }
+  if (finance.bankrupt != null && typeof finance.bankrupt !== 'boolean') {
+    throw new Error('Invalid save bankruptcy flag');
+  }
   const ids = new Set();
   for (const loan of finance.loans) {
     if (!loan || typeof loan !== 'object') throw new Error('Invalid saved loan');
@@ -180,7 +183,13 @@ function validateFinance(finance) {
 
 function restoredFinance(finance) {
   return finance && typeof finance === 'object'
-    ? { nextLoanId: finance.nextLoanId, loans: clone(finance.loans), gameOver: finance.gameOver, hasEverHadPopulation: finance.hasEverHadPopulation }
+    ? {
+      nextLoanId: finance.nextLoanId,
+      loans: clone(finance.loans),
+      gameOver: finance.gameOver,
+      hasEverHadPopulation: finance.hasEverHadPopulation,
+      ...(finance.bankrupt ? { bankrupt: true } : {}),
+    }
     : { nextLoanId: 1, loans: [], gameOver: false, hasEverHadPopulation: false };
 }
 
@@ -303,6 +312,7 @@ export function serializeGame(app, { includeFinance = true } = {}) {
         ...(app.loanManager?.snapshot?.() || { nextLoanId: 1, loans: [] }),
         gameOver: Boolean(app.gameOver),
         hasEverHadPopulation: Boolean(app.hasEverHadPopulation),
+        ...(app.gameOverReason === 'bankruptcy' ? { bankrupt: true } : {}),
       },
     } : {}),
     camera: {
