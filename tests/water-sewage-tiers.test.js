@@ -21,8 +21,8 @@ function flatGrid(size = 16) {
 // Tier ladders: capacity doubles, upgrades cost 1.8x the previous tier rounded to $10.
 assert.deepStrictEqual(WATER_TIER_CONFIG.capacity, [120, 240, 480]);
 assert.deepStrictEqual(SEWAGE_TIER_CONFIG.capacity, [120, 240, 480]);
-assert.deepStrictEqual(WATER_TIER_CONFIG.cost, [3000, 5400, 9720]);
-assert.deepStrictEqual(SEWAGE_TIER_CONFIG.cost, [4000, 7200, 12960]);
+assert.deepStrictEqual(WATER_TIER_CONFIG.cost, [930, 1670, 3000]);
+assert.deepStrictEqual(SEWAGE_TIER_CONFIG.cost, [1230, 2220, 4000]);
 assert.strictEqual(isTieredProducer(PRODUCER_TYPE.WATER_TOWER), true);
 assert.strictEqual(isTieredProducer(PRODUCER_TYPE.SEWAGE_PLANT), true);
 
@@ -45,13 +45,13 @@ for (const ladder of [WATER_TIER_CONFIG.cost, SEWAGE_TIER_CONFIG.cost]) {
   assert.deepStrictEqual(getProducerUtilityUsage(water), { power: 2, water: 0, sewage: 1 });
 
   assert.strictEqual(grid.canUpgradeProducer(grid.getTile(6, 5)), true);
-  assert.strictEqual(getProducerUpgradeCost(PRODUCER_TYPE.WATER_TOWER, 1), 5400);
+  assert.strictEqual(getProducerUpgradeCost(PRODUCER_TYPE.WATER_TOWER, 1), 1670);
   assert.strictEqual(grid.upgradeProducer(grid.getTile(6, 5)), true);
   assert.strictEqual(water.tier, 2);
   assert.strictEqual(water.capacity, 240);
   assert.deepStrictEqual(getProducerUtilityUsage(water), { power: 4, water: 0, sewage: 2 });
 
-  assert.strictEqual(getProducerUpgradeCost(PRODUCER_TYPE.WATER_TOWER, 2), 9720);
+  assert.strictEqual(getProducerUpgradeCost(PRODUCER_TYPE.WATER_TOWER, 2), 3000);
   assert.strictEqual(grid.upgradeProducer(grid.getTile(6, 5)), true);
   assert.strictEqual(water.tier, 3);
   assert.strictEqual(water.capacity, 480);
@@ -70,13 +70,13 @@ for (const ladder of [WATER_TIER_CONFIG.cost, SEWAGE_TIER_CONFIG.cost]) {
   assert.strictEqual(sewage.capacity, 120);
   assert.deepStrictEqual(getProducerUtilityUsage(sewage), { power: 2, water: 1, sewage: 0 });
 
-  assert.strictEqual(getProducerUpgradeCost(PRODUCER_TYPE.SEWAGE_PLANT, 1), 7200);
+  assert.strictEqual(getProducerUpgradeCost(PRODUCER_TYPE.SEWAGE_PLANT, 1), 2220);
   assert.strictEqual(grid.upgradeProducer(grid.getTile(10, 9)), true);
   assert.strictEqual(sewage.tier, 2);
   assert.strictEqual(sewage.capacity, 240);
   assert.deepStrictEqual(getProducerUtilityUsage(sewage), { power: 4, water: 2, sewage: 0 });
 
-  assert.strictEqual(getProducerUpgradeCost(PRODUCER_TYPE.SEWAGE_PLANT, 2), 12960);
+  assert.strictEqual(getProducerUpgradeCost(PRODUCER_TYPE.SEWAGE_PLANT, 2), 4000);
   assert.strictEqual(grid.upgradeProducer(grid.getTile(10, 9)), true);
   assert.strictEqual(sewage.tier, 3);
   assert.strictEqual(sewage.capacity, 480);

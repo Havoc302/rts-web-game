@@ -122,6 +122,14 @@ export function tierPriceLadder(basePrice) {
   return [basePrice, second, third];
 }
 
+// Build the ladder backwards when the top tier should carry the original price.
+export function tierPriceLadderFromTop(topPrice) {
+  const third = roundPriceToTen(topPrice);
+  const second = roundPriceToTen(third / UPGRADE_PRICE_MULTIPLIER);
+  const first = roundPriceToTen(second / UPGRADE_PRICE_MULTIPLIER);
+  return [first, second, third];
+}
+
 // Energy producers and storage are player-upgradable in three tiers.
 export const WIND_TIER_CONFIG = {
   peak: [16, 32, 64],                    // output at windIntensity 1.0
@@ -138,16 +146,17 @@ export const BATTERY_TIER_CONFIG = {
   cost: tierPriceLadder(250),            // [250, 450, 810]
 };
 
-// Water and sewage plants double their capacity at each tier and use the same
-// 1.8x upgrade ladder as the other service buildings.
+// Water and sewage plants double their capacity at each tier. Their original
+// building price is the tier-3 upgrade price, so the ladder is built from the top.
+// Total cost to reach tier 3: $5,600 (water) / $7,450 (sewage).
 export const WATER_TIER_CONFIG = {
   capacity: [120, 240, 480],
-  cost: tierPriceLadder(3000),           // [3000, 5400, 9720]
+  cost: tierPriceLadderFromTop(3000),    // [930, 1670, 3000]
 };
 
 export const SEWAGE_TIER_CONFIG = {
   capacity: [120, 240, 480],
-  cost: tierPriceLadder(4000),           // [4000, 7200, 12960]
+  cost: tierPriceLadderFromTop(4000),    // [1230, 2220, 4000]
 };
 
 // Tier-3 compatibility aliases (the top tier is the previous fixed building).

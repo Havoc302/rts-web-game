@@ -1760,3 +1760,20 @@ Notes:
 Validation:
 - `npm test` passes all 50 test files.
 - Browser verification (`v0.3.3`): a tier-1 pump and plant showed capacity 120 with upgrades at $5,400/$7,200. Upgrading the pump produced 240 then 480 capacity with usage rising 2/1 -> 4/2 -> 8/4; the sewage plant mirrored this with 2/1 -> 4/2 -> 8/4. Both remained operational and showed `Maximum tier` at tier 3. Build info showed `Capacity (T1/T2/T3): 120 / 240 / 480` and the correct upgrade prices.
+
+Current task: Anchor water/sewage top tier at the original building price (`0.3.4`).
+
+The user felt the water pump and sewage plant upgrade prices were too high and wanted the original building price to be the top tier.
+
+- [done] Add `tierPriceLadderFromTop` so a ladder can be built backwards from a capstone price with the same 1.8x steps rounded to $10.
+- [done] Water pump ladder is now $930 / $1,670 / $3,000; sewage plant is $1,230 / $2,220 / $4,000. Capacities remain 120 / 240 / 480.
+- [done] Update the sidebar labels to the new tier-1 prices ($930 and $1,230).
+- [done] Update `water-sewage-tiers.test.js` expectations and the design document. Bump every version source to `0.3.4`.
+
+Notes:
+- The top tier upgrade price now equals the original building price. Total spend to reach tier 3 is $5,600 for a pump and $7,450 for a plant, versus $18,120 / $24,160 previously.
+- Each upgrade is still cheaper per unit of capacity than placing new tier-1 buildings.
+
+Validation:
+- `npm test` passes all 50 test files.
+- Browser verification (`v0.3.4`): build info shows water $930 with upgrades $1,670 / $3,000 and sewage $1,230 with upgrades $2,220 / $4,000; the sidebar labels match; capacity still reaches 480 at tier 3.
