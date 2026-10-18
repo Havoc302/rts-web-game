@@ -18,6 +18,16 @@ const BIOME_CLIMATE = {
   [BIOME_TYPES.SWAMP]: { temperature: 1, moisture: 0.82 },
   [BIOME_TYPES.DESERT]: { temperature: 5, moisture: 0.1 },
   [BIOME_TYPES.ARCTIC]: { temperature: -8, moisture: 0.25 },
+  // Ice sheets are the coldest and windiest surface on the planet. The explicit weather
+  // mix keeps the sky almost permanently overcast, and the high wind mean with a gale
+  // chance produces the occasional top-of-scale blow.
+  [BIOME_TYPES.ICE]: {
+    temperature: -14,
+    moisture: 0.92,
+    weather: { sunny: 0.02, cloudy: 0.63, rainy: 0.35 },
+    windMean: 0.8,
+    galeChance: 0.25,
+  },
 };
 
 function clamp(value, min, max) {
@@ -29,6 +39,11 @@ export function isPolarLatitude(lat) {
   return Math.abs(lat) >= CLIMATE_CONFIG.POLAR_CAP_LATITUDE;
 }
 
+// Poleward of this latitude the surface is permanent ice, land or ocean alike.
+export function isIceCapLatitude(lat) {
+  return Math.abs(lat) >= CLIMATE_CONFIG.ICE_CAP_LATITUDE;
+}
+
 function baseClimate(cell) {
   const latitude = clamp(Math.abs(cell.lat) / 90, 0, 1);
   const biome = BIOME_CLIMATE[cell.biome] || BIOME_CLIMATE[BIOME_TYPES.PLAINS];
@@ -36,7 +51,13 @@ function baseClimate(cell) {
     (CLIMATE_CONFIG.POLE_TEMP - CLIMATE_CONFIG.EQUATOR_TEMP) *
       Math.pow(latitude, CLIMATE_CONFIG.LATITUDE_GRADIENT_POWER) + biome.temperature;
   const moisture = cell.ocean ? 0.86 : biome.moisture + (1 - latitude) * 0.08;
-  return { temperature, moisture };
+  return {
+    temperature,
+    moisture,
+    weather: biome.weather,
+    windMean: biome.windMean ?? CLIMATE_CONFIG.WIND_DEFAULT_MEAN,
+    galeChance: biome.galeChance ?? 0,
+  };
 }
 
 export function buildClimateProfile(worldSeed, cell, neighbors = []) {
@@ -49,6 +70,9 @@ export function buildClimateProfile(worldSeed, cell, neighbors = []) {
   const neighborMoisture = neighborClimate.length
     ? neighborClimate.reduce((sum, climate) => sum + climate.moisture, 0) / neighborClimate.length
     : local.moisture;
+  const neighborWind = neighborClimate.length
+    ? neighborClimate.reduce((sum, climate) => sum + climate.windMean, 0) / neighborClimate.length
+    : local.windMean;
   const temperatureMean = clamp(
     local.temperature + (neighborTemperature - local.temperature) * CLIMATE_CONFIG.TEMP_NEIGHBOR_INFLUENCE +
       (random() - 0.5) * 2 * CLIMATE_CONFIG.TEMP_SEED_VARIATION,
@@ -58,6 +82,11 @@ export function buildClimateProfile(worldSeed, cell, neighbors = []) {
   const moisture = clamp(
     local.moisture + (neighborMoisture - local.moisture) * CLIMATE_CONFIG.MOISTURE_NEIGHBOR_INFLUENCE +
       (random() - 0.5) * 0.12,
+    0,
+    1
+  );
+  const windMean = clamp(
+    local.windMean + (neighborWind - local.windMean) * CLIMATE_CONFIG.TEMP_NEIGHBOR_INFLUENCE,
     0,
     1
   );
@@ -71,7 +100,9 @@ export function buildClimateProfile(worldSeed, cell, neighbors = []) {
     temperatureStdDev,
     temperatureMin: Math.max(CLIMATE_CONFIG.TEMP_MIN, temperatureMean - temperatureStdDev * 2.5),
     temperatureMax: Math.min(CLIMATE_CONFIG.TEMP_MAX, temperatureMean + temperatureStdDev * 2.5),
-    weatherChances: { sunny: 1 - rainy - cloudy, cloudy, rainy },
+    weatherChances: local.weather ? { ...local.weather } : { sunny: 1 - rainy - cloudy, cloudy, rainy },
+    windMean,
+    galeChance: local.galeChance,
   };
 }
 
@@ -141,12 +172,23 @@ export class OverworldMap {
       for (const id of cellToChildren(parent, OVERWORLD_RESOLUTION)) {
         const [lat, lng] = cellToLatLng(id);
         const biome = regionAt(lat, lng, continents);
-        const cell = { id, lat, lng, boundary: cellToBoundary(id), ocean: !biome && !islands.has(id) && id !== this.homeCellId };
+        // The permanent ice cap freezes open ocean as well as any land that reaches it, so
+        // ice hexes are ordinary buildable ground even where no continent was generated.
+        const iceCap = isIceCapLatitude(lat);
+        const cell = {
+          id,
+          lat,
+          lng,
+          boundary: cellToBoundary(id),
+          ocean: !iceCap && !biome && !islands.has(id) && id !== this.homeCellId,
+        };
         if (!cell.ocean) {
           cell.seed = id === this.homeCellId && homeSeed != null ? Number(homeSeed) : hashSeed(this.seed, id);
-          cell.biome = isPolarLatitude(lat)
-            ? BIOME_TYPES.ARCTIC
-            : biome || (Math.abs(lat) > 45 ? BIOME_TYPES.HILLY : BIOME_TYPES.PLAINS);
+          cell.biome = iceCap
+            ? BIOME_TYPES.ICE
+            : isPolarLatitude(lat)
+              ? BIOME_TYPES.ARCTIC
+              : biome || (Math.abs(lat) > 45 ? BIOME_TYPES.HILLY : BIOME_TYPES.PLAINS);
         }
         this.cells.set(id, cell);
       }

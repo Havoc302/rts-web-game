@@ -1,4 +1,4 @@
-import { TERRAIN, TERRAIN_TYPE, ZONE, DENSITY, GROWTH_CONFIG, RESIDENTIAL_CAPACITY, MAP_WIDTH, MAP_HEIGHT, PRODUCER_CONFIG, PRODUCER_TYPE, ORE_CONFIG, ORE_GENERATION, SERVICE_GLOBAL_CONFIG, TERRAIN_GENERATION_CONFIG, MAP_SEED_STORAGE_KEY, MAP_SEED_STORAGE_KEY_LEGACY, BIOME_CONFIG, BIOME_TERRAIN_CONFIG, BIOME_LAKE_CONFIG, BIOME_GENERATION_VERSION, PRODUCER_TIER_MAX, clampTier, getProducerTier, isTieredService, isTieredProducer, getBatteryStorageForTier, getWindPeakForTier, getSolarPeakForTier, getWaterCapacityForTier, getSewageCapacityForTier, getServiceTierStat } from '../config.js';
+import { TERRAIN, TERRAIN_TYPE, ZONE, DENSITY, GROWTH_CONFIG, RESIDENTIAL_CAPACITY, MAP_WIDTH, MAP_HEIGHT, PRODUCER_CONFIG, PRODUCER_TYPE, ORE_CONFIG, ORE_GENERATION, SERVICE_GLOBAL_CONFIG, TERRAIN_GENERATION_CONFIG, MAP_SEED_STORAGE_KEY, MAP_SEED_STORAGE_KEY_LEGACY, BIOME_CONFIG, BIOME_TERRAIN_CONFIG, BIOME_LAKE_CONFIG, BIOME_GENERATION_VERSION, BIOME_TYPES, PRODUCER_TIER_MAX, clampTier, getProducerTier, isTieredService, isTieredProducer, getBatteryStorageForTier, getWindPeakForTier, getSolarPeakForTier, getWaterCapacityForTier, getSewageCapacityForTier, getServiceTierStat } from '../config.js';
 
 const TIER_DENSITY = [DENSITY.LIGHT, DENSITY.MEDIUM, DENSITY.HIGH];
 
@@ -136,12 +136,14 @@ export class Grid {
   }
 
   generateHiddenOres() {
+    const oreScale = this.getBiomeModifiers().oreScale ?? 1;
+    if (oreScale <= 0) return;
     const oreTypes = Object.keys(ORE_CONFIG);
     const weights = oreTypes.map((type) => ORE_CONFIG[type].spawnWeight ?? 1);
     const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
     for (const row of this.tiles) {
       for (const tile of row) {
-        if (this.random() >= (ORE_GENERATION[tile.terrain] || 0)) continue;
+        if (this.random() >= (ORE_GENERATION[tile.terrain] || 0) * oreScale) continue;
         // Weighted pick so common metals stay common and titanium stays a rare find. One
         // draw, matching the previous uniform pick's PRNG usage.
         let roll = this.random() * totalWeight;
@@ -588,6 +590,13 @@ export class Grid {
     return neighbors.some((tile) => tile.terrain === TERRAIN_TYPE.RIVER);
   }
 
+  // An ice sheet is solid water, so pumps and sewage plants can tap the meltwater below it
+  // without touching an open river or lake. Other water-hungry buildings still need water.
+  hasMeltwaterAccess(producerType) {
+    return this.biome === BIOME_TYPES.ICE &&
+      (producerType === PRODUCER_TYPE.WATER_TOWER || producerType === PRODUCER_TYPE.SEWAGE_PLANT);
+  }
+
   // 'polluted' if any adjacent water is polluted, 'clean' if water is adjacent, otherwise null.
   getWaterfrontStatus(x, y) {
     let status = null;
@@ -623,7 +632,7 @@ export class Grid {
     if ((tile.terrain !== TERRAIN_TYPE.EMPTY && (!isMine || tile.terrain === TERRAIN_TYPE.RIVER)) || tile.destroyed || tile.hasRoad || tile.zone !== ZONE.NONE || tile.producer) return false;
 
     if (config) {
-        if (config.requiresWaterAdjacent && !this.isWaterAdjacent(x, y)) {
+        if (config.requiresWaterAdjacent && !this.isWaterAdjacent(x, y) && !this.hasMeltwaterAccess(producerType)) {
           return false;
         }
         if (config.requiresDiscoveredOre && (
@@ -855,6 +864,8 @@ export class Grid {
   }
 
   canSurvey(x, y) {
+    // Ice sheets are bare: there is nothing buried to find, so surveying is unavailable.
+    if (this.biome === BIOME_TYPES.ICE) return false;
     const tile = this.getTile(x, y);
     if (!tile || tile.producer || tile.hasRoad || tile.oreDiscovered || tile.surveyingBy) return false;
     if (tile.terrain === TERRAIN.WATER) return false;

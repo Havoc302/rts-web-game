@@ -251,6 +251,7 @@ export const BIOME_TYPES = {
   SWAMP: 'swamp',
   DESERT: 'desert',
   ARCTIC: 'arctic',
+  ICE: 'ice',
 };
 
 // Modifiers applied on top of TERRAIN_GENERATION_CONFIG. Omit biome for current
@@ -265,6 +266,7 @@ export const BIOME_TERRAIN_CONFIG = {
   [BIOME_TYPES.PLAINS]: { rockClusterScale: 0.25, forestClusterScale: 0.8, rockRadiusScale: 1 },
   [BIOME_TYPES.HILLY]: { rockClusterScale: 1.25, forestClusterScale: 0.75, rockRadiusScale: 1.8 },
   [BIOME_TYPES.MOUNTAINOUS]: { rockClusterScale: 1.5, forestClusterScale: 0.35, rockRadiusScale: 3 },
+  [BIOME_TYPES.ICE]: { rockClusterScale: 0, forestClusterScale: 0, rockRadiusScale: 0 },
 };
 
 export const BIOME_CONFIG = {
@@ -326,6 +328,18 @@ export const BIOME_CONFIG = {
     lakeCountMax: 0,
     lakeRadiusScale: 1,
     riverMode: 'none',
+  },
+  // Permanent polar ice sheets. Ice is a flat, featureless surface: no trees, no rock
+  // formations, no lakes or rivers, and `oreScale: 0` removes hidden ore so surveying has
+  // nothing to find. It is still ordinary buildable ground on the city map.
+  [BIOME_TYPES.ICE]: {
+    rockClusterScale: 0,
+    forestClusterScale: 0,
+    lakeCountMin: 0,
+    lakeCountMax: 0,
+    lakeRadiusScale: 1,
+    riverMode: 'none',
+    oreScale: 0,
   },
 };
 
@@ -1227,6 +1241,10 @@ export const CLIMATE_CONFIG = {
   // Land at or beyond this absolute latitude is polar; its biome is forced to Arctic
   // regardless of which continent region it belongs to.
   POLAR_CAP_LATITUDE: 72,
+  // At or beyond this absolute latitude the surface is permanent ice, whether or not a
+  // continent reached it: polar ocean is frozen over and becomes buildable ice too. This
+  // is the band where the seeded temperature spread stays below freezing all year.
+  ICE_CAP_LATITUDE: 78,
   TEMP_SEED_VARIATION: 3,
   TEMP_STDDEV_MIN: 3,
   TEMP_STDDEV_MAX: 6,
@@ -1237,6 +1255,14 @@ export const CLIMATE_CONFIG = {
   TEMP_REVERSION: 0.12,
   WEATHER_MIN_DURATION: 4,
   WEATHER_MAX_DURATION: 10,
+  // Wind runs in short windows pulled toward the cell's climate wind mean. Gale-prone
+  // climates (ice) periodically aim for the top of the scale instead.
+  WIND_MIN_DURATION: 3,
+  WIND_MAX_DURATION: 8,
+  WIND_SPREAD: 0.16,
+  WIND_GALE_MIN: 0.95,
+  WIND_GALE_MAX: 1,
+  WIND_DEFAULT_MEAN: 0.5,
 };
 
 

@@ -7,10 +7,10 @@ Agent handoff protocol:
 - At the end of a generation, mark completed checklist items `[done]`, record validation, and leave unfinished work with enough context for another agent to continue.
 - Do not erase historical entries. `docs/DESIGN.md` is the architecture, product, and implementation-status source of truth; distinguish planned work from implemented behavior.
 
-Open handoff (2026-10-15):
+Open handoff (2026-10-19):
 - Active task: none in progress; the next item is to pick up the Phase 1 follow-ups listed in `docs/DESIGN.md`.
-- Latest completed task: temperature comfort band, uncapped power load, and capped happiness penalty (`0.2.20`); see the final task entry in this log.
-- Verified baseline: `npm test` passes all 49 test files.
+- Latest completed task: permanent polar ice biome with gale-prone overcast weather (`0.3.5`); see the final task entry in this log.
+- Verified baseline: `npm test` passes all 51 test files.
 - Phase 1 follow-ups are tracked in `docs/DESIGN.md`; in particular, localStorage autosave and named tick-stage extraction are not implemented. Do not treat historical `Current task` headings below as active.
 
 Current task: Add standalone JSON game save export/import.
@@ -1777,3 +1777,25 @@ Notes:
 Validation:
 - `npm test` passes all 50 test files.
 - Browser verification (`v0.3.4`): build info shows water $930 with upgrades $1,670 / $3,000 and sewage $1,230 with upgrades $2,220 / $4,000; the sidebar labels match; capacity still reaches 480 at tier 3.
+
+Current task: Permanent ice biome at the poles (`0.3.5`).
+
+The user assumed the new planetary temperature gradient puts the poles below freezing and asked for an ice-only biome that fills the poles even where no land was generated: no forest, no mountains, nothing to scan, technically buildable, and with terrible weather (randomly very high winds, a lot of cloud cover).
+
+- [done] Add `BIOME_TYPES.ICE` with a zero forest/rock/lake/river profile and `oreScale: 0`; hidden-ore generation now honours a per-biome ore scale.
+- [done] Force every hex at or beyond `CLIMATE_CONFIG.ICE_CAP_LATITUDE` (78°) to ice whether or not a continent reached it, so frozen polar ocean becomes buildable ground with a city seed. Arctic keeps the 72-78° ring.
+- [done] Give ice its own climate: coldest biome, near-permanent overcast, high wind mean, and a gale chance. Climate profiles now carry `windMean`/`galeChance` (neighbor-blended like temperature) and `WeatherManager` runs 3-8 tick wind windows toward them, aiming for the top of the scale during gales.
+- [done] Ice has no resources: `Grid.canSurvey` refuses every ice tile, while Survey Stations can still be placed.
+- [done] Ice is solid water: water pumps and sewage plants skip the adjacent-water requirement on ice; nuclear and every other water-hungry building still needs a river or lake.
+- [done] Dedicated ice palettes: a bluer, glassier ground than arctic snow on the city map, and a saturated pale blue on the globe.
+- [done] Add `tests/ice-biome.test.js`; update `tests/arctic-biome.test.js` so the ice cap is no longer expected to be arctic. Bump every version source to `0.3.5`.
+
+Notes:
+- Ice covers 122 of the 5,882 res-2 hexes (about 2.1% of the globe) on every planet, split across both poles. Seeded continents only reach the cap on some planets, so most of the cap is frozen ocean.
+- Pole ice means sit near -40 °C with a warm tail around -29 °C, so precipitation is always snow and the power load is roughly 3.6x.
+- Because the ice profile has no ore, `generateHiddenOres` returns before consuming PRNG draws; ice terrain and hidden ore stay deterministic for save round-trips.
+- The selected-hex panel still lists Water/Forest/Mountain percentages, which read 0.0% for ice; that doubles as a useful "nothing here" signal.
+
+Validation:
+- `node tests/run-all.js` passes all 51 test files.
+- Browser verification (`v0.3.5`): the globe at each pole shows the light-blue ice cap covering open water with arctic hexes on the adjacent continent; the info panel reports biome `ice` with 0.0% water/forest/mountain and offers Open Map; entering a -79° ice hex generated 40,000 flat tiles with 0 ore and `canSurvey` false; roads placed, a water pump and sewage plant were allowed and placed with no open water, and a nuclear plant was refused; 200 simulated weather ticks peaked at wind 1.00 with 75% of ticks above 0.7 and 68% of ticks cloudier than 0.4.

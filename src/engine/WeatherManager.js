@@ -6,12 +6,16 @@ const DEFAULT_CLIMATE = {
   temperatureMin: TEMPERATURE_CONFIG.MIN_TEMP,
   temperatureMax: TEMPERATURE_CONFIG.MAX_TEMP,
   weatherChances: { sunny: 0.45, cloudy: 0.35, rainy: 0.2 },
+  windMean: CLIMATE_CONFIG.WIND_DEFAULT_MEAN,
+  galeChance: 0,
 };
 
 export class WeatherManager {
   constructor(climate = null) {
     this.climate = climate || DEFAULT_CLIMATE;
     this.windIntensity = 0.5;       // 0.0 (Calm) -> 1.0 (Gale Force)
+    this.windTarget = this.climate.windMean ?? CLIMATE_CONFIG.WIND_DEFAULT_MEAN;
+    this.windTicksRemaining = 0;    // Ticks left before a new wind window is chosen
     this.cloudCover = 0.2;          // 0.0 (Sunny) -> 0.5 (Cloudy) -> 1.0 (Raining)
     this.temperature = this.climate.temperatureMean;
     this.weatherTargetCloud = 0.2;
@@ -26,7 +30,9 @@ export class WeatherManager {
   }
 
   update() {
-    this.windIntensity = this.stepMetric(this.windIntensity);
+    if (this.windTicksRemaining <= 0) this.chooseWindTarget();
+    this.windIntensity = this.stepMetric(this.windIntensity, this.windTarget);
+    this.windTicksRemaining--;
     if (this.weatherTicksRemaining <= 0) this.chooseWeatherTarget();
     this.cloudCover = this.stepMetric(this.cloudCover, this.weatherTargetCloud);
     this.weatherTicksRemaining--;
@@ -43,6 +49,24 @@ export class WeatherManager {
     } else {
       this.extremeWindTicks = 0;
     }
+  }
+
+  // Wind holds a direction for a few ticks, then picks a new target around the cell's
+  // climate mean. Gale-prone climates occasionally aim for the top of the scale instead.
+  chooseWindTarget() {
+    const {
+      WIND_MIN_DURATION: minDuration,
+      WIND_MAX_DURATION: maxDuration,
+      WIND_SPREAD: spread,
+      WIND_GALE_MIN: galeMin,
+      WIND_GALE_MAX: galeMax,
+      WIND_DEFAULT_MEAN: defaultMean,
+    } = CLIMATE_CONFIG;
+    const mean = this.climate?.windMean ?? defaultMean;
+    this.windTarget = Math.random() < (this.climate?.galeChance ?? 0)
+      ? galeMin + Math.random() * (galeMax - galeMin)
+      : Math.min(0.92, Math.max(0, mean + (Math.random() - 0.5) * spread));
+    this.windTicksRemaining = minDuration + Math.floor(Math.random() * (maxDuration - minDuration + 1));
   }
 
   chooseWeatherTarget() {

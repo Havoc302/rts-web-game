@@ -6,7 +6,7 @@ import {
   TERRAIN,
 } from '../src/config.js';
 import { Grid } from '../src/engine/Grid.js';
-import { buildClimateProfile, isPolarLatitude, OverworldMap } from '../src/engine/OverworldMap.js';
+import { buildClimateProfile, isIceCapLatitude, isPolarLatitude, OverworldMap } from '../src/engine/OverworldMap.js';
 import { Renderer } from '../src/engine/Renderer.js';
 import { WeatherManager } from '../src/engine/WeatherManager.js';
 
@@ -28,9 +28,10 @@ for (const worldSeed of [424242, 424243, 12345, 77764, 77767, 2185603]) {
   const world = new OverworldMap(worldSeed);
   const cells = Array.from(world.cells.values());
   const land = cells.filter((cell) => !cell.ocean);
-  const polarLand = land.filter((cell) => isPolarLatitude(cell.lat));
+  // The permanent ice cap supersedes arctic at the poles; arctic is the ring below it.
+  const polarLand = land.filter((cell) => isPolarLatitude(cell.lat) && !isIceCapLatitude(cell.lat));
   assert.ok(polarLand.every((cell) => cell.biome === BIOME_TYPES.ARCTIC),
-    `Seed ${worldSeed}: every polar land hex should be Arctic`);
+    `Seed ${worldSeed}: every polar land hex outside the ice cap should be Arctic`);
   assert.ok(land.every((cell) => cell.biome !== BIOME_TYPES.ARCTIC || isPolarLatitude(cell.lat)),
     `Seed ${worldSeed}: Arctic should never appear outside the polar caps`);
   assert.ok(polarLand.every((cell) => Number.isInteger(cell.seed)), 'Arctic hexes keep a city seed');
