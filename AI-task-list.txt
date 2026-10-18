@@ -1704,3 +1704,20 @@ Validation:
 - Browser verification (Playwright, local dev server, `v0.3.0`): the clinic button is absent; a tier-1 fire station shows `Tier 1 / 3`, `1 fire truck`, and `Upgrade ($750)`; police shows `1 police car` and `0 / 5 occupied`; hospital shows `0 / 50` beds; tier-1 upgrades charged exactly $750/$300/$450/$500/$1,000/$200 and raised fire/police/hospital to tier 2 with 2 vehicles and 10 staff; battery storage rose to 200 while keeping 100 stored; wind peak rose to 32. A second upgrade pass reached tier 3 for $8,850 total, showing 3 police cars and 20 cells. A residential zone at 5/25 population still offered `Upgrade ($400)`.
 - `style.css` brace scan reports final depth 0 and minimum depth 0; the browser parsed `.info-row[hidden]`, fixing the stale inspector rows.
 - `main.js`, `config.js`, `Grid.js`, `ServiceManager.js`, `CoverageManager.js`, `CrimeManager.js`, `Simulation.js`, `UtilityManager.js`, `Renderer.js`, and the changed tests report no editor diagnostics.
+
+Current task: Guard against an accidental refresh or tab close (`0.3.1`).
+
+The user asked whether a refresh can be caught and the player warned that progress will be lost.
+
+- [done] Add a `beforeunload` listener that calls `preventDefault()` and sets `returnValue` while a world is active, so the browser shows its standard leave-site confirmation on refresh, tab close, or navigation.
+- [done] Skip the confirmation on the title screen (`worldActive === false`) and after game over, so the Restart button can reload intentionally.
+- [done] Add a visible main-menu warning (`#main-menu-warning`) telling the player to use Save World first; it is shown only while a world is active.
+- [done] Document the browser limitation: custom dialog text is ignored, and mobile browsers may suppress the prompt entirely; the in-menu warning covers that gap.
+- [done] Bump every version source to `0.3.1`.
+
+Notes:
+- The guard is intentionally active for the whole loaded session, even after exporting a save, because the live session is still lost. Save-awareness would need a dirty-state flag and is future work.
+
+Validation:
+- `npm test` passes all 49 test files.
+- Browser verification (Playwright, `v0.3.1`): on the title screen the warning is hidden and a synthetic cancelable `beforeunload` event is not prevented; after New Game the warning is visible and the event is prevented with `returnValue` set; with `gameOver = true` the event is not prevented.

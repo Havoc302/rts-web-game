@@ -160,6 +160,17 @@ class GameApp {
   }
 
   bindUIEvents() {
+    // Refreshing or closing the tab discards the in-memory session. Browsers always show
+    // their own generic "leave site?" dialog and ignore custom text, so this only decides
+    // whether that dialog appears. Skip it on the title screen and after game over (the
+    // Restart button is an intentional reload).
+    window.addEventListener('beforeunload', (event) => {
+      if (!this.worldActive || this.gameOver) return undefined;
+      event.preventDefault();
+      event.returnValue = '';
+      return '';
+    });
+
     this.initHeaderTooltips();
     const autoPanToggle = document.getElementById('auto-pan-toggle');
     if (autoPanToggle) {
@@ -365,6 +376,8 @@ class GameApp {
     if (saveButton) saveButton.disabled = !this.worldActive;
     const closeButton = document.getElementById('btn-main-close');
     if (closeButton) closeButton.disabled = !this.worldActive;
+    const warning = document.getElementById('main-menu-warning');
+    if (warning) warning.hidden = !this.worldActive;
     this.tutorialManager?.syncTutorialButton();
   }
 

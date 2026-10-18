@@ -711,6 +711,14 @@ span.stat-icon {
   display: none;
 }
 
+.main-menu-warning {
+  margin: 12px 0 0;
+  color: #fbbf24;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  text-align: center;
+}
+
 .info-row .label {
   color: var(--text-muted);
 }
