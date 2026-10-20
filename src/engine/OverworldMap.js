@@ -17,11 +17,11 @@ const BIOME_CLIMATE = {
   [BIOME_TYPES.MOUNTAINOUS]: { temperature: -8, moisture: 0.52 },
   [BIOME_TYPES.SWAMP]: { temperature: 1, moisture: 0.82 },
   [BIOME_TYPES.DESERT]: { temperature: 5, moisture: 0.1 },
-  [BIOME_TYPES.ARCTIC]: { temperature: -8, moisture: 0.25 },
-  // Ice sheets are the coldest and windiest surface on the planet. The explicit weather
-  // mix keeps the sky almost permanently overcast, and the high wind mean with a gale
-  // chance produces the occasional top-of-scale blow.
-  [BIOME_TYPES.ICE]: {
+  [BIOME_TYPES.TUNDRA]: { temperature: -8, moisture: 0.25 },
+  // Arctic ice sheets are the coldest and windiest surface on the planet. The explicit
+  // weather mix keeps the sky almost permanently overcast, and the high wind mean with a
+  // gale chance produces the occasional top-of-scale blow.
+  [BIOME_TYPES.ARCTIC]: {
     temperature: -14,
     moisture: 0.92,
     weather: { sunny: 0.02, cloudy: 0.63, rainy: 0.35 },
@@ -34,21 +34,22 @@ function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
-// Polar land is arctic no matter which continent region happens to reach it.
+// Polar land outside the permanent cap is tundra no matter which continent region reaches it.
 export function isPolarLatitude(lat) {
   return Math.abs(lat) >= CLIMATE_CONFIG.POLAR_CAP_LATITUDE;
 }
 
-// Poleward of this latitude the surface is permanent ice, land or ocean alike. This is the
-// nominal cap latitude; the actual edge wobbles per planet (see createIceCapBoundary).
-export function isIceCapLatitude(lat) {
-  return Math.abs(lat) >= CLIMATE_CONFIG.ICE_CAP_LATITUDE;
+// Poleward of this latitude the surface is permanent Arctic ice, land or ocean alike. This
+// is the nominal cap latitude; the actual edge wobbles (see createArcticCapBoundary).
+export function isArcticCapLatitude(lat) {
+  return Math.abs(lat) >= CLIMATE_CONFIG.ARCTIC_CAP_LATITUDE;
 }
 
-// The polar caps are climate bands, but their edge is drawn with a seeded wobble so the ice
-// sheet reads as a natural coastline rather than a perfect circle. Three low-order waves in
-// longitude and latitude give a smooth, seam-free boundary that neighboring cells share.
-export function createIceCapBoundary(seed) {
+// The polar caps are climate bands, but their edge is drawn with a seeded wobble so the
+// Arctic ice reads as a natural coastline rather than a perfect circle. Three low-order
+// waves in longitude and latitude give a smooth, seam-free boundary shared by neighbors.
+export function createArcticCapBoundary(seed) {
+  // Keep the original hash key so existing planet seeds draw the same coastline.
   const random = createPRNG(hashSeed(seed, 'ice-cap-phases'));
   const phases = Array.from({ length: 5 }, () => random() * Math.PI * 2);
   return (lat, lng) => {
@@ -57,12 +58,12 @@ export function createIceCapBoundary(seed) {
     const wobble = 0.5 * Math.sin(3 * longitude + phases[0]) * Math.cos(2 * latitude + phases[1]) +
       0.3 * Math.sin(5 * longitude + phases[2]) * Math.cos(3 * latitude + phases[3]) +
       0.2 * Math.sin(7 * longitude + phases[4]);
-    return Math.abs(lat) >= CLIMATE_CONFIG.ICE_CAP_LATITUDE - wobble * CLIMATE_CONFIG.ICE_CAP_WOBBLE;
+    return Math.abs(lat) >= CLIMATE_CONFIG.ARCTIC_CAP_LATITUDE - wobble * CLIMATE_CONFIG.ARCTIC_CAP_WOBBLE;
   };
 }
 
-// Biome weather mixes vary slightly from hex to hex, so a whole ice sheet does not share one
-// identical forecast. The jitter only reallocates cloud and rain; the mix stays normalized.
+// Biome weather mixes vary slightly from hex to hex, so a whole Arctic sheet does not share
+// one identical forecast. The jitter only reallocates cloud and rain; the mix stays normalized.
 function jitterWeatherChances(weather, random) {
   const jitter = CLIMATE_CONFIG.BIOME_WEATHER_JITTER;
   const sunny = clamp(weather.sunny * (1 + (random() - 0.5) * 2 * jitter), 0.002, 0.12);
@@ -190,7 +191,7 @@ export class OverworldMap {
     this.seed = Number(seed) || 1;
     const random = createPRNG(hashSeed(this.seed, 'landmasses'));
     const continents = createContinents(random);
-    this.iceCapBoundary = createIceCapBoundary(this.seed);
+    this.arcticCapBoundary = createArcticCapBoundary(this.seed);
     this.homeCellId = latLngToCell(continents[0].lat, continents[0].lng, OVERWORLD_RESOLUTION);
     const islands = new Set();
     for (let chain = 0; chain < 8; chain++) {
@@ -206,22 +207,22 @@ export class OverworldMap {
       for (const id of cellToChildren(parent, OVERWORLD_RESOLUTION)) {
         const [lat, lng] = cellToLatLng(id);
         const biome = regionAt(lat, lng, continents);
-        // The permanent ice cap freezes open ocean as well as any land that reaches it, so
-        // ice hexes are ordinary buildable ground even where no continent was generated.
-        const iceCap = this.iceCapBoundary(lat, lng);
+        // The permanent Arctic cap freezes open ocean as well as any land that reaches it,
+        // so ice hexes are ordinary buildable ground even where no continent was generated.
+        const arcticCap = this.arcticCapBoundary(lat, lng);
         const cell = {
           id,
           lat,
           lng,
           boundary: cellToBoundary(id),
-          ocean: !iceCap && !biome && !islands.has(id) && id !== this.homeCellId,
+          ocean: !arcticCap && !biome && !islands.has(id) && id !== this.homeCellId,
         };
         if (!cell.ocean) {
           cell.seed = id === this.homeCellId && homeSeed != null ? Number(homeSeed) : hashSeed(this.seed, id);
-          cell.biome = iceCap
-            ? BIOME_TYPES.ICE
+          cell.biome = arcticCap
+            ? BIOME_TYPES.ARCTIC
             : isPolarLatitude(lat)
-              ? BIOME_TYPES.ARCTIC
+              ? BIOME_TYPES.TUNDRA
               : biome || (Math.abs(lat) > 45 ? BIOME_TYPES.HILLY : BIOME_TYPES.PLAINS);
         }
         this.cells.set(id, cell);

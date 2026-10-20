@@ -250,8 +250,8 @@ export const BIOME_TYPES = {
   MOUNTAINOUS: 'mountainous',
   SWAMP: 'swamp',
   DESERT: 'desert',
+  TUNDRA: 'tundra',
   ARCTIC: 'arctic',
-  ICE: 'ice',
 };
 
 // Modifiers applied on top of TERRAIN_GENERATION_CONFIG. Omit biome for current
@@ -266,7 +266,7 @@ export const BIOME_TERRAIN_CONFIG = {
   [BIOME_TYPES.PLAINS]: { rockClusterScale: 0.25, forestClusterScale: 0.8, rockRadiusScale: 1 },
   [BIOME_TYPES.HILLY]: { rockClusterScale: 1.25, forestClusterScale: 0.75, rockRadiusScale: 1.8 },
   [BIOME_TYPES.MOUNTAINOUS]: { rockClusterScale: 1.5, forestClusterScale: 0.35, rockRadiusScale: 3 },
-  [BIOME_TYPES.ICE]: { rockClusterScale: 0, forestClusterScale: 0, rockRadiusScale: 0 },
+  [BIOME_TYPES.ARCTIC]: { rockClusterScale: 0, forestClusterScale: 0, rockRadiusScale: 0 },
 };
 
 export const BIOME_CONFIG = {
@@ -318,10 +318,10 @@ export const BIOME_CONFIG = {
     lakeRadiusScale: 1.6,
     riverMode: 'fork_merge',
   },
-  // Polar caps are frozen desert: snow-covered ground and mountains only. Zero
-  // forest clusters and a zero lake budget mean no trees and no standing water,
+  // Polar land outside the permanent cap is tundra: snow-covered ground and mountains
+  // only. Zero forest clusters and a zero lake budget mean no trees and no standing water,
   // and 'none' removes the river pass entirely.
-  [BIOME_TYPES.ARCTIC]: {
+  [BIOME_TYPES.TUNDRA]: {
     rockClusterScale: 0.8,
     forestClusterScale: 0,
     lakeCountMin: 0,
@@ -329,10 +329,10 @@ export const BIOME_CONFIG = {
     lakeRadiusScale: 1,
     riverMode: 'none',
   },
-  // Permanent polar ice sheets. Ice is a flat, featureless surface: no trees, no rock
+  // Permanent polar ice sheets. Arctic is a flat, featureless surface: no trees, no rock
   // formations, no lakes or rivers, and `oreScale: 0` removes hidden ore so surveying has
   // nothing to find. It is still ordinary buildable ground on the city map.
-  [BIOME_TYPES.ICE]: {
+  [BIOME_TYPES.ARCTIC]: {
     rockClusterScale: 0,
     forestClusterScale: 0,
     lakeCountMin: 0,
@@ -1243,16 +1243,16 @@ export const CLIMATE_CONFIG = {
   // their old warmth while concentrating the fall to freezing into the polar caps, so
   // the gradient reads as "hemispheres stay habitable, poles turn arctic".
   LATITUDE_GRADIENT_POWER: 1.6,
-  // Land at or beyond this absolute latitude is polar; its biome is forced to Arctic
+  // Land at or beyond this absolute latitude is polar; its biome is forced to Tundra
   // regardless of which continent region it belongs to.
   POLAR_CAP_LATITUDE: 72,
-  // At or beyond this absolute latitude the surface is permanent ice, whether or not a
-  // continent reached it: polar ocean is frozen over and becomes buildable ice too. This
-  // is the band where the seeded temperature spread stays below freezing all year.
-  ICE_CAP_LATITUDE: 78,
+  // At or beyond this absolute latitude the surface is permanent Arctic ice, whether or
+  // not a continent reached it: polar ocean is frozen over and becomes buildable ice too.
+  // This is the band where the seeded temperature spread stays below freezing all year.
+  ARCTIC_CAP_LATITUDE: 78,
   // The cap edge is not a latitude line: a seeded, smooth wobble moves the boundary by up
-  // to this many degrees so the ice sheet has an irregular coastline instead of a circle.
-  ICE_CAP_WOBBLE: 3.5,
+  // to this many degrees so the arctic coastline is irregular instead of a circle.
+  ARCTIC_CAP_WOBBLE: 3.5,
   // Per-cell (seeded) variation mixed into biome weather so two hexes of the same biome do
   // not share an identical forecast mix. Only biomes that define an explicit mix use these.
   // BIOME_WEATHER_JITTER is a relative spread (±15% of each probability).

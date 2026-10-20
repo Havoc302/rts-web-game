@@ -590,10 +590,11 @@ export class Grid {
     return neighbors.some((tile) => tile.terrain === TERRAIN_TYPE.RIVER);
   }
 
-  // An ice sheet is solid water, so pumps and sewage plants can tap the meltwater below it
-  // without touching an open river or lake. Other water-hungry buildings still need water.
+  // An Arctic ice sheet is solid water, so pumps and sewage plants can tap the meltwater
+  // below it without touching an open river or lake. Other water-hungry buildings still
+  // need water.
   hasMeltwaterAccess(producerType) {
-    return this.biome === BIOME_TYPES.ICE &&
+    return this.biome === BIOME_TYPES.ARCTIC &&
       (producerType === PRODUCER_TYPE.WATER_TOWER || producerType === PRODUCER_TYPE.SEWAGE_PLANT);
   }
 
@@ -864,8 +865,8 @@ export class Grid {
   }
 
   canSurvey(x, y) {
-    // Ice sheets are bare: there is nothing buried to find, so surveying is unavailable.
-    if (this.biome === BIOME_TYPES.ICE) return false;
+    // Arctic ice sheets are bare: there is nothing buried to find, so surveying is unavailable.
+    if (this.biome === BIOME_TYPES.ARCTIC) return false;
     const tile = this.getTile(x, y);
     if (!tile || tile.producer || tile.hasRoad || tile.oreDiscovered || tile.surveyingBy) return false;
     if (tile.terrain === TERRAIN.WATER) return false;

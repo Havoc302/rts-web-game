@@ -8,9 +8,9 @@ import { WeatherOverlay } from './WeatherOverlay.js';
 const GROUND_PALETTE = {
   default: { baseAlt: '#5b4636', base: '#463326', speckleAlt: '#6b5440', speckle: '#533d2d' },
   [BIOME_TYPES.DESERT]: { baseAlt: '#dcc48f', base: '#cfb47c', speckleAlt: '#e8d6a8', speckle: '#bfa368' },
-  [BIOME_TYPES.ARCTIC]: { baseAlt: '#eef5fa', base: '#dceaf3', speckleAlt: '#ffffff', speckle: '#c3d8e6' },
-  // Permanent ice is bluer and glassier than arctic snow so polar ice sheets read as ice.
-  [BIOME_TYPES.ICE]: { baseAlt: '#c9e6f5', base: '#b6dbef', speckleAlt: '#ffffff', speckle: '#8fc2dc' },
+  [BIOME_TYPES.TUNDRA]: { baseAlt: '#eef5fa', base: '#dceaf3', speckleAlt: '#ffffff', speckle: '#c3d8e6' },
+  // Permanent Arctic ice is bluer and glassier than tundra snow so the ice sheets read as ice.
+  [BIOME_TYPES.ARCTIC]: { baseAlt: '#c9e6f5', base: '#b6dbef', speckleAlt: '#ffffff', speckle: '#8fc2dc' },
 };
 
 export class Renderer {

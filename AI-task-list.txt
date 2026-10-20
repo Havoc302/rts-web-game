@@ -7,9 +7,9 @@ Agent handoff protocol:
 - At the end of a generation, mark completed checklist items `[done]`, record validation, and leave unfinished work with enough context for another agent to continue.
 - Do not erase historical entries. `docs/DESIGN.md` is the architecture, product, and implementation-status source of truth; distinguish planned work from implemented behavior.
 
-Open handoff (2026-10-19):
+Open handoff (2026-10-20):
 - Active task: none in progress; the next item is to pick up the Phase 1 follow-ups listed in `docs/DESIGN.md`.
-- Latest completed task: debt risk premium of +10% per outstanding loan (`0.3.9`); see the final task entry in this log.
+- Latest completed task: polar biome rename to Arctic (ice) and Tundra (`0.3.11`); see the final task entry in this log.
 - Verified baseline: `npm test` passes all 52 test files.
 - Phase 1 follow-ups are tracked in `docs/DESIGN.md`; in particular, localStorage autosave and named tick-stage extraction are not implemented. Do not treat historical `Current task` headings below as active.
 
@@ -1888,3 +1888,21 @@ Notes:
 Validation:
 - `node tests/run-all.js` passes all 52 test files.
 - Browser verification (`v0.3.10`): with the temperature forced to -41.87604358294907 and wind to 0.63456789012345, the tooltip showed Conditions `Sunny, Breezy`, wind `63%`, temperature `-42°C`, power load `359%`.
+
+Current task: Rename the polar biomes — ice to Arctic, old Arctic to Tundra (`0.3.11`).
+
+The user asked to rename Ice to Arctic and the existing Arctic to Tundra, with no other changes.
+
+- [done] `BIOME_TYPES` now exposes `ARCTIC: 'arctic'` (the featureless permanent ice sheet) and `TUNDRA: 'tundra'` (the snow-and-mountains polar ring); the `ICE` key and `'ice'` string are gone.
+- [done] Swap the biome profiles, climate entries, ground palettes, and globe colours between the two names. Terrain, weather, ore, survey, meltwater, and coverage behaviour are unchanged.
+- [done] Rename the cap helpers and constants to match (`ARCTIC_CAP_LATITUDE`, `ARCTIC_CAP_WOBBLE`, `isArcticCapLatitude`, `createArcticCapBoundary`, `OverworldMap.arcticCapBoundary`). The wobble keeps its original PRNG key so existing planet seeds draw the same coastline.
+- [done] `tests/ice-biome.test.js` becomes `tests/arctic-biome.test.js` and the old `tests/arctic-biome.test.js` becomes `tests/tundra-biome.test.js`, with assertions retargeted. Bump every version source to `0.3.11`.
+
+Notes:
+- Saves store the biome string, so the version bump also retires saves written with `'ice'` or the old `'arctic'`, which would otherwise regenerate with the wrong profile.
+- Historical log entries above still use the old names on purpose; this entry is the authoritative mapping.
+- Globe and city-map colours are unchanged, so the visual result is identical.
+
+Validation:
+- `node tests/run-all.js` passes all 52 test files.
+- Browser verification (`v0.3.11`): a fresh planet reported 125 `arctic` and 0 `ice` hexes; entering one produced biome `arctic` with 40,000 flat tiles, 0 ore, `canSurvey` false, and working road and meltwater pump placement. Seed 77767 reported 18 `tundra` hexes at 74.4° / -29.4 °C and 119 `arctic` hexes at 82° / -42.2 °C.
