@@ -9,7 +9,7 @@ Agent handoff protocol:
 
 Open handoff (2026-10-20):
 - Active task: none in progress; the next item is to pick up the Phase 1 follow-ups listed in `docs/DESIGN.md`.
-- Latest completed task: adjacent ocean edges join into one coast (`0.4.4`); see the final task entry in this log.
+- Latest completed task: river springs stay inland (`0.4.5`); see the final task entry in this log.
 - Verified baseline: `npm test` passes all 54 test files.
 - Phase 1 follow-ups are tracked in `docs/DESIGN.md`; in particular, localStorage autosave and named tick-stage extraction are not implemented. Do not treat historical `Current task` headings below as active.
 
@@ -2054,4 +2054,20 @@ Validation:
 - `node tests/run-all.js` passes all 54 test files (about 3.6 s).
 - Real hex from planet 424242 with directions N+SW+NW (hilly): 12,792 salt-water tiles, sea continuous across the north edge and down the whole west edge.
 - Multi-edge hex census on the same planet: SE+S+SW+NW, SE+S, S+SW, NE+SE+S all render as a single connected sea body; one seed produced a 5-tile landlocked lagoon, which reads as a natural lagoon.
+
+Current task: River springs stay inland (`0.4.5`).
+
+Reported: a river started right next to the ocean.
+
+- [done] `prepareCoast()` now computes the sea mask and a BFS distance field to it *before* the river is traced, and the sea is painted afterwards, so the river can see the coast it will flow into without changing the paint order.
+- [done] `pickSource` rejects any candidate that sits on a beach side or within `COAST_CONFIG.RIVER_SOURCE_MIN_SEA_DISTANCE` (50) tiles of salt water, trying land edge points first and then inland springs. When a small island has nothing that far inland it takes the clearest point on the map so generation still finishes.
+- [done] Rivers still reach the sea: mouths are unchanged, and a longer inland approach does not stop `traceRiverPath` or `carveRiverMouths`.
+- [done] `grid.riverSources` records the chosen springs for tests.
+- [done] Tests: every recorded spring is more than 0 and at least 50 tiles from the sea (or the map's best clearance), never on sand or salt water; inland cities still get a river. Bump every version source to `0.4.5`.
+
+Validation:
+- `node tests/run-all.js` passes all 54 test files (about 4.0 s).
+- Spring clearance by coast shape on 200x200 maps: N 62-161 tiles, NW+SW 159-178, N+NW+SW 52-139, all-ocean island 46-53 (the island case hits the fallback because no tile is 50 from the sea).
+- Rivers still reach the water: N coast 907 river tiles / 26 mouth tiles, NW+SW 1,179 / 40, island 415 / 25.
+- Browser check: the game boots at `v0.4.5` with no console errors.
 

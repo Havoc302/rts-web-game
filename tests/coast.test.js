@@ -194,6 +194,64 @@ function flatGrid(width = 20, height = 6) {
   assert.ok(countTerrain(tundraCoast, TERRAIN.SALT_WATER) > 0, 'Coastal tundra gets an unfrozen sea');
 }
 
+// --- River springs stay well inland -------------------------------------------------------
+{
+  // Breadth-first distance from every tile to the nearest sea tile.
+  const seaDistances = (grid) => {
+    const size = grid.width * grid.height;
+    const distance = new Int32Array(size).fill(-1);
+    const queue = [];
+    for (const tile of grid.tiles.flat()) {
+      if (tile.terrain !== TERRAIN.SALT_WATER) continue;
+      const key = tile.y * grid.width + tile.x;
+      distance[key] = 0;
+      queue.push(key);
+    }
+    for (let head = 0; head < queue.length; head++) {
+      const key = queue[head];
+      const x = key % grid.width;
+      const y = (key - x) / grid.width;
+      for (const [dx, dy] of [[0, -1], [1, 0], [0, 1], [-1, 0]]) {
+        const nx = x + dx;
+        const ny = y + dy;
+        if (nx < 0 || nx >= grid.width || ny < 0 || ny >= grid.height) continue;
+        const next = ny * grid.width + nx;
+        if (distance[next] !== -1) continue;
+        distance[next] = distance[key] + 1;
+        queue.push(next);
+      }
+    }
+    return distance;
+  };
+
+  for (const coast of [['N'], ['NW', 'SW'], ['N', 'NW', 'SW'], ['SE'], [...COAST_DIRECTIONS]]) {
+    const grid = new Grid(COAST_MAP, COAST_MAP, 424242, BIOME_TYPES.PLAINS, 2, 3, coast);
+    const distances = seaDistances(grid);
+    const longestClearance = Math.max(...distances);
+
+    assert.ok(Array.isArray(grid.riverSources) && grid.riverSources.length > 0,
+      `Coast ${coast.join('+')}: the map should record where its river springs are`);
+
+    for (const source of grid.riverSources) {
+      const clearance = distances[source.y * grid.width + source.x];
+      assert.ok(clearance > 0, `Coast ${coast.join('+')}: a spring must not sit in the sea`);
+      // Small island maps cannot offer the full clearance, so they settle for the best they have.
+      const required = Math.min(COAST_CONFIG.RIVER_SOURCE_MIN_SEA_DISTANCE, longestClearance);
+      assert.ok(clearance >= required,
+        `Coast ${coast.join('+')}: spring at (${source.x},${source.y}) is ${clearance} tiles from the sea, wanted ${required}`);
+
+      const tile = grid.getTile(source.x, source.y);
+      assert.notStrictEqual(tile.terrain, TERRAIN.SAND, 'A spring never starts on beach sand');
+      assert.notStrictEqual(tile.terrain, TERRAIN.SALT_WATER, 'A spring never starts in salt water');
+    }
+  }
+
+  // Inland cities have no sea at all, so the rule must not block their rivers.
+  const inland = new Grid(COAST_MAP, COAST_MAP, 424242, BIOME_TYPES.PLAINS, 2, 3, []);
+  assert.ok(inland.riverSources.length > 0, 'Inland cities still get a river spring');
+  assert.ok(countTerrain(inland, TERRAIN.WATER) > 0, 'Inland cities still get a river');
+}
+
 // --- Polar coasts are ice and rock, never sand -------------------------------------------
 {
   const arctic = new Grid(COAST_MAP, COAST_MAP, 424242, BIOME_TYPES.ARCTIC, 2, 3, ['N']);

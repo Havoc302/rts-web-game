@@ -185,6 +185,9 @@ export class Grid {
 
     this.tiles = [];
     this.producers = [];
+    this.riverSources = [];
+    this.coastWater = null;
+    this.seaDistance = null;
     this.activeZonedTiles.clear();
     this.activeRoadTiles.clear();
     this.activeFireTiles.clear();
@@ -351,6 +354,9 @@ export class Grid {
   generateProceduralTerrain(biome = this.biome) {
     if (biome !== undefined) this.biome = biome;
     const modifiers = this.getBiomeModifiers(this.biome);
+    // The sea is computed before the river (but painted after it) so river springs can be kept
+    // inland, away from the water they will eventually flow into.
+    this.prepareCoast();
     this.generateRiver(modifiers.riverMode);
 
     this.generateLakes(modifiers);
@@ -405,45 +411,16 @@ export class Grid {
   }
 
   generateCoast() {
-    if (this.coast.length === 0) return 0;
-    const edges = this.getCoastAnchors()
-      .map((edge) => ({
-        ...edge,
-        depth: COAST_CONFIG.MIN_DEPTH +
-          Math.floor(this.random() * (COAST_CONFIG.MAX_DEPTH - COAST_CONFIG.MIN_DEPTH + 1)),
-      }));
-    if (edges.length === 0) return 0;
-
-    const halfW = this.width / 2;
-    const halfH = this.height / 2;
-    const anchors = edges.map((edge) => ({
-      x: edge.ax * this.width,
-      y: edge.ay * this.height,
-      nx: edge.nx,
-      ny: edge.ny,
-      depth: edge.depth,
-    }));
+    const water = this.coastWater;
+    if (!water) return 0;
 
     let painted = 0;
-    const water = new Uint8Array(this.width * this.height);
     for (let y = 0; y < this.height; y++) {
-      const relY = y + 0.5 - halfH;
       for (let x = 0; x < this.width; x++) {
-        const relX = x + 0.5 - halfW;
-        const wobble = (coastNoise(this.seed + 977, x, y, COAST_CONFIG.WOBBLE_SCALE) - 0.5) * 2 * COAST_CONFIG.WOBBLE;
-
-        let bestDistance = -Infinity;
-        for (const anchor of anchors) {
-          const signed = (relX - anchor.x) * anchor.nx + (relY - anchor.y) * anchor.ny;
-          const distance = signed + anchor.depth + wobble;
-          if (distance > bestDistance) bestDistance = distance;
-        }
-
-        if (bestDistance < 0) continue;
+        if (water[this.terrainKey(x, y)] !== 1) continue;
         const tile = this.tiles[y][x];
         tile.terrain = TERRAIN_TYPE.SALT_WATER;
         tile.riverFlowDir = null;
-        water[this.terrainKey(x, y)] = 1;
         painted++;
       }
     }
@@ -506,6 +483,89 @@ export class Grid {
       paintBeach(cell);
     }
     return painted;
+  }
+
+  // Works out where the sea will be without painting it, plus a distance field to the water.
+  // The river is generated first and must keep its springs well inland, so it needs this map
+  // before the coast is drawn.
+  prepareCoast() {
+    this.coastWater = null;
+    this.seaDistance = null;
+    if (this.coast.length === 0) return 0;
+    const edges = this.getCoastAnchors()
+      .map((edge) => ({
+        ...edge,
+        depth: COAST_CONFIG.MIN_DEPTH +
+          Math.floor(this.random() * (COAST_CONFIG.MAX_DEPTH - COAST_CONFIG.MIN_DEPTH + 1)),
+      }));
+    if (edges.length === 0) return 0;
+
+    const halfW = this.width / 2;
+    const halfH = this.height / 2;
+    const anchors = edges.map((edge) => ({
+      x: edge.ax * this.width,
+      y: edge.ay * this.height,
+      nx: edge.nx,
+      ny: edge.ny,
+      depth: edge.depth,
+    }));
+    const water = new Uint8Array(this.width * this.height);
+    let depth = 0;
+    for (let y = 0; y < this.height; y++) {
+      const relY = y + 0.5 - halfH;
+      for (let x = 0; x < this.width; x++) {
+        const relX = x + 0.5 - halfW;
+        const wobble = (coastNoise(this.seed + 977, x, y, COAST_CONFIG.WOBBLE_SCALE) - 0.5) * 2 * COAST_CONFIG.WOBBLE;
+
+        let bestDistance = -Infinity;
+        for (const anchor of anchors) {
+          const signed = (relX - anchor.x) * anchor.nx + (relY - anchor.y) * anchor.ny;
+          const distance = signed + anchor.depth + wobble;
+          if (distance > bestDistance) bestDistance = distance;
+        }
+        if (bestDistance < 0) continue;
+        water[this.terrainKey(x, y)] = 1;
+        depth++;
+      }
+    }
+    if (depth === 0) return 0;
+
+    this.coastWater = water;
+    this.seaDistance = this.buildSeaDistance(water);
+    return depth;
+  }
+
+  // Cheap BFS distance from every tile to the nearest sea tile, used to keep river springs away
+  // from the coast. Capped so a landlocked tile simply reports a large number.
+  buildSeaDistance(water) {
+    const limit = 255;
+    const distance = new Uint8Array(this.width * this.height);
+    const queue = [];
+    for (let index = 0; index < water.length; index++) {
+      if (water[index] !== 1) continue;
+      distance[index] = 0;
+      queue.push(index);
+    }
+    let head = 0;
+    while (head < queue.length) {
+      const index = queue[head];
+      head++;
+      const current = distance[index];
+      if (current >= limit) continue;
+      const x = index % this.width;
+      const y = (index - x) / this.width;
+      for (const [dx, dy] of [[0, -1], [1, 0], [0, 1], [-1, 0]]) {
+        const nx = x + dx;
+        const ny = y + dy;
+        if (nx < 0 || nx >= this.width || ny < 0 || ny >= this.height) continue;
+        const nextIndex = ny * this.width + nx;
+        if (water[nextIndex] === 1) continue;
+        if (distance[nextIndex] !== 0) continue;
+        distance[nextIndex] = current + 1;
+        queue.push(nextIndex);
+      }
+    }
+    return distance;
   }
 
   // A beach can still sit between a river and the sea when the path arrives diagonally, which
@@ -689,16 +749,41 @@ export class Grid {
       y: marginY + Math.floor(this.random() * (this.height - marginY * 2)),
     });
     const pickSource = (excluded = null) => {
-      if (sourceEdges.length > 0 || mouths.length === 0) {
-        const edge = pickSourceEdge(excluded);
-        return { edge, point: this.getRandomEdgePoint(edge) };
+      // A spring must sit well inland: never on a beach side, and never within
+      // COAST_CONFIG.RIVER_SOURCE_MIN_SEA_DISTANCE tiles of the water it will flow into.
+      const clearance = (point) => {
+        if (!this.seaDistance) return Number.POSITIVE_INFINITY;
+        return this.seaDistance[this.terrainKey(point.x, point.y)] ?? 0;
+      };
+      const minimum = COAST_CONFIG.RIVER_SOURCE_MIN_SEA_DISTANCE;
+      const tried = [];
+      const attempt = (candidate) => {
+        tried.push(candidate);
+        return clearance(candidate.point) >= minimum ? candidate : null;
+      };
+
+      const edgePool = (sourceEdges.length > 0 ? sourceEdges : edges).filter((edge) => edge !== excluded);
+      const edgesToTry = edgePool.length > 0 ? edgePool : edges;
+      for (let i = 0; i < 12; i++) {
+        const edge = edgesToTry[Math.floor(this.random() * edgesToTry.length)];
+        const accepted = attempt({ edge, point: this.getRandomEdgePoint(edge) });
+        if (accepted) return accepted;
       }
-      return { edge: excluded, point: inlandPoint() };
+      for (let i = 0; i < 12; i++) {
+        const accepted = attempt({ edge: excluded, point: inlandPoint() });
+        if (accepted) return accepted;
+      }
+      // A very coastal map may have nothing 50 tiles from the sea; take the clearest option so
+      // generation still finishes instead of looping.
+      return tried.reduce((best, candidate) => (
+        clearance(candidate.point) > clearance(best.point) ? candidate : best
+      ));
     };
 
     // Primary start and end. The downstream end always reaches the sea when there is a coast,
     // because the flow follows the path order: start -> end runs outward.
     const source1 = pickSource();
+    this.riverSources = [source1.point];
     const startEdge1 = source1.edge;
     const mouth1 = pickMouth(startEdge1);
     const endEdge1 = mouth1 ? mouth1.edge : pickSourceEdge(startEdge1);
@@ -743,6 +828,7 @@ export class Grid {
 
       // 2nd Start point, preferring land so the source is not in the sea.
       const source2 = pickSource(endEdge1);
+      this.riverSources.push(source2.point);
       const startEdge2 = source2.edge;
       const startPos2 = source2.point;
 

@@ -670,6 +670,7 @@ export const COAST_CONFIG = {
   ROCK_BEACH_CHANCE: 0.3,                  // Share of beach tiles that are rock instead of sand
   ROCK_PATCH_SCALE: 2,                     // Rock patch lattice size in tiles
   POLAR_ICE_CHANCE: 0.55,                  // Share of a polar shoreline that is ice rather than rock
+  RIVER_SOURCE_MIN_SEA_DISTANCE: 50,       // A river spring must be this many tiles from the sea
   BRIDGE_MAX_TILES: 10,                    // Longest continuous bridge run that may be built
 };
 
