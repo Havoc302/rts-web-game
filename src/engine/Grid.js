@@ -4,22 +4,29 @@ const TIER_DENSITY = [DENSITY.LIGHT, DENSITY.MEDIUM, DENSITY.HIGH];
 
 // One anchor + outward normal per ocean-facing hex edge, in tile-map space. Side edges use
 // the middle of that map side; diagonal edges use the matching corner, so a hex that faces
-// the sea on two edges gets two different bands. A pointy-top hex has vertices at east and
-// west, so a hex that is ocean on all six edges also closes those two sides: that turns a
-// one-hex island into a real island instead of land running off the map edge.
+// the sea on two edges gets two different bands. E and W are not hex edges: they are used when
+// two ocean corners share a map side, so the sea joins up around that side instead of leaving
+// dry land between two corner wedges.
 const COAST_EDGES = {
   N: { ax: 0, ay: -0.5, nx: 0, ny: -1 },
   NE: { ax: 0.5, ay: -0.5, nx: Math.SQRT1_2, ny: -Math.SQRT1_2 },
+  E: { ax: 0.5, ay: 0, nx: 1, ny: 0 },
   SE: { ax: 0.5, ay: 0.5, nx: Math.SQRT1_2, ny: Math.SQRT1_2 },
   S: { ax: 0, ay: 0.5, nx: 0, ny: 1 },
   SW: { ax: -0.5, ay: 0.5, nx: -Math.SQRT1_2, ny: Math.SQRT1_2 },
+  W: { ax: -0.5, ay: 0, nx: -1, ny: 0 },
   NW: { ax: -0.5, ay: -0.5, nx: -Math.SQRT1_2, ny: -Math.SQRT1_2 },
 };
 
-const ISLAND_EDGES = {
-  E: { ax: 0.5, ay: 0, nx: 1, ny: 0 },
-  W: { ax: -0.5, ay: 0, nx: -1, ny: 0 },
-};
+// A map side is flooded when it carries a side edge, or when both corners on that side are
+// ocean, so a hex that is sea on NW and SW gets one continuous west coast. This also closes an
+// all-ocean hex into a ring without a separate island rule.
+const COAST_SIDE_PAIRS = [
+  { side: 'N', corners: ['NW', 'NE'] },
+  { side: 'E', corners: ['NE', 'SE'] },
+  { side: 'S', corners: ['SE', 'SW'] },
+  { side: 'W', corners: ['SW', 'NW'] },
+];
 
 // Which map edge a river mouth should use for a given ocean-facing hex edge, and which half of
 // that edge the sea covers. Side coasts flood the whole side; corner coasts flood a corner band.
@@ -384,11 +391,22 @@ export class Grid {
   // half-plane: salt water outside it, a beach of sand or rock inside it, ordinary
   // terrain beyond. Depths and beach widths are rolled per edge, so a hex that touches
   // ocean on two sides gets two different bands, and an island hex closes in from all six.
+  // Turns the ocean-facing hex edges into the map-side half-planes to paint. Corners always
+  // contribute; a side is added when that side edge is ocean or both of its corners are.
+  getCoastAnchors() {
+    const directions = new Set(this.coast);
+    const names = new Set(this.coast);
+    for (const { side, corners } of COAST_SIDE_PAIRS) {
+      if (corners.every((corner) => directions.has(corner))) names.add(side);
+    }
+    return Array.from(names)
+      .map((name) => COAST_EDGES[name])
+      .filter(Boolean);
+  }
+
   generateCoast() {
     if (this.coast.length === 0) return 0;
-    const extraEdges = this.coast.length === COAST_DIRECTIONS.length ? Object.values(ISLAND_EDGES) : [];
-    const edges = [...this.coast.map((direction) => COAST_EDGES[direction]), ...extraEdges]
-      .filter(Boolean)
+    const edges = this.getCoastAnchors()
       .map((edge) => ({
         ...edge,
         depth: COAST_CONFIG.MIN_DEPTH +

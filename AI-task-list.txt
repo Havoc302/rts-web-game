@@ -9,7 +9,7 @@ Agent handoff protocol:
 
 Open handoff (2026-10-20):
 - Active task: none in progress; the next item is to pick up the Phase 1 follow-ups listed in `docs/DESIGN.md`.
-- Latest completed task: wider, wobblier coastline (`0.4.3`); see the final task entry in this log.
+- Latest completed task: adjacent ocean edges join into one coast (`0.4.4`); see the final task entry in this log.
 - Verified baseline: `npm test` passes all 54 test files.
 - Phase 1 follow-ups are tracked in `docs/DESIGN.md`; in particular, localStorage autosave and named tick-stage extraction are not implemented. Do not treat historical `Current task` headings below as active.
 
@@ -2040,4 +2040,18 @@ Validation:
 - `node tests/run-all.js` passes all 54 test files (about 3.8 s; the coast suite is now the critical path because it runs full-size maps).
 - Shore depth census on a 200x200 Arctic north coast: 248 tiles at one step from the sea, 180 at two, none deeper; median 1.
 - Browser verification (`v0.4.3`): a plains hex with `coast: ['NW']` rendered a large staggered sea across the corner (263 sea tiles) with a thin sand beach and the river cutting through to the water; no console errors.
+
+Current task: Adjacent ocean edges join into one coast (`0.4.4`).
+
+Reported: a hex bordered on N, NW and SW only showed a small sea in the SW corner of its city map.
+
+- [done] `getCoastAnchors` now derives the painted half-planes from the sea as a whole: every ocean-facing corner contributes, and a map side is added when that side edge is ocean or when both of its corners are (NW+SW flood the west side, NE+SE the east, NE+NW the north, SE+SW the south).
+- [done] Edges that are not neighbours stay separate: N+SE still paints a north band plus a south-east corner with land between them.
+- [done] The old all-six-edges island special case is gone; an all-ocean hex now closes automatically because both corners of every side are present.
+- [done] Tests: west/east side connectivity, merged N+NW+SW, the west edge being sea corner to corner, and N+SE staying split. Bump every version source to `0.4.4`.
+
+Validation:
+- `node tests/run-all.js` passes all 54 test files (about 3.6 s).
+- Real hex from planet 424242 with directions N+SW+NW (hilly): 12,792 salt-water tiles, sea continuous across the north edge and down the whole west edge.
+- Multi-edge hex census on the same planet: SE+S+SW+NW, SE+S, S+SW, NE+SE+S all render as a single connected sea body; one seed produced a 5-tile landlocked lagoon, which reads as a natural lagoon.
 

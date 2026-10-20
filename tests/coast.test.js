@@ -144,6 +144,31 @@ function flatGrid(width = 20, height = 6) {
   assert.ok(isSalt(southeastCoast, COAST_MAP - 1, COAST_MAP - 1), 'A south-east hex floods its corner');
   assert.strictEqual(isSalt(southeastCoast, 0, 0), false, 'Distant corners stay land');
 
+  // Ocean on both corners of a map side joins into one continuous coast instead of leaving a
+  // strip of dry land between two wedges.
+  const westCoast = new Grid(COAST_MAP, COAST_MAP, 424242, BIOME_TYPES.PLAINS, 2, 3, ['NW', 'SW']);
+  assert.ok(isSalt(westCoast, 0, COAST_MAP / 2), 'NW + SW floods the whole west side');
+  assert.strictEqual(isSalt(westCoast, COAST_MAP - 1, COAST_MAP / 2), false, 'The east side stays land');
+  const westernSea = [];
+  for (let y = 0; y < COAST_MAP; y++) {
+    if (isSalt(westCoast, 0, y)) westernSea.push(y);
+  }
+  assert.strictEqual(westernSea.length, COAST_MAP, 'The west edge is sea from corner to corner');
+
+  const northWestCoast = new Grid(COAST_MAP, COAST_MAP, 424242, BIOME_TYPES.PLAINS, 2, 3, ['N', 'NW', 'SW']);
+  assert.ok(isSalt(northWestCoast, COAST_MAP / 2, 0), 'N + NW + SW keeps the north coast');
+  assert.ok(isSalt(northWestCoast, 0, COAST_MAP / 2), 'N + NW + SW joins the west coast to it');
+
+  const eastCoast = new Grid(COAST_MAP, COAST_MAP, 424242, BIOME_TYPES.PLAINS, 2, 3, ['NE', 'SE']);
+  assert.ok(isSalt(eastCoast, COAST_MAP - 1, COAST_MAP / 2), 'NE + SE floods the whole east side');
+
+  // Two ocean edges that are not neighbours stay separate: N and SE must not join.
+  const splitCoast = new Grid(COAST_MAP, COAST_MAP, 424242, BIOME_TYPES.PLAINS, 2, 3, ['N', 'SE']);
+  assert.ok(isSalt(splitCoast, COAST_MAP / 2, 0), 'N floods the north edge');
+  assert.ok(isSalt(splitCoast, COAST_MAP - 1, COAST_MAP - 1), 'SE floods its corner');
+  assert.strictEqual(isSalt(splitCoast, 0, COAST_MAP / 2), false, 'N and SE do not merge down the west side');
+  assert.strictEqual(isSalt(splitCoast, COAST_MAP / 2, COAST_MAP - 1), false, 'N and SE do not merge across the south edge');
+
   // An island hex closes in from every side, leaving buildable ground in the middle.
   const island = new Grid(COAST_MAP, COAST_MAP, 424242, BIOME_TYPES.PLAINS, 2, 3, [...COAST_DIRECTIONS]);
   assert.ok(isSalt(island, COAST_MAP / 2, 0), 'Island: sea on the north edge');
