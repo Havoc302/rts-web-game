@@ -274,7 +274,9 @@ export const BIOME_TYPES = {
 
 // Modifiers applied on top of TERRAIN_GENERATION_CONFIG. Omit biome for current
 // city-map defaults (scale 1, mixed rivers, 0–5 lakes).
-export const BIOME_GENERATION_VERSION = 3;
+// Version 4 paints mountains before the river (rivers cut valleys through them and springs can
+// rise in a range), so terrain for a given seed changed and earlier saves must be regenerated.
+export const BIOME_GENERATION_VERSION = 4;
 
 export const BIOME_LAKE_CONFIG = {
   [BIOME_TYPES.SWAMP]: { lakeCountMin: 10, lakeCountMax: 16, lakeRadiusScale: 3.2 },

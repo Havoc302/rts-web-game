@@ -10,7 +10,7 @@ import {
   serializeGame,
   serializeGameToJson,
 } from '../src/engine/SaveGame.js';
-import { APP_VERSION, BIOME_TYPES, PRODUCER_TYPE, TERRAIN, ZONE } from '../src/config.js';
+import { APP_VERSION, BIOME_GENERATION_VERSION, BIOME_TYPES, PRODUCER_TYPE, TERRAIN, ZONE } from '../src/config.js';
 
 function makeApp(grid, simulation, extras = {}) {
   simulation.isPaused = true;
@@ -53,7 +53,7 @@ function flatten(grid) {
 }
 
 for (const biome of Object.values(BIOME_TYPES)) {
-  for (const profile of [1, 2, 3]) {
+  for (const profile of [1, 2, BIOME_GENERATION_VERSION]) {
     const grid = new Grid(40, 40, 424242, biome, GENERATION_VERSION, profile);
     const app = makeApp(grid, new Simulation(grid));
     const saved = serializeGame(app);
@@ -72,7 +72,7 @@ for (const biome of Object.values(BIOME_TYPES)) {
 // Ocean-facing hex edges are part of the map identity: without them a coastal city reloads
 // as an inland one and the tile diff no longer matches.
 for (const coast of [[], ['N'], ['SE'], ['N', 'NE', 'SE', 'S', 'SW', 'NW']]) {
-  const grid = new Grid(40, 40, 424242, BIOME_TYPES.TEMPERATE, GENERATION_VERSION, 3, coast);
+  const grid = new Grid(40, 40, 424242, BIOME_TYPES.TEMPERATE, GENERATION_VERSION, BIOME_GENERATION_VERSION, coast);
   const app = makeApp(grid, new Simulation(grid));
   const saved = serializeGame(app);
   assert.deepStrictEqual(saved.map.coast, coast, 'The coast list is saved verbatim');

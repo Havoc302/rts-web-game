@@ -186,6 +186,7 @@ export class Grid {
     this.tiles = [];
     this.producers = [];
     this.riverSources = [];
+    this.mountainSprings = null;
     this.coastWater = null;
     this.seaDistance = null;
     this.activeZonedTiles.clear();
@@ -354,8 +355,10 @@ export class Grid {
   generateProceduralTerrain(biome = this.biome) {
     if (biome !== undefined) this.biome = biome;
     const modifiers = this.getBiomeModifiers(this.biome);
-    // The sea is computed before the river (but painted after it) so river springs can be kept
-    // inland, away from the water they will eventually flow into.
+    // Mountains are painted first so the river can spring from high ground (it paints over the
+    // rock, carving a valley), and the sea is computed before the river (but painted after it)
+    // so river springs can be kept inland, away from the water they will eventually flow into.
+    this.generateRockClusters(modifiers);
     this.prepareCoast();
     this.generateRiver(modifiers.riverMode);
 
@@ -378,7 +381,12 @@ export class Grid {
         TERRAIN_GENERATION_CONFIG.FOREST_CLUSTER_RADIUS_WOBBLE_RANGE,
         TERRAIN_GENERATION_CONFIG.FOREST_CLUSTER_RADIUS_WOBBLE_CENTER);
     }
+  }
 
+  // Rock is painted before the river so the channel can cut through a range instead of the range
+  // appearing on top of it, which also leaves the mountain masses available as spring sites.
+  generateRockClusters(modifiers = this.getBiomeModifiers()) {
+    const mapScale = (this.width * this.height) / TERRAIN_GENERATION_CONFIG.MAP_SCALE_BASE_AREA;
     const numRockClusters = Math.round(
       TERRAIN_GENERATION_CONFIG.ROCK_CLUSTER_COUNT_SCALE * mapScale * (modifiers.rockClusterScale ?? 1),
     );
@@ -391,6 +399,65 @@ export class Grid {
         TERRAIN_GENERATION_CONFIG.ROCK_CLUSTER_RADIUS_WOBBLE_RANGE,
         TERRAIN_GENERATION_CONFIG.ROCK_CLUSTER_RADIUS_WOBBLE_CENTER);
     }
+    this.mountainSprings = this.collectMountainSprings();
+    return numRockClusters;
+  }
+
+  // The interior point of every separate mountain mass, biggest first. A river with no land edge
+  // to start on (a one-hex island, or a hex ringed by coastline) rises in the largest range.
+  collectMountainSprings() {
+    const seen = new Uint8Array(this.width * this.height);
+    const masses = [];
+    for (let y = 0; y < this.height; y++) {
+      for (let x = 0; x < this.width; x++) {
+        const index = this.terrainKey(x, y);
+        if (seen[index] || this.tiles[y][x].terrain !== TERRAIN_TYPE.ROCK) continue;
+        seen[index] = 1;
+        const tiles = [];
+        const queue = [{ x, y }];
+        while (queue.length > 0) {
+          const current = queue.pop();
+          tiles.push(current);
+          for (const [dx, dy] of [[0, -1], [1, 0], [0, 1], [-1, 0]]) {
+            const nx = current.x + dx;
+            const ny = current.y + dy;
+            if (!this.isInBounds(nx, ny)) continue;
+            const next = this.terrainKey(nx, ny);
+            if (seen[next] || this.tiles[ny][nx].terrain !== TERRAIN_TYPE.ROCK) continue;
+            seen[next] = 1;
+            queue.push({ x: nx, y: ny });
+          }
+        }
+        masses.push({ tiles, spring: this.getMassSpring(tiles) });
+      }
+    }
+    masses.sort((a, b) => b.tiles.length - a.tiles.length ||
+      a.spring.y - b.spring.y || a.spring.x - b.spring.x);
+    return masses.map((mass) => mass.spring);
+  }
+
+  // The rock tile nearest the middle of the mass, so the spring sits in the heart of the range
+  // rather than on a stray outcrop.
+  getMassSpring(tiles) {
+    let sumX = 0;
+    let sumY = 0;
+    for (const tile of tiles) {
+      sumX += tile.x;
+      sumY += tile.y;
+    }
+    const centerX = sumX / tiles.length;
+    const centerY = sumY / tiles.length;
+    let best = tiles[0];
+    let bestDistance = (best.x - centerX) ** 2 + (best.y - centerY) ** 2;
+    for (const tile of tiles) {
+      const distance = (tile.x - centerX) ** 2 + (tile.y - centerY) ** 2;
+      if (distance < bestDistance ||
+          (distance === bestDistance && (tile.y < best.y || (tile.y === best.y && tile.x < best.x)))) {
+        best = tile;
+        bestDistance = distance;
+      }
+    }
+    return { x: best.x, y: best.y };
   }
 
   // Paints the ocean side of a coastal city. Every ocean-facing hex edge becomes a
@@ -728,8 +795,11 @@ export class Grid {
     const mouths = this.getCoastalRiverMouths();
     const coastalEdges = Array.from(new Set(mouths.map((mouth) => mouth.edge)));
     // Sources come from land so a river never starts in the sea. A hex whose every edge is
-    // ocean (a one-hex island) instead springs from an inland point and runs to the coast.
+    // ocean (a one-hex island) has no land edge at all, so it springs from the biggest mass of
+    // mountains instead and runs down to the coast.
     const sourceEdges = edges.filter((edge) => !coastalEdges.includes(edge));
+    const mountainSprings = this.mountainSprings ?? this.collectMountainSprings();
+    const triedSprings = new Set();
     const pickSourceEdge = (excluded = null) => {
       const pool = (sourceEdges.length > 0 ? sourceEdges : edges).filter((edge) => edge !== excluded);
       const list = pool.length > 0 ? pool : edges;
@@ -769,12 +839,23 @@ export class Grid {
         const accepted = attempt({ edge, point: this.getRandomEdgePoint(edge) });
         if (accepted) return accepted;
       }
+      // No land edge is usable, so the spring rises in the largest mass of mountains: high ground
+      // is where real springs sit. Masses are tried largest first and only one spring is taken
+      // from each, so a forked river does not start twice in the same range.
+      for (const spring of mountainSprings) {
+        const key = `${spring.x},${spring.y}`;
+        if (triedSprings.has(key)) continue;
+        triedSprings.add(key);
+        const accepted = attempt({ edge: excluded, point: spring });
+        if (accepted) return accepted;
+      }
       for (let i = 0; i < 12; i++) {
         const accepted = attempt({ edge: excluded, point: inlandPoint() });
         if (accepted) return accepted;
       }
-      // A very coastal map may have nothing 50 tiles from the sea; take the clearest option so
-      // generation still finishes instead of looping.
+      // Nothing on this hex is 50 tiles from the sea (a one-hex island reaches the coast from every
+      // direction), so take the clearest option instead of looping. Mountains are tried first, so
+      // the biggest range wins whenever it is as clear as anything else.
       return tried.reduce((best, candidate) => (
         clearance(candidate.point) > clearance(best.point) ? candidate : best
       ));

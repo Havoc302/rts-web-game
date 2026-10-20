@@ -9,7 +9,7 @@ Agent handoff protocol:
 
 Open handoff (2026-10-20):
 - Active task: none in progress; the next item is to pick up the Phase 1 follow-ups listed in `docs/DESIGN.md`.
-- Latest completed task: river springs stay inland (`0.4.5`); see the final task entry in this log.
+- Latest completed task: rivers spring from the biggest mountain range when there is no land edge (`0.4.6`); see the final task entry in this log.
 - Verified baseline: `npm test` passes all 54 test files.
 - Phase 1 follow-ups are tracked in `docs/DESIGN.md`; in particular, localStorage autosave and named tick-stage extraction are not implemented. Do not treat historical `Current task` headings below as active.
 
@@ -2070,4 +2070,20 @@ Validation:
 - Spring clearance by coast shape on 200x200 maps: N 62-161 tiles, NW+SW 159-178, N+NW+SW 52-139, all-ocean island 46-53 (the island case hits the fallback because no tile is 50 from the sea).
 - Rivers still reach the water: N coast 907 river tiles / 26 mouth tiles, NW+SW 1,179 / 40, island 415 / 25.
 - Browser check: the game boots at `v0.4.5` with no console errors.
+
+Current task: Rivers spring from the biggest mountain range when there is no land edge (`0.4.6`).
+
+Reported: on a hex with no usable land edge for a river source, the source should come from the largest mass of mountains on the map rather than an arbitrary inland point.
+
+- [done] `generateRockClusters` is now its own step and runs before `prepareCoast`/`generateRiver`, so mountains exist when the river is traced. `paintTerrainCluster` still only fills empty ground, so a range never covers a river or lake, while `paintRiverSegment` overwrites rock so a channel cuts a valley through a range.
+- [done] `collectMountainSprings` finds every separate rock mass with a flood fill, sorts them biggest first, and `getMassSpring` returns the rock tile nearest each mass centre. The list is cached on the grid as `mountainSprings`.
+- [done] `pickSource` tries land edges first, then each mountain mass largest first, then random inland points. So a hex with no land edge at all (a one-hex island or a ring of coastline) springs from the biggest range that clears the sea, and a map where nothing is 50 tiles from the sea still falls back to the clearest point, with the biggest range winning any tie.
+- [done] `BIOME_GENERATION_VERSION` is now 4 because a given seed produces different terrain; save validation and the save/biome/coast tests use the constant instead of a hard-coded 3.
+- [done] Tests: two painted masses are reported largest first from their centres; island maps with no land edge spring from the largest qualifying mass and still get a river. Versions bumped to `0.4.6`.
+
+Validation:
+- `node tests/run-all.js` passes all 54 test files (about 4.0 s).
+- Island hexes (all six edges ocean, 200x200): mountain masses 38-40 per map; springs land on a mountain-mass point on seeds 424242 and 90210 (clearance 50/51) and on the next-largest qualifying mass on seed 77764 (clearance 58); seed 12345 has no tile 50 tiles from the sea and keeps the previous clearest-point fallback (48), so the inland rule still wins over a coastal mountain.
+- Coastal hexes still spring from land edges: N coast 55-163 tiles of clearance, NW+SW 159-175, N+NW+SW 61-124, with 0 inland-flowing mouths and 500-1,400 river tiles per map.
+- Browser check: the game boots at `v0.4.6` with no page errors.
 

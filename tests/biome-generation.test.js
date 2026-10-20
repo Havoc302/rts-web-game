@@ -1,6 +1,6 @@
 import assert from 'assert';
 import { Grid } from '../src/engine/Grid.js';
-import { BIOME_TYPES, TERRAIN, TERRAIN_GENERATION_CONFIG } from '../src/config.js';
+import { BIOME_GENERATION_VERSION, BIOME_TYPES, TERRAIN, TERRAIN_GENERATION_CONFIG } from '../src/config.js';
 
 assert.ok(TERRAIN_GENERATION_CONFIG.DEFAULT_RANDOM_SEED, 'DEFAULT_RANDOM_SEED must be defined');
 
@@ -24,7 +24,7 @@ const mountain = new Grid(40, 40, seed, BIOME_TYPES.MOUNTAINOUS);
 const swamp = new Grid(40, 40, seed, BIOME_TYPES.SWAMP);
 
 for (const citySeed of [424242, 12345, 4893875]) {
-  for (const profile of [1, 2, 3]) {
+  for (const profile of [1, 2, BIOME_GENERATION_VERSION]) {
     const base = new Grid(40, 40, citySeed, null, TERRAIN_GENERATION_CONFIG.GENERATION_VERSION, profile);
     const temperate = new Grid(40, 40, citySeed, BIOME_TYPES.TEMPERATE, TERRAIN_GENERATION_CONFIG.GENERATION_VERSION, profile);
     assert.deepStrictEqual(temperate.getBiomeModifiers(), base.getBiomeModifiers(), 'Temperate should use the unmodified base settings');

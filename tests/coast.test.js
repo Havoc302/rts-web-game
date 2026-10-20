@@ -4,6 +4,7 @@ import { OverworldMap } from '../src/engine/OverworldMap.js';
 import { UtilityManager } from '../src/engine/UtilityManager.js';
 import { PollutionManager } from '../src/engine/PollutionManager.js';
 import {
+  BIOME_GENERATION_VERSION,
   BIOME_TYPES,
   COAST_CONFIG,
   COAST_DIRECTIONS,
@@ -225,7 +226,7 @@ function flatGrid(width = 20, height = 6) {
   };
 
   for (const coast of [['N'], ['NW', 'SW'], ['N', 'NW', 'SW'], ['SE'], [...COAST_DIRECTIONS]]) {
-    const grid = new Grid(COAST_MAP, COAST_MAP, 424242, BIOME_TYPES.PLAINS, 2, 3, coast);
+    const grid = new Grid(COAST_MAP, COAST_MAP, 424242, BIOME_TYPES.PLAINS, 2, BIOME_GENERATION_VERSION, coast);
     const distances = seaDistances(grid);
     const longestClearance = Math.max(...distances);
 
@@ -247,9 +248,52 @@ function flatGrid(width = 20, height = 6) {
   }
 
   // Inland cities have no sea at all, so the rule must not block their rivers.
-  const inland = new Grid(COAST_MAP, COAST_MAP, 424242, BIOME_TYPES.PLAINS, 2, 3, []);
+  const inland = new Grid(COAST_MAP, COAST_MAP, 424242, BIOME_TYPES.PLAINS, 2, BIOME_GENERATION_VERSION, []);
   assert.ok(inland.riverSources.length > 0, 'Inland cities still get a river spring');
   assert.ok(countTerrain(inland, TERRAIN.WATER) > 0, 'Inland cities still get a river');
+}
+
+// --- A river with no land edge springs from the biggest range ----------------------------
+{
+  // Mountain masses are found biggest first, and each spring sits in the middle of its range.
+  const massGrid = new Grid(40, 40, 424242, BIOME_TYPES.PLAINS, 2, BIOME_GENERATION_VERSION, []);
+  for (const row of massGrid.tiles) {
+    for (const tile of row) {
+      tile.terrain = TERRAIN.FLAT;
+      tile.riverFlowDir = null;
+    }
+  }
+  const paintMass = (x0, y0, size) => {
+    for (let y = y0; y < y0 + size; y++) {
+      for (let x = x0; x < x0 + size; x++) massGrid.getTile(x, y).terrain = TERRAIN.MOUNTAIN;
+    }
+  };
+  paintMass(4, 4, 3);
+  paintMass(20, 20, 5);
+  const springs = massGrid.collectMountainSprings();
+  assert.strictEqual(springs.length, 2, 'Two separate ranges should be reported separately');
+  assert.deepStrictEqual(springs[0], { x: 22, y: 22 }, 'The biggest range is reported first, from its middle');
+  assert.deepStrictEqual(springs[1], { x: 5, y: 5 }, 'Smaller ranges follow');
+
+  // A one-hex island has no land edge to start on, so the spring rises in the largest mass.
+  let islandSeedsChecked = 0;
+  for (const seed of [424242, 77764, 90210, 12345]) {
+    const island = new Grid(COAST_MAP, COAST_MAP, seed, BIOME_TYPES.PLAINS, 2, BIOME_GENERATION_VERSION, [...COAST_DIRECTIONS]);
+    assert.ok(island.mountainSprings.length >= 2,
+      `Seed ${seed}: an island should still record its mountain masses`);
+    const clearance = (point) => island.seaDistance[island.terrainKey(point.x, point.y)] ?? 0;
+    const qualifying = island.mountainSprings.find(
+      (spring) => clearance(spring) >= COAST_CONFIG.RIVER_SOURCE_MIN_SEA_DISTANCE,
+    );
+    // A small island may not offer 50 tiles of clearance anywhere; it settles for the clearest
+    // point instead, which the spring test above already covers.
+    if (!qualifying) continue;
+    islandSeedsChecked++;
+    assert.deepStrictEqual(island.riverSources[0], qualifying,
+      `Seed ${seed}: with no land edge, the river should spring from the biggest range`);
+    assert.ok(countTerrain(island, TERRAIN.WATER) > 0, `Seed ${seed}: the island still gets a river`);
+  }
+  assert.ok(islandSeedsChecked > 0, 'At least one island seed should exercise the mountain spring');
 }
 
 // --- Polar coasts are ice and rock, never sand -------------------------------------------
