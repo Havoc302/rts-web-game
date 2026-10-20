@@ -16,6 +16,10 @@ console.log('=== tundra-biome.test.js ===');
 
 const countTerrain = (grid, terrain) => grid.tiles.flat().filter((tile) => tile.terrain === terrain).length;
 
+// Tundra assertions are shares and adjacency rules rather than exact tile counts, so a 120 tile
+// map is as strong as a 200 tile one and generates in a fraction of the time.
+const TUNDRA_MAP = 120;
+
 // --- Polar caps are identified by latitude, in both hemispheres --------------------------
 assert.ok(Object.values(BIOME_TYPES).includes(BIOME_TYPES.TUNDRA), 'Tundra must be a registered biome');
 assert.ok(CLIMATE_CONFIG.POLAR_CAP_LATITUDE > 0 && CLIMATE_CONFIG.POLAR_CAP_LATITUDE < 90,
@@ -85,11 +89,11 @@ assert.ok(Array.from(new OverworldMap(424242).cells.values()).some((cell) => cel
     .filter(([dx, dy]) => grid.getTile(x + dx, y + dy)?.terrain === TERRAIN.WATER).length;
 
   for (const citySeed of [424242, 12345, 4893875]) {
-    const tundra = new Grid(200, 200, citySeed, BIOME_TYPES.TUNDRA);
+    const tundra = new Grid(TUNDRA_MAP, TUNDRA_MAP, citySeed, BIOME_TYPES.TUNDRA);
     assert.strictEqual(countTerrain(tundra, TERRAIN.FOREST), 0, `Seed ${citySeed}: tundra cities should have no forest`);
     assert.ok(countTerrain(tundra, TERRAIN.WATER) > 0, `Seed ${citySeed}: the tundra river should keep an open lane`);
     assert.ok(countTerrain(tundra, TERRAIN.ICE) > 0, `Seed ${citySeed}: tundra lakes and river banks should freeze`);
-    assert.ok(countTerrain(tundra, TERRAIN.MOUNTAIN) > 40000 * 0.1, `Seed ${citySeed}: tundra cities should still be mountainous`);
+    assert.ok(countTerrain(tundra, TERRAIN.MOUNTAIN) > TUNDRA_MAP * TUNDRA_MAP * 0.1, `Seed ${citySeed}: tundra cities should still be mountainous`);
     assert.strictEqual(tundra.fireCandidateTiles.size, 0, `Seed ${citySeed}: tundra forests cannot burn because there are none`);
 
     // The centre of the river never freezes, so pollution keeps flowing and there is always
@@ -113,7 +117,7 @@ assert.ok(Array.from(new OverworldMap(424242).cells.values()).some((cell) => cel
   }
 
   // Warm biomes keep liquid lakes and never freeze their banks.
-  const temperate = new Grid(200, 200, 424242, BIOME_TYPES.TEMPERATE);
+  const temperate = new Grid(TUNDRA_MAP, TUNDRA_MAP, 424242, BIOME_TYPES.TEMPERATE);
   assert.strictEqual(countTerrain(temperate, TERRAIN.ICE), 0, 'Temperate water should never freeze');
   const temperateLakes = new Grid(40, 40, 424242, BIOME_TYPES.TEMPERATE);
   const temperatePainted = [];

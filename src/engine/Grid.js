@@ -21,6 +21,17 @@ const ISLAND_EDGES = {
   W: { ax: -0.5, ay: 0, nx: -1, ny: 0 },
 };
 
+// Which map edge a river mouth should use for a given ocean-facing hex edge, and which half of
+// that edge the sea covers. Side coasts flood the whole side; corner coasts flood a corner band.
+const COAST_RIVER_MOUTHS = {
+  N: [{ edge: 'top', half: 'full' }],
+  S: [{ edge: 'bottom', half: 'full' }],
+  NE: [{ edge: 'top', half: 'high' }, { edge: 'right', half: 'low' }],
+  SE: [{ edge: 'bottom', half: 'high' }, { edge: 'right', half: 'high' }],
+  SW: [{ edge: 'bottom', half: 'low' }, { edge: 'left', half: 'high' }],
+  NW: [{ edge: 'top', half: 'low' }, { edge: 'left', half: 'low' }],
+};
+
 /** Keeps only known directions, in canonical order, without duplicates. */
 export function normalizeCoast(coast) {
   if (!Array.isArray(coast)) return [];
@@ -338,6 +349,8 @@ export class Grid {
     this.generateLakes(modifiers);
     this.freezeRiverBanks(modifiers);
     this.generateCoast();
+    this.carveRiverMouths();
+    this.orientRiverMouths();
 
     const mapScale = (this.width * this.height) / TERRAIN_GENERATION_CONFIG.MAP_SCALE_BASE_AREA;
     const numForestClusters = Math.round(
@@ -453,17 +466,71 @@ export class Grid {
     const firstRing = ring(isWater);
     const firstRingMask = new Uint8Array(this.width * this.height);
     for (const cell of firstRing) {
-      paintBeach(cell);
+      // The shore is settled either way, but a river channel is left open so its mouth stays
+      // attached to the sea instead of being walled off behind the beach.
       firstRingMask[this.terrainKey(cell.x, cell.y)] = 1;
+      const terrain = this.tiles[cell.y][cell.x].terrain;
+      if (terrain === TERRAIN_TYPE.RIVER || terrain === TERRAIN_TYPE.ICE) continue;
+      paintBeach(cell);
     }
     const inFirstRing = (x, y) => x >= 0 && x < this.width && y >= 0 && y < this.height &&
       firstRingMask[this.terrainKey(x, y)] === 1;
     for (const cell of ring(inFirstRing)) {
       const secondRing = coastNoise(this.seed + 8123, cell.x, cell.y, COAST_CONFIG.ROCK_PATCH_SCALE) <
         COAST_CONFIG.SECOND_RING_CHANCE;
-      if (secondRing) paintBeach(cell);
+      if (!secondRing) continue;
+      // Never cap a river channel: the mouth has to stay attached to the sea.
+      const terrain = this.tiles[cell.y][cell.x].terrain;
+      if (terrain === TERRAIN_TYPE.RIVER || terrain === TERRAIN_TYPE.ICE) continue;
+      paintBeach(cell);
     }
     return painted;
+  }
+
+  // A beach can still sit between a river and the sea when the path arrives diagonally, which
+  // would leave the river ending behind a sand bar. Cut those tiles out so the mouth is open.
+  carveRiverMouths() {
+    if (this.coast.length === 0) return 0;
+    const isSea = (tile) => tile?.terrain === TERRAIN_TYPE.SALT_WATER;
+    const isRiver = (tile) => tile?.terrain === TERRAIN_TYPE.RIVER;
+    let carved = 0;
+    for (let pass = 0; pass < 2; pass++) {
+      const targets = [];
+      for (const tile of this.tiles.flat()) {
+        if (tile.terrain !== TERRAIN_TYPE.SAND && tile.terrain !== TERRAIN_TYPE.ROCK) continue;
+        const neighbors = this.getNeighbors8(tile.x, tile.y);
+        if (neighbors.some(isSea) && neighbors.some(isRiver)) targets.push(tile);
+      }
+      for (const tile of targets) {
+        tile.terrain = TERRAIN_TYPE.RIVER;
+        carved++;
+      }
+      if (targets.length === 0) break;
+    }
+    return carved;
+  }
+
+  // A river that reaches the sea must run outward at that end. The traced path can wander on
+  // its final approach, so every mouth tile is re-aimed at the water it is about to enter.
+  orientRiverMouths() {
+    if (this.coast.length === 0) return 0;
+    const isSea = (tile) => tile?.terrain === TERRAIN_TYPE.SALT_WATER;
+    let oriented = 0;
+    for (const tile of this.tiles.flat()) {
+      if (tile.terrain !== TERRAIN_TYPE.RIVER) continue;
+      let vx = 0;
+      let vy = 0;
+      for (const neighbor of this.getNeighbors8(tile.x, tile.y)) {
+        if (!isSea(neighbor)) continue;
+        vx += Math.sign(neighbor.x - tile.x);
+        vy += Math.sign(neighbor.y - tile.y);
+      }
+      if (vx === 0 && vy === 0) continue;
+      const length = Math.hypot(vx, vy) || 1;
+      tile.riverFlowDir = { x: vx / length, y: vy / length };
+      oriented++;
+    }
+    return oriented;
   }
 
   paintTerrainCluster(cx, cy, radius, terrain, wobbleRange, wobbleCenter) {
@@ -535,27 +602,91 @@ export class Grid {
     return frozen;
   }
 
+  // Where a river may leave the map when the city has a coast, as a map edge plus which half
+  // of that edge the sea actually covers. Side coasts flood the whole matching edge; corner
+  // coasts only flood a band around that corner, so their mouths stay pinned near the corner.
+  getCoastalRiverMouths() {
+    const mouths = [];
+    for (const direction of this.coast) {
+      for (const part of COAST_RIVER_MOUTHS[direction] || []) mouths.push(part);
+    }
+    return mouths;
+  }
+
+  /** An edge point guaranteed to sit in (or beside) the sea, so a river mouth flows outward. */
+  getCoastalEdgePoint({ edge, half }) {
+    const corner = Math.max(1, COAST_CONFIG.MIN_DEPTH - 1);
+    const span = (size) => {
+      if (half === 'full') {
+        const margin = Math.max(
+          TERRAIN_GENERATION_CONFIG.RIVER_EDGE_POINT_MARGIN_ABSOLUTE,
+          Math.floor(size * TERRAIN_GENERATION_CONFIG.RIVER_EDGE_POINT_MARGIN_SCALE),
+        );
+        return [margin, size - margin];
+      }
+      return half === 'high' ? [size - 1 - corner, size - 1] : [0, corner];
+    };
+    const pick = (size) => {
+      const [from, to] = span(size);
+      const low = Math.max(0, Math.min(from, to));
+      const high = Math.min(size - 1, Math.max(from, to));
+      return low + Math.floor(this.random() * Math.max(1, high - low + 1));
+    };
+    switch (edge) {
+      case 'top': return { edge, point: { x: pick(this.width), y: 0 } };
+      case 'bottom': return { edge, point: { x: pick(this.width), y: this.height - 1 } };
+      case 'left': return { edge, point: { x: 0, y: pick(this.height) } };
+      case 'right': return { edge, point: { x: this.width - 1, y: pick(this.height) } };
+      default: return null;
+    }
+  }
+
   generateRiver(riverMode = 'mixed') {
     if (riverMode === 'none') return;
     const edges = ['top', 'bottom', 'left', 'right'];
+    const mouths = this.getCoastalRiverMouths();
+    const coastalEdges = Array.from(new Set(mouths.map((mouth) => mouth.edge)));
+    // Sources come from land so a river never starts in the sea. A hex whose every edge is
+    // ocean (a one-hex island) instead springs from an inland point and runs to the coast.
+    const sourceEdges = edges.filter((edge) => !coastalEdges.includes(edge));
+    const pickSourceEdge = (excluded = null) => {
+      const pool = (sourceEdges.length > 0 ? sourceEdges : edges).filter((edge) => edge !== excluded);
+      const list = pool.length > 0 ? pool : edges;
+      return list[Math.floor(this.random() * list.length)];
+    };
+    const pickMouth = (excludedEdge = null) => {
+      if (mouths.length === 0) return null;
+      const pool = mouths.filter((mouth) => mouth.edge !== excludedEdge);
+      const list = pool.length > 0 ? pool : mouths;
+      return this.getCoastalEdgePoint(list[Math.floor(this.random() * list.length)]);
+    };
 
-    // Primary start and end edges
-    const startEdge1 = edges[Math.floor(this.random() * 4)];
-    let endEdge1;
-    do {
-      endEdge1 = edges[Math.floor(this.random() * 4)];
-    } while (endEdge1 === startEdge1);
-
-    const startPos1 = this.getRandomEdgePoint(startEdge1);
-    const endPos1 = this.getRandomEdgePoint(endEdge1);
-
-    // Pick interior junction point J
     const marginX = Math.max(TERRAIN_GENERATION_CONFIG.RIVER_MARGIN_ABSOLUTE, Math.floor(this.width * TERRAIN_GENERATION_CONFIG.RIVER_MARGIN_SCALE));
     const marginY = Math.max(TERRAIN_GENERATION_CONFIG.RIVER_MARGIN_ABSOLUTE, Math.floor(this.height * TERRAIN_GENERATION_CONFIG.RIVER_MARGIN_SCALE));
-    const junction = {
+    const inlandPoint = () => ({
       x: marginX + Math.floor(this.random() * (this.width - marginX * 2)),
       y: marginY + Math.floor(this.random() * (this.height - marginY * 2)),
+    });
+    const pickSource = (excluded = null) => {
+      if (sourceEdges.length > 0 || mouths.length === 0) {
+        const edge = pickSourceEdge(excluded);
+        return { edge, point: this.getRandomEdgePoint(edge) };
+      }
+      return { edge: excluded, point: inlandPoint() };
     };
+
+    // Primary start and end. The downstream end always reaches the sea when there is a coast,
+    // because the flow follows the path order: start -> end runs outward.
+    const source1 = pickSource();
+    const startEdge1 = source1.edge;
+    const mouth1 = pickMouth(startEdge1);
+    const endEdge1 = mouth1 ? mouth1.edge : pickSourceEdge(startEdge1);
+
+    const startPos1 = source1.point;
+    const endPos1 = mouth1 ? mouth1.point : this.getRandomEdgePoint(endEdge1);
+
+    // Pick interior junction point J
+    const junction = inlandPoint();
 
     // Decide topology:
     // 40% Simple (1 start -> 1 end, no junction/3rd point)
@@ -576,10 +707,11 @@ export class Grid {
       const path2 = this.traceRiverPath(junction, endPos1);
       this.paintRiverPath(path2);
 
-      // 2nd End point on a remaining edge
+      // 2nd End point: another coastal mouth when the hex has one, otherwise a remaining edge.
+      const mouth2 = pickMouth(endEdge1);
       const remainingEdges = edges.filter((e) => e !== startEdge1 && e !== endEdge1);
-      const endEdge2 = remainingEdges[Math.floor(this.random() * remainingEdges.length)] || endEdge1;
-      const endPos2 = this.getRandomEdgePoint(endEdge2);
+      const endEdge2 = mouth2 ? mouth2.edge : (remainingEdges[Math.floor(this.random() * remainingEdges.length)] || endEdge1);
+      const endPos2 = mouth2 ? mouth2.point : this.getRandomEdgePoint(endEdge2);
 
       const path3 = this.traceRiverPath(junction, endPos2);
       this.paintRiverPath(path3);
@@ -588,10 +720,10 @@ export class Grid {
       const path1 = this.traceRiverPath(startPos1, junction);
       this.paintRiverPath(path1);
 
-      // 2nd Start point on a remaining edge
-      const remainingEdges = edges.filter((e) => e !== startEdge1 && e !== endEdge1);
-      const startEdge2 = remainingEdges[Math.floor(this.random() * remainingEdges.length)] || startEdge1;
-      const startPos2 = this.getRandomEdgePoint(startEdge2);
+      // 2nd Start point, preferring land so the source is not in the sea.
+      const source2 = pickSource(endEdge1);
+      const startEdge2 = source2.edge;
+      const startPos2 = source2.point;
 
       const path2 = this.traceRiverPath(startPos2, junction);
       this.paintRiverPath(path2);
@@ -605,8 +737,9 @@ export class Grid {
         x: marginX + Math.floor(this.random() * (this.width - marginX * 2)),
         y: marginY + Math.floor(this.random() * (this.height - marginY * 2)),
       };
-      const extraEdge = edges[Math.floor(this.random() * 4)];
-      const extraEnd = this.getRandomEdgePoint(extraEdge);
+      const extraMouth = pickMouth();
+      const extraEdge = extraMouth ? extraMouth.edge : edges[Math.floor(this.random() * 4)];
+      const extraEnd = extraMouth ? extraMouth.point : this.getRandomEdgePoint(extraEdge);
       this.paintRiverPath(this.traceRiverPath(junction, extraJunction));
       this.paintRiverPath(this.traceRiverPath(extraJunction, extraEnd));
     }

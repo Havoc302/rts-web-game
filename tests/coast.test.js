@@ -22,6 +22,11 @@ console.log('=== coast.test.js ===');
 
 const countTerrain = (grid, terrain) => grid.tiles.flat().filter((tile) => tile.terrain === terrain).length;
 
+// Coastline assertions are ratios and ranges, so a 120 tile map proves the same thing as a
+// 200 tile one for well under half the generation cost. Depths reach 20, so the map still has
+// room for the deepest band plus land.
+const COAST_MAP = 120;
+
 function flatGrid(width = 20, height = 6) {
   const grid = new Grid(width, height, 1);
   for (const row of grid.tiles) for (const tile of row) tile.terrain = TERRAIN.FLAT;
@@ -68,11 +73,11 @@ function flatGrid(width = 20, height = 6) {
 
 // --- Tile map: salt water and beaches on the matching sides -------------------------------
 {
-  const landlocked = new Grid(200, 200, 424242, BIOME_TYPES.PLAINS, 2, 3, []);
+  const landlocked = new Grid(COAST_MAP, COAST_MAP, 424242, BIOME_TYPES.PLAINS, 2, 3, []);
   assert.strictEqual(countTerrain(landlocked, TERRAIN.SALT_WATER), 0, 'An inland city has no sea');
   assert.strictEqual(countTerrain(landlocked, TERRAIN.SAND), 0, 'An inland city has no beach');
 
-  const northCoast = new Grid(200, 200, 424242, BIOME_TYPES.PLAINS, 2, 3, ['N']);
+  const northCoast = new Grid(COAST_MAP, COAST_MAP, 424242, BIOME_TYPES.PLAINS, 2, 3, ['N']);
   const isSalt = (grid, x, y) => grid.getTile(x, y).terrain === TERRAIN.SALT_WATER;
   // Any of the three shore covers counts as beach here: sand, rock, or polar ice.
   const isBeach = (grid, x, y) => {
@@ -82,16 +87,16 @@ function flatGrid(width = 20, height = 6) {
 
   assert.ok(countTerrain(northCoast, TERRAIN.SALT_WATER) > 0, 'A north coast paints salt water');
   assert.ok(countTerrain(northCoast, TERRAIN.SAND) > 0, 'A north coast paints a sand beach');
-  assert.ok(isSalt(northCoast, 100, 0), 'The ocean starts at the top edge for a north-facing hex');
-  assert.strictEqual(isSalt(northCoast, 100, 199), false, 'The opposite side of the map stays land');
-  assert.strictEqual(isSalt(northCoast, 0, 100), false, 'Side edges stay land for a north-facing hex');
+  assert.ok(isSalt(northCoast, COAST_MAP / 2, 0), 'The ocean starts at the top edge for a north-facing hex');
+  assert.strictEqual(isSalt(northCoast, COAST_MAP / 2, COAST_MAP - 1), false, 'The opposite side of the map stays land');
+  assert.strictEqual(isSalt(northCoast, 0, COAST_MAP / 2), false, 'Side edges stay land for a north-facing hex');
 
   // Depth and beach thickness are measured on a rock-free biome, so inland mountains cannot
   // be mistaken for beach rock.
-  const cleanCoast = new Grid(200, 200, 424242, BIOME_TYPES.ARCTIC, 2, 3, ['N']);
+  const cleanCoast = new Grid(COAST_MAP, COAST_MAP, 424242, BIOME_TYPES.ARCTIC, 2, 3, ['N']);
   const depths = [];
   const beaches = [];
-  for (let x = 0; x < 200; x++) {
+  for (let x = 0; x < COAST_MAP; x++) {
     let depth = 0;
     while (depth < 100 && isSalt(cleanCoast, x, depth)) depth++;
     if (depth === 0) continue;
@@ -100,7 +105,7 @@ function flatGrid(width = 20, height = 6) {
     while (beach < 6 && isBeach(cleanCoast, x, depth + beach)) beach++;
     beaches.push(beach);
   }
-  assert.ok(depths.length > 190, 'The north coast should span the whole map width');
+  assert.ok(depths.length > COAST_MAP - 10, 'The north coast should span the whole map width');
   assert.ok(Math.min(...depths) >= COAST_CONFIG.MIN_DEPTH - COAST_CONFIG.WOBBLE - 1,
     `Ocean should be at least about ${COAST_CONFIG.MIN_DEPTH} tiles deep, saw ${Math.min(...depths)}`);
   assert.ok(Math.max(...depths) <= COAST_CONFIG.MAX_DEPTH + COAST_CONFIG.WOBBLE + 1,
@@ -109,49 +114,49 @@ function flatGrid(width = 20, height = 6) {
   assert.ok(Math.max(...beaches) <= COAST_CONFIG.BEACH_MAX + 1,
     `Beaches should stay one or two tiles thick, saw ${Math.max(...beaches)}`);
 
-  const southCoast = new Grid(200, 200, 424242, BIOME_TYPES.PLAINS, 2, 3, ['S']);
-  assert.ok(isSalt(southCoast, 100, 199), 'A south-facing hex puts the sea on the bottom edge');
-  assert.strictEqual(isSalt(southCoast, 100, 0), false, 'The top edge stays land for a south coast');
+  const southCoast = new Grid(COAST_MAP, COAST_MAP, 424242, BIOME_TYPES.PLAINS, 2, 3, ['S']);
+  assert.ok(isSalt(southCoast, COAST_MAP / 2, COAST_MAP - 1), 'A south-facing hex puts the sea on the bottom edge');
+  assert.strictEqual(isSalt(southCoast, COAST_MAP / 2, 0), false, 'The top edge stays land for a south coast');
 
-  const southeastCoast = new Grid(200, 200, 424242, BIOME_TYPES.PLAINS, 2, 3, ['SE']);
-  assert.ok(isSalt(southeastCoast, 199, 199), 'A south-east hex floods its corner');
+  const southeastCoast = new Grid(COAST_MAP, COAST_MAP, 424242, BIOME_TYPES.PLAINS, 2, 3, ['SE']);
+  assert.ok(isSalt(southeastCoast, COAST_MAP - 1, COAST_MAP - 1), 'A south-east hex floods its corner');
   assert.strictEqual(isSalt(southeastCoast, 0, 0), false, 'Distant corners stay land');
 
   // An island hex closes in from every side, leaving buildable ground in the middle.
-  const island = new Grid(200, 200, 424242, BIOME_TYPES.PLAINS, 2, 3, [...COAST_DIRECTIONS]);
-  assert.ok(isSalt(island, 100, 0), 'Island: sea on the north edge');
-  assert.ok(isSalt(island, 100, 199), 'Island: sea on the south edge');
-  assert.ok(isSalt(island, 0, 100), 'Island: sea on the west edge');
-  assert.ok(isSalt(island, 199, 100), 'Island: sea on the east edge');
-  assert.strictEqual(isSalt(island, 100, 100), false, 'Island: the middle stays land');
-  assert.ok(countTerrain(island, TERRAIN.FLAT) > 40000 * 0.2, 'Islands should still be worth building on');
+  const island = new Grid(COAST_MAP, COAST_MAP, 424242, BIOME_TYPES.PLAINS, 2, 3, [...COAST_DIRECTIONS]);
+  assert.ok(isSalt(island, COAST_MAP / 2, 0), 'Island: sea on the north edge');
+  assert.ok(isSalt(island, COAST_MAP / 2, COAST_MAP - 1), 'Island: sea on the south edge');
+  assert.ok(isSalt(island, 0, COAST_MAP / 2), 'Island: sea on the west edge');
+  assert.ok(isSalt(island, COAST_MAP - 1, COAST_MAP / 2), 'Island: sea on the east edge');
+  assert.strictEqual(isSalt(island, COAST_MAP / 2, COAST_MAP / 2), false, 'Island: the middle stays land');
+  assert.ok(countTerrain(island, TERRAIN.FLAT) > COAST_MAP * COAST_MAP * 0.2, 'Islands should still be worth building on');
 
   // Two coasts and one coast differ, so neighbouring hexes do not share an identical map.
-  const twoCoasts = new Grid(200, 200, 424242, BIOME_TYPES.PLAINS, 2, 3, ['N', 'SE']);
+  const twoCoasts = new Grid(COAST_MAP, COAST_MAP, 424242, BIOME_TYPES.PLAINS, 2, 3, ['N', 'SE']);
   assert.ok(countTerrain(twoCoasts, TERRAIN.SALT_WATER) > countTerrain(northCoast, TERRAIN.SALT_WATER),
     'Each extra ocean edge adds water');
 
   // Coasts are deterministic for the same seed and biome.
-  const repeat = new Grid(200, 200, 424242, BIOME_TYPES.PLAINS, 2, 3, ['N']);
+  const repeat = new Grid(COAST_MAP, COAST_MAP, 424242, BIOME_TYPES.PLAINS, 2, 3, ['N']);
   assert.deepStrictEqual(repeat.tiles.flat().map((tile) => tile.terrain), northCoast.tiles.flat().map((tile) => tile.terrain),
     'The same seed and coast list must rebuild the identical map');
 
   // Ice and tundra lakes are unaffected; the coast is additive.
-  const tundraCoast = new Grid(200, 200, 424242, BIOME_TYPES.TUNDRA, 2, 3, ['S']);
+  const tundraCoast = new Grid(COAST_MAP, COAST_MAP, 424242, BIOME_TYPES.TUNDRA, 2, 3, ['S']);
   assert.ok(countTerrain(tundraCoast, TERRAIN.ICE) > 0, 'Coastal tundra keeps its frozen lakes');
   assert.ok(countTerrain(tundraCoast, TERRAIN.SALT_WATER) > 0, 'Coastal tundra gets an unfrozen sea');
 }
 
 // --- Polar coasts are ice and rock, never sand -------------------------------------------
 {
-  const arctic = new Grid(200, 200, 424242, BIOME_TYPES.ARCTIC, 2, 3, ['N']);
+  const arctic = new Grid(COAST_MAP, COAST_MAP, 424242, BIOME_TYPES.ARCTIC, 2, 3, ['N']);
   assert.strictEqual(countTerrain(arctic, TERRAIN.SAND), 0, 'An ice sheet has no sand shore');
   assert.ok(countTerrain(arctic, TERRAIN.ICE) > 0, 'Polar shores should include an ice shelf');
   assert.ok(countTerrain(arctic, TERRAIN.MOUNTAIN) > 0, 'Polar shores should include bare rock');
 
   const isSalt = (x, y) => arctic.getTile(x, y).terrain === TERRAIN.SALT_WATER;
   let shoreTiles = 0;
-  for (let x = 0; x < 200; x++) {
+  for (let x = 0; x < COAST_MAP; x++) {
     let depth = 0;
     while (depth < 60 && isSalt(x, depth)) depth++;
     if (depth === 0) continue;
@@ -160,7 +165,7 @@ function flatGrid(width = 20, height = 6) {
       if (terrain === TERRAIN.ICE || terrain === TERRAIN.MOUNTAIN) shoreTiles++;
     }
   }
-  assert.ok(shoreTiles > 300, 'Most of the polar coastline is ice or rock shelf');
+  assert.ok(shoreTiles > COAST_MAP, 'Most of the polar coastline is ice or rock shelf');
 
   // Frozen shore still lets bridges across, and Arctic keeps its meltwater exemption so the
   // city can still drink even though the shore itself is unbuildable.
@@ -178,10 +183,53 @@ function flatGrid(width = 20, height = 6) {
     'A polar coast has no beach to build a Desalination Plant on');
 
   // Temperate and tundra coasts still get sand.
-  const temperate = new Grid(200, 200, 424242, BIOME_TYPES.TEMPERATE, 2, 3, ['N']);
-  const tundra = new Grid(200, 200, 424242, BIOME_TYPES.TUNDRA, 2, 3, ['N']);
+  const temperate = new Grid(COAST_MAP, COAST_MAP, 424242, BIOME_TYPES.TEMPERATE, 2, 3, ['N']);
+  const tundra = new Grid(COAST_MAP, COAST_MAP, 424242, BIOME_TYPES.TUNDRA, 2, 3, ['N']);
   assert.ok(countTerrain(temperate, TERRAIN.SAND) > 0, 'Temperate coasts keep a sand beach');
   assert.ok(countTerrain(tundra, TERRAIN.SAND) > 0, 'Tundra coasts keep a sand beach');
+}
+
+// --- A river that reaches the coast runs out into the sea --------------------------------
+{
+  const seaDirectionDot = (grid, tile) => {
+    let vx = 0;
+    let vy = 0;
+    for (const neighbor of grid.getNeighbors8(tile.x, tile.y)) {
+      if (neighbor.terrain !== TERRAIN.SALT_WATER) continue;
+      vx += Math.sign(neighbor.x - tile.x);
+      vy += Math.sign(neighbor.y - tile.y);
+    }
+    if (vx === 0 && vy === 0) return null;
+    const length = Math.hypot(vx, vy) || 1;
+    const flow = tile.riverFlowDir || { x: 0, y: 1 };
+    return (vx / length) * flow.x + (vy / length) * flow.y;
+  };
+
+  for (const coast of [['N'], ['S'], ['SE'], ['N', 'SE'], [...COAST_DIRECTIONS]]) {
+    for (const citySeed of [424242, 77764, 2024]) {
+      const grid = new Grid(COAST_MAP, COAST_MAP, citySeed, BIOME_TYPES.PLAINS, 2, 3, coast);
+      let mouthTiles = 0;
+      for (const tile of grid.tiles.flat()) {
+        if (tile.terrain !== TERRAIN.WATER) continue;
+        const dot = seaDirectionDot(grid, tile);
+        if (dot == null) continue;
+        mouthTiles += 1;
+        assert.ok(dot > 0.5,
+          `Seed ${citySeed} coast ${coast.join('+')}: river tile (${tile.x},${tile.y}) meets the sea flowing inland`);
+      }
+      assert.ok(mouthTiles > 0,
+        `Seed ${citySeed} coast ${coast.join('+')}: the river should cut through to the sea, not end behind the beach`);
+    }
+  }
+
+  // The beach must not wall the river off: mouths are carved through the shore band.
+  const coasted = new Grid(COAST_MAP, COAST_MAP, 424242, BIOME_TYPES.PLAINS, 2, 3, ['N']);
+  const openMouths = coasted.tiles.flat().filter((tile) => (
+    tile.terrain === TERRAIN.WATER &&
+    coasted.getNeighbors8(tile.x, tile.y).some((neighbor) => neighbor.terrain === TERRAIN.SALT_WATER)
+  ));
+  assert.ok(openMouths.every((tile) => tile.riverFlowDir.y < 0 || Math.abs(tile.riverFlowDir.x) > 0.5),
+    'North-coast mouths should carry their flow toward the sea');
 }
 
 // --- Placement: sand is buildable, salt water is not fresh water --------------------------

@@ -9,7 +9,7 @@ Agent handoff protocol:
 
 Open handoff (2026-10-20):
 - Active task: none in progress; the next item is to pick up the Phase 1 follow-ups listed in `docs/DESIGN.md`.
-- Latest completed task: polar ice and rock shorelines (`0.4.1`); see the final task entry in this log.
+- Latest completed task: deeper coasts, seaward river mouths, parallel tests (`0.4.2`); see the final task entry in this log.
 - Verified baseline: `npm test` passes all 54 test files.
 - Phase 1 follow-ups are tracked in `docs/DESIGN.md`; in particular, localStorage autosave and named tick-stage extraction are not implemented. Do not treat historical `Current task` headings below as active.
 
@@ -2009,4 +2009,19 @@ The coastline painter used the same sand-or-rock beach for every biome, which pu
 Validation:
 - `node tests/run-all.js` passes all 54 test files.
 - Generation check on seed 424242, north-facing coast: Arctic shore tiles measured 213 ice / 189 rock / 0 sand, while tundra and temperate coasts stayed sand-dominant (341 and 337 sand tiles respectively).
+
+Current task: Deeper coasts, seaward river mouths, faster tests (`0.4.2`).
+
+- [done] Salt water is now 4-20 tiles deep (`COAST_CONFIG.MIN_DEPTH`/`MAX_DEPTH`), up from 3-10.
+- [done] River mouths are always the downstream end: `generateRiver` picks sources from land edges and downstream ends from ocean-facing ones (`getCoastalRiverMouths` / `getCoastalEdgePoint`), and an island hex springs from an inland point instead of the shoreline.
+- [done] `carveRiverMouths` cuts beach tiles that sit between a river and the sea, so a diagonal approach can no longer end behind a sand bar.
+- [done] `orientRiverMouths` points every mouth tile's `riverFlowDir` at the sea it enters, so the end that meets the beach always flows outward.
+- [done] `tests/run-all.js` now runs test files in a bounded parallel worker pool (default 2x CPU, `TEST_CONCURRENCY` override), buffering each file's output and printing it in filename order. Full suite went from ~11.6 s to ~2.8 s.
+- [done] Trimmed generation-heavy suites: coast and tundra use 120x120 maps, biome-generation uses 120x120 where assertions are ratios, and the arctic suite no longer rebuilds a planet for every determinism and cap-off check.
+
+Validation:
+- `node tests/run-all.js` passes all 54 test files in about 2.8 s.
+- Per-file timing before the change: 11.6 s serial total, with arctic 1.9 s, coast 1.3 s, biome-generation 1.2 s, overworld 1.2 s, tundra 1.0 s.
+- River mouth check across 35 maps (5 coast shapes x 7 city seeds): zero river tiles flow inland at the sea, and every map has 9-56 outward-flowing mouth tiles.
+- Browser verification (`v0.4.2`): a plains hex with `coast: ['NW']` rendered a 14 tile deep sea in the corner with the river cutting through the beach and its chevrons pointing into the sea; no console errors.
 

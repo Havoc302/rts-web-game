@@ -35,20 +35,24 @@ for (const citySeed of [424242, 12345, 4893875]) {
   }
 }
 
+// Coverage assertions are ratios, so a 120x120 map proves the same thing far faster than 200x200.
+const MAP_SIZE = 120;
+const AREA = MAP_SIZE * MAP_SIZE;
+
 for (const citySeed of [424242, 12345, 4893875]) {
   const maps = Object.fromEntries([BIOME_TYPES.PLAINS, BIOME_TYPES.HILLY, BIOME_TYPES.MOUNTAINOUS]
-    .map((biome) => [biome, new Grid(200, 200, citySeed, biome)]));
-  const rockCoverage = (biome) => countTerrain(maps[biome], TERRAIN.MOUNTAIN) / 40000;
+    .map((biome) => [biome, new Grid(MAP_SIZE, MAP_SIZE, citySeed, biome)]));
+  const rockCoverage = (biome) => countTerrain(maps[biome], TERRAIN.MOUNTAIN) / AREA;
   assert.ok(rockCoverage(BIOME_TYPES.PLAINS) < 0.05, 'Plains should have little rocky terrain');
   assert.ok(rockCoverage(BIOME_TYPES.HILLY) > 0.12, 'Hilly cities should have substantial rocky terrain');
   assert.ok(rockCoverage(BIOME_TYPES.MOUNTAINOUS) > 0.3, 'Mountainous cities should be visibly mountain-dominated');
   assert.ok(rockCoverage(BIOME_TYPES.MOUNTAINOUS) > rockCoverage(BIOME_TYPES.HILLY) * 1.5);
-  const desert = new Grid(200, 200, citySeed, BIOME_TYPES.DESERT);
-  assert.ok(countTerrain(desert, TERRAIN.FLAT) > 40000 * 0.95, 'Deserts should be mostly open terrain');
+  const desert = new Grid(MAP_SIZE, MAP_SIZE, citySeed, BIOME_TYPES.DESERT);
+  assert.ok(countTerrain(desert, TERRAIN.FLAT) > AREA * 0.95, 'Deserts should be mostly open terrain');
   assert.ok(countTerrain(desert, TERRAIN.MOUNTAIN) < countTerrain(maps[BIOME_TYPES.PLAINS], TERRAIN.MOUNTAIN), 'Deserts should have fewer rocks than plains');
-  assert.ok(countTerrain(desert, TERRAIN.FOREST) < 40000 * 0.02, 'Deserts should have almost no forest');
-  assert.ok(countTerrain(desert, TERRAIN.WATER) > 0 && countTerrain(desert, TERRAIN.WATER) < 40000 * 0.01, 'Deserts should have sparse lake water');
-  const lakeGrid = new Grid(200, 200, citySeed, BIOME_TYPES.DESERT);
+  assert.ok(countTerrain(desert, TERRAIN.FOREST) < AREA * 0.02, 'Deserts should have almost no forest');
+  assert.ok(countTerrain(desert, TERRAIN.WATER) > 0 && countTerrain(desert, TERRAIN.WATER) < AREA * 0.01, 'Deserts should have sparse lake water');
+  const lakeGrid = new Grid(MAP_SIZE, MAP_SIZE, citySeed, BIOME_TYPES.DESERT);
   let lakeCount = 0;
   lakeGrid.paintTerrainCluster = () => { lakeCount++; };
   lakeGrid.generateLakes();
@@ -56,14 +60,14 @@ for (const citySeed of [424242, 12345, 4893875]) {
   const beforeRiver = countTerrain(desert, TERRAIN.WATER);
   desert.generateRiver(desert.getBiomeModifiers().riverMode);
   assert.strictEqual(countTerrain(desert, TERRAIN.WATER), beforeRiver, 'Deserts should not add a river');
-  const previousSwamp = new Grid(200, 200, citySeed, BIOME_TYPES.SWAMP, TERRAIN_GENERATION_CONFIG.GENERATION_VERSION, 2);
-  const wetterSwamp = new Grid(200, 200, citySeed, BIOME_TYPES.SWAMP);
+  const previousSwamp = new Grid(MAP_SIZE, MAP_SIZE, citySeed, BIOME_TYPES.SWAMP, TERRAIN_GENERATION_CONFIG.GENERATION_VERSION, 2);
+  const wetterSwamp = new Grid(MAP_SIZE, MAP_SIZE, citySeed, BIOME_TYPES.SWAMP);
   assert.ok(countTerrain(wetterSwamp, TERRAIN.WATER) > countTerrain(previousSwamp, TERRAIN.WATER) * 2,
     'New swamp maps should have substantially more water than the previous profile');
 }
 
 {
-  const lakeGrid = new Grid(200, 200, seed, BIOME_TYPES.SWAMP);
+  const lakeGrid = new Grid(MAP_SIZE, MAP_SIZE, seed, BIOME_TYPES.SWAMP);
   const radii = [];
   lakeGrid.random = () => 0.5;
   lakeGrid.paintTerrainCluster = (centerX, centerY, radius) => radii.push(radius);

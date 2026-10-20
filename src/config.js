@@ -660,8 +660,8 @@ export function getProducerUtilityUsage(producer) {
 // ocean-facing hex edge is one half-plane: salt water outside it, a beach strip inside it,
 // ordinary terrain beyond. Islands are simply hexes with several ocean edges at once.
 export const COAST_CONFIG = {
-  MIN_DEPTH: 3,                            // Minimum salt-water depth from the matching map side
-  MAX_DEPTH: 10,                           // Maximum salt-water depth
+  MIN_DEPTH: 4,                            // Minimum salt-water depth from the matching map side
+  MAX_DEPTH: 20,                           // Maximum salt-water depth
   BEACH_MIN: 1,                            // Minimum beach thickness inland of the water
   BEACH_MAX: 2,                            // Maximum beach thickness
   SECOND_RING_CHANCE: 0.55,                // Share of the coast whose beach is two tiles thick

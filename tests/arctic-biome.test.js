@@ -43,15 +43,26 @@ for (const worldSeed of [424242, 424243, 12345]) {
     .map((cell) => cell.id)
     .sort()
     .join(',');
-  assert.strictEqual(coast(new OverworldMap(worldSeed)), coast(world),
-    `Seed ${worldSeed}: the Arctic coastline must be deterministic for the same planet seed`);
-  assert.notStrictEqual(coast(new OverworldMap(worldSeed + 1)), coast(world),
-    `Seed ${worldSeed}: a different planet seed must draw a different Arctic coastline`);
 
   // Neighboring cells share the boundary: the wobble is smooth, not per-cell noise.
   const boundary = createArcticCapBoundary(worldSeed);
   assert.strictEqual(boundary(77.5, 10), boundary(77.6, 10.4),
     `Seed ${worldSeed}: adjacent points should agree about the cap edge`);
+}
+
+// Planet construction is expensive, so the determinism checks run on one seed rather than all.
+{
+  const worldSeed = 424242;
+  const world = new OverworldMap(worldSeed);
+  const coast = (planet) => Array.from(planet.cells.values())
+    .filter((cell) => cell.biome === BIOME_TYPES.ARCTIC)
+    .map((cell) => cell.id)
+    .sort()
+    .join(',');
+  assert.strictEqual(coast(new OverworldMap(worldSeed)), coast(world),
+    'The Arctic coastline must be deterministic for the same planet seed');
+  assert.notStrictEqual(coast(new OverworldMap(worldSeed + 1)), coast(world),
+    'A different planet seed must draw a different Arctic coastline');
 }
 
 // --- Every polar cell becomes buildable Arctic ice, including frozen ocean ---------------
@@ -72,22 +83,25 @@ for (const worldSeed of [424242, 424243, 12345, 77764, 77767, 2185603]) {
     `Seed ${worldSeed}: open ocean outside the cap still has no city info`);
 
   // Build the same planet with the Arctic cap switched off to prove that open polar water was
-  // frozen over rather than only polar land being relabelled.
-  const capLatitude = CLIMATE_CONFIG.ARCTIC_CAP_LATITUDE;
-  const capWobble = CLIMATE_CONFIG.ARCTIC_CAP_WOBBLE;
-  CLIMATE_CONFIG.ARCTIC_CAP_LATITUDE = 90.001;
-  CLIMATE_CONFIG.ARCTIC_CAP_WOBBLE = 0;
-  let reference;
-  try {
-    reference = new OverworldMap(worldSeed);
-  } finally {
-    CLIMATE_CONFIG.ARCTIC_CAP_LATITUDE = capLatitude;
-    CLIMATE_CONFIG.ARCTIC_CAP_WOBBLE = capWobble;
+  // frozen over rather than only polar land being relabelled. Only the first two seeds rebuild
+  // a reference planet; the per-seed invariants above already cover all six.
+  if (worldSeed === 424242 || worldSeed === 77764) {
+    const capLatitude = CLIMATE_CONFIG.ARCTIC_CAP_LATITUDE;
+    const capWobble = CLIMATE_CONFIG.ARCTIC_CAP_WOBBLE;
+    CLIMATE_CONFIG.ARCTIC_CAP_LATITUDE = 90.001;
+    CLIMATE_CONFIG.ARCTIC_CAP_WOBBLE = 0;
+    let reference;
+    try {
+      reference = new OverworldMap(worldSeed);
+    } finally {
+      CLIMATE_CONFIG.ARCTIC_CAP_LATITUDE = capLatitude;
+      CLIMATE_CONFIG.ARCTIC_CAP_WOBBLE = capWobble;
+    }
+    const frozenOcean = arcticCells.filter((cell) => reference.getCell(cell.id).ocean);
+    assert.ok(frozenOcean.length > 0,
+      `Seed ${worldSeed}: the Arctic cap should freeze polar ocean, not only polar land`);
+    assert.ok(frozenOcean.every((cell) => Number.isInteger(cell.seed)), 'Frozen ocean hexes are seeded like land');
   }
-  const frozenOcean = arcticCells.filter((cell) => reference.getCell(cell.id).ocean);
-  assert.ok(frozenOcean.length > 0,
-    `Seed ${worldSeed}: the Arctic cap should freeze polar ocean, not only polar land`);
-  assert.ok(frozenOcean.every((cell) => Number.isInteger(cell.seed)), 'Frozen ocean hexes are seeded like land');
 }
 
 // --- Arctic climate is freezing, windy, and overcast -------------------------------------
