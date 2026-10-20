@@ -2,12 +2,14 @@ import assert from 'assert';
 import {
   BIOME_TYPES,
   CLIMATE_CONFIG,
+  ICE_CONFIG,
+  PRODUCER_TYPE,
   TEMPERATURE_CONFIG,
   TERRAIN,
 } from '../src/config.js';
 import { Grid } from '../src/engine/Grid.js';
 import { buildClimateProfile, isPolarLatitude, OverworldMap } from '../src/engine/OverworldMap.js';
-import { Renderer } from '../src/engine/Renderer.js';
+import { Renderer, tundraFrostCover, tundraGroundIsFrost } from '../src/engine/Renderer.js';
 import { WeatherManager } from '../src/engine/WeatherManager.js';
 
 console.log('=== tundra-biome.test.js ===');
@@ -68,37 +70,87 @@ assert.ok(Array.from(new OverworldMap(424242).cells.values()).some((cell) => cel
   assert.ok(insideCap.temperatureMean < outsideCap.temperatureMean, 'Crossing into the cap should drop the temperature sharply');
 }
 
-// --- Tundra cities are snow and mountains only: no forests, rivers, or lakes -------------
+// --- Tundra cities are frozen pond country: no trees, frozen water, an open river lane ----
 {
   const modifiers = new Grid(40, 40, 424242, BIOME_TYPES.TUNDRA).getBiomeModifiers();
   assert.strictEqual(modifiers.forestClusterScale, 0, 'Tundra has no forest clusters');
-  assert.strictEqual(modifiers.lakeCountMin, 0, 'Tundra has no minimum lake budget');
-  assert.strictEqual(modifiers.lakeCountMax, 0, 'Tundra has no lake budget');
-  assert.strictEqual(modifiers.riverMode, 'none', 'Tundra never generates a river');
+  assert.ok(modifiers.lakeCountMin > 0, 'Tundra should carry a lake budget');
+  assert.ok(modifiers.lakeCountMax >= modifiers.lakeCountMin, 'Tundra lake budget must be a valid range');
+  assert.ok(modifiers.lakeRadiusScale < 1, 'Tundra lakes should be small thermokarst ponds');
+  assert.strictEqual(modifiers.riverMode, 'mixed', 'Tundra should generate a river');
+  assert.strictEqual(modifiers.frozenWater, true, 'Tundra water freezes');
   assert.ok(modifiers.rockClusterScale > 0, 'Tundra still places mountains');
+
+  const openWaterNeighbors = (grid, x, y) => [[0, -1], [1, 0], [0, 1], [-1, 0]]
+    .filter(([dx, dy]) => grid.getTile(x + dx, y + dy)?.terrain === TERRAIN.WATER).length;
 
   for (const citySeed of [424242, 12345, 4893875]) {
     const tundra = new Grid(200, 200, citySeed, BIOME_TYPES.TUNDRA);
     assert.strictEqual(countTerrain(tundra, TERRAIN.FOREST), 0, `Seed ${citySeed}: tundra cities should have no forest`);
-    assert.strictEqual(countTerrain(tundra, TERRAIN.WATER), 0, `Seed ${citySeed}: tundra cities should have no rivers or lakes`);
+    assert.ok(countTerrain(tundra, TERRAIN.WATER) > 0, `Seed ${citySeed}: the tundra river should keep an open lane`);
+    assert.ok(countTerrain(tundra, TERRAIN.ICE) > 0, `Seed ${citySeed}: tundra lakes and river banks should freeze`);
     assert.ok(countTerrain(tundra, TERRAIN.MOUNTAIN) > 40000 * 0.1, `Seed ${citySeed}: tundra cities should still be mountainous`);
-    assert.strictEqual(countTerrain(tundra, TERRAIN.MOUNTAIN) + countTerrain(tundra, TERRAIN.FLAT), 40000,
-      `Seed ${citySeed}: tundra ground should be snow and mountains only`);
     assert.strictEqual(tundra.fireCandidateTiles.size, 0, `Seed ${citySeed}: tundra forests cannot burn because there are none`);
 
-    const lakeGrid = new Grid(200, 200, citySeed, BIOME_TYPES.TUNDRA);
-    let lakeCount = 0;
-    lakeGrid.paintTerrainCluster = () => { lakeCount++; };
-    lakeGrid.generateLakes();
-    assert.strictEqual(lakeCount, 0, `Seed ${citySeed}: tundra cities should generate no lakes`);
+    // The centre of the river never freezes, so pollution keeps flowing and there is always
+    // somewhere to place a Water Tower or Sewage Plant.
+    for (const tile of tundra.tiles.flat()) {
+      if (tile.terrain !== TERRAIN.ICE || !tile.riverFlowDir) continue;
+      assert.ok(openWaterNeighbors(tundra, tile.x, tile.y) <= ICE_CONFIG.RIVER_BANK_MAX_WATER_NEIGHBORS,
+        `Seed ${citySeed}: river ice at (${tile.x},${tile.y}) froze the open lane`);
+    }
 
-    const beforeRiver = countTerrain(tundra, TERRAIN.WATER);
-    tundra.generateRiver(tundra.getBiomeModifiers().riverMode);
-    assert.strictEqual(countTerrain(tundra, TERRAIN.WATER), beforeRiver, `Seed ${citySeed}: tundra cities should not add a river`);
+    // Every frozen lake is painted as ice in one pass, so a stubbed cluster painter shows the
+    // terrain the lake pass asked for.
+    const lakeGrid = new Grid(40, 40, citySeed, BIOME_TYPES.TUNDRA);
+    const painted = [];
+    lakeGrid.paintTerrainCluster = (cx, cy, radius, terrain) => painted.push(terrain);
+    lakeGrid.generateLakes();
+    assert.ok(painted.length >= 3, `Seed ${citySeed}: tundra cities should generate lakes`);
+    assert.ok(painted.every((terrain) => terrain === TERRAIN.ICE), `Seed ${citySeed}: tundra lakes should freeze solid`);
+
+    assert.ok(bridgesAreCrossable(tundra), `Seed ${citySeed}: bridges should cross frozen and open water alike`);
   }
+
+  // Warm biomes keep liquid lakes and never freeze their banks.
+  const temperate = new Grid(200, 200, 424242, BIOME_TYPES.TEMPERATE);
+  assert.strictEqual(countTerrain(temperate, TERRAIN.ICE), 0, 'Temperate water should never freeze');
+  const temperateLakes = new Grid(40, 40, 424242, BIOME_TYPES.TEMPERATE);
+  const temperatePainted = [];
+  temperateLakes.paintTerrainCluster = (cx, cy, radius, terrain) => temperatePainted.push(terrain);
+  temperateLakes.generateLakes();
+  assert.ok(temperatePainted.every((terrain) => terrain === TERRAIN.WATER), 'Temperate lakes stay liquid');
+  assert.strictEqual(temperate.freezeRiverBanks(), 0, 'Freezing a warm biome should be a no-op');
 }
 
-// --- Bare tundra ground renders as snow, not soil ----------------------------------------
+function bridgesAreCrossable(grid) {
+  const iceTile = grid.tiles.flat().find((tile) => tile.terrain === TERRAIN.ICE);
+  const waterTile = grid.tiles.flat().find((tile) => tile.terrain === TERRAIN.WATER);
+  const landTile = grid.tiles.flat().find((tile) => tile.terrain === TERRAIN.FLAT);
+  return Boolean(
+    iceTile && waterTile && landTile &&
+    grid.canPlaceBridge(iceTile.x, iceTile.y) &&
+    grid.canPlaceBridge(waterTile.x, waterTile.y) &&
+    !grid.canPlaceBridge(landTile.x, landTile.y)
+  );
+}
+
+// --- Frozen water offers no water supply and no waterfront bonus ---------------------------
+{
+  const grid = new Grid(6, 3, 424242, BIOME_TYPES.TUNDRA);
+  for (const row of grid.tiles) for (const tile of row) tile.terrain = TERRAIN.FLAT;
+  grid.getTile(1, 1).terrain = TERRAIN.ICE;
+  grid.getTile(4, 1).terrain = TERRAIN.WATER;
+
+  assert.strictEqual(grid.isWaterAdjacent(1, 0), false, 'Ice is not open water');
+  assert.strictEqual(grid.isWaterAdjacent(4, 0), true, 'Open water still counts as water');
+  assert.strictEqual(grid.getWaterfrontStatus(1, 0), null, 'A frozen shore earns no waterfront bonus');
+  assert.strictEqual(grid.getWaterfrontStatus(4, 0), 'clean', 'An unfrozen shore is a clean waterfront');
+  assert.strictEqual(grid.canPlaceProducer(1, 0, PRODUCER_TYPE.WATER_TOWER), false,
+    'A Water Tower cannot tap a frozen bank');
+}
+
+// --- Bare tundra ground is a soil/frost hybrid, not a snow sheet ---------------------------
 {
   const painted = [];
   const makeCtx = () => new Proxy({ canvas: {}, fillStyle: '', strokeStyle: '', lineWidth: 1, font: '', textAlign: '', textBaseline: '' }, {
@@ -107,25 +159,53 @@ assert.ok(Array.from(new OverworldMap(424242).cells.values()).some((cell) => cel
   });
   const ctx = makeCtx();
   ctx.fillRect = () => painted.push(ctx.fillStyle);
-  const flatGrid = (biome = null) => {
-    const grid = new Grid(4, 4, 1, biome);
+  const flatGrid = (biome = null, size = 4) => {
+    const grid = new Grid(size, size, 1, biome);
     for (const row of grid.tiles) for (const tile of row) tile.terrain = TERRAIN.FLAT;
     return grid;
   };
-  const tile = { terrain: TERRAIN.FLAT, x: 0, y: 0 };
+  const shades = (biome, seed = 424242) => {
+    const grid = flatGrid(biome, 64);
+    grid.seed = seed;
+    const renderer = new Renderer({ getContext: () => makeCtx() }, grid);
+    const palette = new Set();
+    for (let y = 0; y < grid.height; y++) {
+      for (let x = 0; x < grid.width; x++) {
+        painted.length = 0;
+        renderer.renderTerrainTile(ctx, { terrain: TERRAIN.FLAT, x, y }, 0, 0);
+        palette.add(painted[0]);
+      }
+    }
+    return palette;
+  };
 
-  const tundraRenderer = new Renderer({ getContext: () => makeCtx() }, flatGrid(BIOME_TYPES.TUNDRA));
-  tundraRenderer.renderTerrainTile(ctx, tile, 0, 0);
-  const snow = painted[0];
+  const tundraShades = shades(BIOME_TYPES.TUNDRA);
+  const brightness = (hex) => hex.match(/^#(..)(..)(..)$/).slice(1).map((part) => parseInt(part, 16));
+  const frosty = [...tundraShades].filter((hex) => brightness(hex).every((channel) => channel > 190));
+  const soil = [...tundraShades].filter((hex) => Math.max(...brightness(hex)) < 130);
+  assert.ok(frosty.length > 0, 'Tundra ground should include frost patches');
+  assert.ok(soil.length > 0, 'Tundra ground should include bare soil between the frost patches');
+  assert.ok(tundraShades.size >= 4, 'Frost patches and soil should both use alternating shades');
+
+  const arcticShades = shades(BIOME_TYPES.ARCTIC);
+  assert.ok([...arcticShades].every((hex) => brightness(hex).every((channel) => channel > 170)),
+    'Arctic ground should stay a solid ice sheet');
 
   painted.length = 0;
-  new Renderer({ getContext: () => makeCtx() }, flatGrid()).renderTerrainTile(ctx, tile, 0, 0);
-  assert.notStrictEqual(snow, painted[0], 'Tundra ground should not use the temperate soil palette');
+  new Renderer({ getContext: () => makeCtx() }, flatGrid()).renderTerrainTile(ctx, { terrain: TERRAIN.FLAT, x: 0, y: 0 }, 0, 0);
   assert.strictEqual(painted[0], '#5b4636', 'Non-tundra ground should keep the existing soil colour');
 
-  const rgb = snow.match(/^#(..)(..)(..)$/).slice(1).map((part) => parseInt(part, 16));
-  assert.ok(rgb.every((channel) => channel > 200), `Tundra ground should be snowy white, saw ${snow}`);
+  // Frost patches are deterministic per seed and tile, and cover roughly a quarter of the map.
+  assert.strictEqual(tundraGroundIsFrost(424242, 7, 9), tundraGroundIsFrost(424242, 7, 9),
+    'Frost patches must be stable so the cached terrain chunks do not shimmer');
+  let frostTiles = 0;
+  for (let y = 0; y < 200; y++) for (let x = 0; x < 200; x++) if (tundraGroundIsFrost(424242, x, y)) frostTiles++;
+  const frostShare = frostTiles / 40000;
+  assert.ok(frostShare > 0.15 && frostShare < 0.45, `Tundra frost should cover a patchwork share, saw ${frostShare}`);
+  assert.notStrictEqual(tundraFrostCover(424242, 7, 9).toFixed(6), tundraFrostCover(999, 7, 9).toFixed(6),
+    'Different city seeds should scatter the patches differently');
 }
+
 
 // --- Freezing cities report snow instead of rain -----------------------------------------
 {

@@ -33,6 +33,9 @@ export const TERRAIN = {
   MOUNTAIN: 'mountain',
   WATER: 'water',
   FOREST: 'forest',
+  // Permanent ice over a frozen water body. Lakes are frozen end to end, while rivers keep
+  // an open centre lane and freeze in patches along their banks.
+  ICE: 'ice',
 };
 
 export const TERRAIN_TYPE = {
@@ -40,6 +43,7 @@ export const TERRAIN_TYPE = {
   RIVER: TERRAIN.WATER,
   ROCK: TERRAIN.MOUNTAIN,
   FOREST: TERRAIN.FOREST,
+  ICE: TERRAIN.ICE,
 };
 
 export const ZONE = {
@@ -318,16 +322,16 @@ export const BIOME_CONFIG = {
     lakeRadiusScale: 1.6,
     riverMode: 'fork_merge',
   },
-  // Polar land outside the permanent cap is tundra: snow-covered ground and mountains
-  // only. Zero forest clusters and a zero lake budget mean no trees and no standing water,
-  // and 'none' removes the river pass entirely.
+  // Polar land outside the permanent cap is tundra: frozen lakes and a part-frozen river
+  // through bare rock and soil. There are no trees, so nothing burns.
   [BIOME_TYPES.TUNDRA]: {
     rockClusterScale: 0.8,
     forestClusterScale: 0,
-    lakeCountMin: 0,
-    lakeCountMax: 0,
-    lakeRadiusScale: 1,
-    riverMode: 'none',
+    lakeCountMin: 3,
+    lakeCountMax: 6,
+    lakeRadiusScale: 0.6,
+    riverMode: 'mixed',
+    frozenWater: true,
   },
   // Permanent polar ice sheets. Arctic is a flat, featureless surface: no trees, no rock
   // formations, no lakes or rivers, and `oreScale: 0` removes hidden ore so surveying has
@@ -1153,6 +1157,16 @@ export const TERRAIN_GENERATION_CONFIG = {
   RIVER_PATH_TIE_BREAK_CHANCE: 0.5,        // Chance of choosing one axis when equally distant
   RIVER_EDGE_POINT_MARGIN_SCALE: 0.1,      // Edge entry margin as a map fraction
   RIVER_EDGE_POINT_MARGIN_ABSOLUTE: 3,     // Minimum edge entry margin
+};
+
+// Frozen-water rules for biomes with `frozenWater: true` (Tundra). Lakes freeze end to end;
+// rivers keep an open centre lane and freeze in patches along their banks, so the player has
+// to find an unfrozen stretch before a Water Tower or Sewage Plant can tap the river.
+export const ICE_CONFIG = {
+  RIVER_BANK_ICE_CHANCE: 0.4,              // Chance a river bank tile freezes
+  RIVER_BANK_MAX_WATER_NEIGHBORS: 2,       // Only tiles this exposed to open water count as bank
+  GROUND_PATCH_CHANCE: 0.28,               // Share of bare tundra ground covered by frost patches
+  GROUND_PATCH_SCALE: 3,                   // Patch lattice size in tiles (higher = bigger patches)
 };
 
 // Renderer tuning controls. These affect presentation and frame-time behavior.

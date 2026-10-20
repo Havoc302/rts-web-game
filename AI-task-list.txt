@@ -9,8 +9,8 @@ Agent handoff protocol:
 
 Open handoff (2026-10-20):
 - Active task: none in progress; the next item is to pick up the Phase 1 follow-ups listed in `docs/DESIGN.md`.
-- Latest completed task: polar biome rename to Arctic (ice) and Tundra (`0.3.11`); see the final task entry in this log.
-- Verified baseline: `npm test` passes all 52 test files.
+- Latest completed task: frozen tundra water and decorative permafrost ground (`0.3.14`); see the final task entry in this log.
+- Verified baseline: `npm test` passes all 53 test files.
 - Phase 1 follow-ups are tracked in `docs/DESIGN.md`; in particular, localStorage autosave and named tick-stage extraction are not implemented. Do not treat historical `Current task` headings below as active.
 
 Current task: Add standalone JSON game save export/import.
@@ -1947,3 +1947,26 @@ Notes:
 Validation:
 - `node tests/run-all.js` passes all 53 test files.
 - Browser verification (`v0.3.13`): housing hover read `60 / 500` for a single high-density block; the service chip showed `-$4` with `Road maintenance -$4` in its hover and no road chip in the bar; traffic on a 7-road grid produced 1-3 dots per 500 residents and a police station allowed one emergency car; a wildfire with no nearby roads or zones produced no alert, and adding a road within 20 tiles produced `Fire reported`; left click opened the inspector, right click cleared it, and right-drag panned without clearing.
+
+Current task: Frozen tundra water and permafrost ground (`0.3.14`).
+
+Tundra used to be a featureless frozen desert with zero water, which also made Water Towers and Sewage Plants impossible to build. It now generates real polar hydrology, and a new `ice` terrain carries the frozen portions.
+
+- [done] New `TERRAIN.ICE` / `TERRAIN_TYPE.ICE` value, persisted in saves like any other terrain.
+- [done] Tundra profile: 3-6 small lakes (`lakeRadiusScale: 0.6`), a `mixed` river, and `frozenWater: true`. Forest clusters stay at 0, so there are still no wildfire candidates.
+- [done] `Grid.generateLakes` paints lakes as ice when the biome freezes, so tundra lakes are frozen end to end.
+- [done] `Grid.freezeRiverBanks` converts only bank tiles (water tiles with at most `ICE_CONFIG.RIVER_BANK_MAX_WATER_NEIGHBORS` open-water neighbours) at `ICE_CONFIG.RIVER_BANK_ICE_CHANCE`, so the flowing centre lane never freezes and downstream pollution keeps moving.
+- [done] Ice is not water for placement: `isWaterAdjacent` and `getWaterfrontStatus` ignore it, so a Water Tower must touch open river and a frozen bank forfeits the clean-water bonus. Finding an unfrozen stretch is now a site-selection decision.
+- [done] `canPlaceBridge` accepts ice as well as open water, so a frozen reach still has crossings.
+- [done] Bare tundra ground renders as brown-grey soil with seeded value-noise frost patches (`ICE_CONFIG.GROUND_PATCH_CHANCE` / `GROUND_PATCH_SCALE`, exported as `tundraGroundIsFrost`). Decorative only: those tiles stay flat and buildable. Arctic ground stays a solid ice sheet.
+- [done] Frozen water renders as saturated blue-white with hairline cracks; bridges now draw from the live render loop so ice bridges appear and disappear correctly without invalidating the terrain chunks.
+- [done] `getTerrainPercentages` counts ice as water for world-map statistics.
+- [done] Tests: `tests/tundra-biome.test.js` rewritten for lakes, bank-only freezing, bridge crossing, water-adjacency and waterfront rules, and the frost-patch palette/determinism. Bump every version source to `0.3.14`.
+
+Notes:
+- No unlucky-seed guard was added: a 200x200 tundra map leaves 70-400 legal water-adjacent flat tiles, so sealing every bank is not a practical risk.
+- The centre lane is protected by the 1-2 open-water-neighbour test rather than by a post-pass, which also keeps the river visually continuous.
+
+Validation:
+- `node tests/run-all.js` passes all 53 test files.
+- Browser verification (`v0.3.14`, planet seed 424242, tundra hex): terrain counts showed flat 32,863 / mountain 5,810 / ice 246 / water 1,081 with zero iced centreline tiles; a Water Tower placed on the open bank at (195,28) while the frozen banks around it refused; a bridge placed on ice at (193,29) rendered over the frozen tile; the map read as brown soil with grey frost patches and saturated blue river ice.

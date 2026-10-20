@@ -1,17 +1,52 @@
-import { TERRAIN, ZONE, DENSITY, PRODUCER_TYPE, PRODUCER_CONFIG, TILE_SIZE, ORE_CONFIG, NIGHT_TINT_ALPHA, RENDERER_CONFIG, POLLUTION_CONFIG, BIOME_TYPES, isZoneAtCapacity, isTieredProducer, getProducerTier } from '../config.js';
+import { TERRAIN, ZONE, DENSITY, PRODUCER_TYPE, PRODUCER_CONFIG, TILE_SIZE, ORE_CONFIG, NIGHT_TINT_ALPHA, RENDERER_CONFIG, POLLUTION_CONFIG, BIOME_TYPES, ICE_CONFIG, isZoneAtCapacity, isTieredProducer, getProducerTier } from '../config.js';
 import { UtilityManager } from './UtilityManager.js';
 import { TrafficManager } from './TrafficManager.js';
 import { WeatherOverlay } from './WeatherOverlay.js';
 
 // Ground palettes for bare (FLAT) city tiles. The default is soil; desert cities render
-// sand instead so their terrain reads as dunes rather than farmland.
+// sand instead so their terrain reads as dunes rather than farmland. Tundra is a hybrid:
+// bare brown-grey soil with organic sheets of frost laid over roughly a third of it.
 const GROUND_PALETTE = {
   default: { baseAlt: '#5b4636', base: '#463326', speckleAlt: '#6b5440', speckle: '#533d2d' },
   [BIOME_TYPES.DESERT]: { baseAlt: '#dcc48f', base: '#cfb47c', speckleAlt: '#e8d6a8', speckle: '#bfa368' },
-  [BIOME_TYPES.TUNDRA]: { baseAlt: '#eef5fa', base: '#dceaf3', speckleAlt: '#ffffff', speckle: '#c3d8e6' },
+  [BIOME_TYPES.TUNDRA]: { baseAlt: '#6d6454', base: '#5e5749', speckleAlt: '#7c7361', speckle: '#6b6353' },
   // Permanent Arctic ice is bluer and glassier than tundra snow so the ice sheets read as ice.
   [BIOME_TYPES.ARCTIC]: { baseAlt: '#c9e6f5', base: '#b6dbef', speckleAlt: '#ffffff', speckle: '#8fc2dc' },
 };
+
+// Frost sheets on bare tundra ground. Decorative only: these tiles stay ordinary FLAT ground.
+const TUNDRA_FROST_PALETTE = { baseAlt: '#cfd7dc', base: '#c3ccd2', speckleAlt: '#e9eff3', speckle: '#b3bec6' };
+
+function hashGround(seed, x, y) {
+  let h = Math.imul((seed | 0) ^ Math.imul(x | 0, 0x27d4eb2d), 0x9e3779b1) >>> 0;
+  h = Math.imul(h ^ (y | 0), 0x85ebca6b) >>> 0;
+  h ^= h >>> 15;
+  h = Math.imul(h, 0xc2b2ae35) >>> 0;
+  h ^= h >>> 13;
+  return (h >>> 0) / 4294967296;
+}
+
+const smoothstep = (t) => t * t * (3 - 2 * t);
+
+// Value noise over a coarse lattice, so frost arrives in organic sheets a few tiles across
+// rather than as per-tile speckle. Deterministic for a given seed and tile, which keeps the
+// cached terrain chunks stable across frames and reloads.
+export function tundraFrostCover(seed, x, y, scale = ICE_CONFIG.GROUND_PATCH_SCALE) {
+  const fx = x / scale;
+  const fy = y / scale;
+  const x0 = Math.floor(fx);
+  const y0 = Math.floor(fy);
+  const tx = smoothstep(fx - x0);
+  const ty = smoothstep(fy - y0);
+  const top = hashGround(seed, x0, y0) + (hashGround(seed, x0 + 1, y0) - hashGround(seed, x0, y0)) * tx;
+  const bottom = hashGround(seed, x0, y0 + 1) +
+    (hashGround(seed, x0 + 1, y0 + 1) - hashGround(seed, x0, y0 + 1)) * tx;
+  return top + (bottom - top) * ty;
+}
+
+export function tundraGroundIsFrost(seed, x, y) {
+  return tundraFrostCover(seed, x, y) >= 1 - ICE_CONFIG.GROUND_PATCH_CHANCE;
+}
 
 export class Renderer {
   constructor(canvas, grid) {
@@ -138,6 +173,7 @@ export class Renderer {
         if (tile.hasRoad && !tile.hasBridge) {
           this.renderRoadTile(ctx, tile, px, py);
         }
+        if (tile.hasBridge) this.renderBridgeTile(ctx, tile, px, py);
         if (tile.hasRoad && tile.roadDamage > 0) this.renderDamageBar(ctx, px, py, tile.roadDamage, '#f59e0b');
 
         if (tile.zone !== ZONE.NONE) {
@@ -365,12 +401,15 @@ export class Renderer {
   renderLowDetailTile(ctx, tile, px, py) {
     if (tile.terrain === TERRAIN.WATER) {
       ctx.fillStyle = tile.isPolluted ? '#3f6212' : '#0369a1';
+    } else if (tile.terrain === TERRAIN.ICE) {
+      ctx.fillStyle = '#cfe6f6';
     } else if (tile.terrain === TERRAIN.FOREST) {
       ctx.fillStyle = '#064e3b';
     } else if (tile.terrain === TERRAIN.MOUNTAIN) {
       ctx.fillStyle = '#334155';
     } else {
-      ctx.fillStyle = (tile.x + tile.y) % 2 === 0 ? '#5b4636' : '#463326';
+      const ground = GROUND_PALETTE[this.grid?.biome] || GROUND_PALETTE.default;
+      ctx.fillStyle = (tile.x + tile.y) % 2 === 0 ? ground.baseAlt : ground.base;
     }
     ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
 
@@ -404,13 +443,35 @@ export class Renderer {
   renderTerrainTile(ctx, tile, px, py, animateWater = true) {
     if (tile.terrain === TERRAIN.FLAT) {
       const isAlt = (tile.x + tile.y) % 2 === 0;
-      const ground = GROUND_PALETTE[this.grid?.biome] || GROUND_PALETTE.default;
+      const baseGround = GROUND_PALETTE[this.grid?.biome] || GROUND_PALETTE.default;
+      const frosty = this.grid?.biome === BIOME_TYPES.TUNDRA &&
+        tundraGroundIsFrost(this.grid.seed, tile.x, tile.y);
+      const ground = frosty ? TUNDRA_FROST_PALETTE : baseGround;
       ctx.fillStyle = isAlt ? ground.baseAlt : ground.base;
       ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
 
       ctx.fillStyle = isAlt ? ground.speckleAlt : ground.speckle;
       ctx.fillRect(px + 4, py + 4, 3, 3);
       ctx.fillRect(px + 18, py + 22, 2, 2);
+    } else if (tile.terrain === TERRAIN.ICE) {
+      // Frozen water: saturated blue-white, so ice reads apart from the neutral frost patches
+      // that sit on ordinary buildable ground.
+      const isAlt = (tile.x + tile.y) % 2 === 0;
+      ctx.fillStyle = isAlt ? '#a5d5f0' : '#94c7e6';
+      ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+
+      const jitter = (tile.x * 7 + tile.y * 13) % 5;
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.65)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(px + 3 + jitter, py + 5);
+      ctx.lineTo(px + 13, py + 13);
+      ctx.lineTo(px + 10 + jitter, py + 27);
+      ctx.stroke();
+
+      ctx.fillStyle = 'rgba(226, 244, 255, 0.75)';
+      ctx.fillRect(px + 21, py + 4, 3, 3);
+      ctx.fillRect(px + 5, py + 22, 2, 2);
     } else if (tile.terrain === TERRAIN.MOUNTAIN) {
       ctx.fillStyle = '#334155';
       ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
@@ -489,10 +550,6 @@ export class Renderer {
       ctx.lineTo(ax + dir.x * 4, ay + dir.y * 4);
       ctx.lineTo(ax - dir.x * 3 - perpX * 5, ay - dir.y * 3 - perpY * 5);
       ctx.stroke();
-
-      if (tile.hasBridge) {
-        this.renderBridgeTile(ctx, tile, px, py);
-      }
     }
   }
 

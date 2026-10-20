@@ -1,4 +1,4 @@
-import { TERRAIN, TERRAIN_TYPE, ZONE, DENSITY, GROWTH_CONFIG, RESIDENTIAL_CAPACITY, MAP_WIDTH, MAP_HEIGHT, PRODUCER_CONFIG, PRODUCER_TYPE, ORE_CONFIG, ORE_GENERATION, SERVICE_GLOBAL_CONFIG, TERRAIN_GENERATION_CONFIG, MAP_SEED_STORAGE_KEY, MAP_SEED_STORAGE_KEY_LEGACY, BIOME_CONFIG, BIOME_TERRAIN_CONFIG, BIOME_LAKE_CONFIG, BIOME_GENERATION_VERSION, BIOME_TYPES, PRODUCER_TIER_MAX, clampTier, getProducerTier, isTieredService, isTieredProducer, getBatteryStorageForTier, getWindPeakForTier, getSolarPeakForTier, getWaterCapacityForTier, getSewageCapacityForTier, getServiceTierStat } from '../config.js';
+import { TERRAIN, TERRAIN_TYPE, ZONE, DENSITY, GROWTH_CONFIG, RESIDENTIAL_CAPACITY, MAP_WIDTH, MAP_HEIGHT, PRODUCER_CONFIG, PRODUCER_TYPE, ORE_CONFIG, ORE_GENERATION, SERVICE_GLOBAL_CONFIG, TERRAIN_GENERATION_CONFIG, ICE_CONFIG, MAP_SEED_STORAGE_KEY, MAP_SEED_STORAGE_KEY_LEGACY, BIOME_CONFIG, BIOME_TERRAIN_CONFIG, BIOME_LAKE_CONFIG, BIOME_GENERATION_VERSION, BIOME_TYPES, PRODUCER_TIER_MAX, clampTier, getProducerTier, isTieredService, isTieredProducer, getBatteryStorageForTier, getWindPeakForTier, getSolarPeakForTier, getWaterCapacityForTier, getSewageCapacityForTier, getServiceTierStat } from '../config.js';
 
 const TIER_DENSITY = [DENSITY.LIGHT, DENSITY.MEDIUM, DENSITY.HIGH];
 
@@ -280,6 +280,7 @@ export class Grid {
     this.generateRiver(modifiers.riverMode);
 
     this.generateLakes(modifiers);
+    this.freezeRiverBanks(modifiers);
 
     const mapScale = (this.width * this.height) / TERRAIN_GENERATION_CONFIG.MAP_SCALE_BASE_AREA;
     const numForestClusters = Math.round(
@@ -336,6 +337,8 @@ export class Grid {
     const maxLakes = biome.lakeCountMax ?? (TERRAIN_GENERATION_CONFIG.LAKE_COUNT_RANDOM_RANGE - 1);
     const numLakes = minLakes + Math.floor(this.random() * (Math.max(0, maxLakes - minLakes) + 1));
     const radiusScale = biome.lakeRadiusScale ?? 1;
+    // Polar lakes freeze right through, so they are painted as ice rather than water.
+    const lakeTerrain = biome.frozenWater ? TERRAIN_TYPE.ICE : TERRAIN_TYPE.RIVER;
     for (let i = 0; i < numLakes; i++) {
       const radius = Math.max(1, Math.round(
         (TERRAIN_GENERATION_CONFIG.LAKE_RADIUS_MIN + Math.floor(this.random() * TERRAIN_GENERATION_CONFIG.LAKE_RADIUS_RANDOM_RANGE)) * radiusScale,
@@ -346,10 +349,34 @@ export class Grid {
       const cx = margin + Math.floor(this.random() * (this.width - margin * 2));
       const cy = margin + Math.floor(this.random() * (this.height - margin * 2));
 
-      this.paintTerrainCluster(cx, cy, radius, TERRAIN_TYPE.RIVER,
+      this.paintTerrainCluster(cx, cy, radius, lakeTerrain,
         TERRAIN_GENERATION_CONFIG.LAKE_RADIUS_WOBBLE_RANGE,
         TERRAIN_GENERATION_CONFIG.LAKE_RADIUS_WOBBLE_CENTER);
     }
+  }
+
+  // Anchor ice fringes the shallow banks of a polar river while the deep centre keeps flowing,
+  // so only water tiles with few water neighbours can freeze. The open lane also keeps river
+  // pollution flowing downstream and leaves somewhere to place a Water Tower or Sewage Plant.
+  freezeRiverBanks(biome = this.getBiomeModifiers()) {
+    if (!biome.frozenWater) return 0;
+    const maxBankNeighbors = ICE_CONFIG.RIVER_BANK_MAX_WATER_NEIGHBORS;
+    const chance = ICE_CONFIG.RIVER_BANK_ICE_CHANCE;
+    const isOpenWater = (x, y) => this.getTile(x, y)?.terrain === TERRAIN_TYPE.RIVER;
+    let frozen = 0;
+    for (let y = 0; y < this.height; y++) {
+      for (let x = 0; x < this.width; x++) {
+        const tile = this.tiles[y][x];
+        if (tile.terrain !== TERRAIN_TYPE.RIVER) continue;
+        const openNeighbors = [[0, -1], [1, 0], [0, 1], [-1, 0]]
+          .filter(([dx, dy]) => isOpenWater(x + dx, y + dy)).length;
+        if (openNeighbors > maxBankNeighbors) continue;
+        if (this.random() >= chance) continue;
+        tile.terrain = TERRAIN_TYPE.ICE;
+        frozen++;
+      }
+    }
+    return frozen;
   }
 
   generateRiver(riverMode = 'mixed') {
@@ -537,7 +564,8 @@ export class Grid {
     const counts = { water: 0, forest: 0, mountain: 0 };
     for (const row of this.tiles) {
       for (const tile of row) {
-        if (tile.terrain === TERRAIN.WATER) counts.water++;
+        // Frozen water is still water for world-map statistics.
+        if (tile.terrain === TERRAIN.WATER || tile.terrain === TERRAIN.ICE) counts.water++;
         else if (tile.terrain === TERRAIN.FOREST) counts.forest++;
         else if (tile.terrain === TERRAIN.MOUNTAIN) counts.mountain++;
       }
@@ -933,10 +961,12 @@ export class Grid {
     return true;
   }
 
+  // Bridges cross open water and frozen water alike: ice is solid enough to build on.
   canPlaceBridge(x, y) {
     const tile = this.getTile(x, y);
     if (!tile) return false;
-    return tile.terrain === TERRAIN_TYPE.RIVER && !tile.hasBridge;
+    const isCrossable = tile.terrain === TERRAIN_TYPE.RIVER || tile.terrain === TERRAIN_TYPE.ICE;
+    return isCrossable && !tile.hasBridge;
   }
 
   placeBridge(x, y) {
