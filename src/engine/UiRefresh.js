@@ -62,6 +62,31 @@ function daylightFactor(hour) {
   return Math.max(0, Math.sin((Math.PI * (hour - DAY_START_HOUR)) / (NIGHT_START_HOUR - DAY_START_HOUR)));
 }
 
+// Per-tick money flow summary for the treasury hover. Income and the individual expense
+// lines are shown unsigned with an explicit +/- prefix, and net is signed.
+export function treasuryFlowSnapshot(flows = {}) {
+  const income = Number(flows.income) || 0;
+  const services = Number(flows.services) || 0;
+  const roads = Number(flows.roads) || 0;
+  const utilities = Number(flows.utilities) || 0;
+  const surveys = Number(flows.surveys) || 0;
+  const loans = Number(flows.loans) || 0;
+  const cities = Math.max(1, Number(flows.cityCount) || 1);
+  const net = income - services - roads - utilities - surveys - loans;
+  return {
+    'stat-cash-income': `+${formatMoney(income)}`,
+    'stat-cash-service': `-${formatMoney(services)}`,
+    'stat-cash-road': `-${formatMoney(roads)}`,
+    'stat-cash-utility': `-${formatMoney(utilities)}`,
+    'stat-cash-survey': `-${formatMoney(surveys)}`,
+    'stat-cash-loans': `-${formatMoney(loans)}`,
+    'stat-cash-net': `${net >= 0 ? '+' : '-'}${formatMoney(Math.abs(net))}`,
+    'stat-cash-survey-row-visible': surveys > 0 ? 'flex' : 'none',
+    'stat-cash-cities': String(cities),
+    'stat-cash-cities-row-visible': cities > 1 ? 'flex' : 'none',
+  };
+}
+
 export function getHudCadenceMs(isMobile) {
   return isMobile ? RENDERER_CONFIG.HUD_MOBILE_CADENCE_MS : 0;
 }

@@ -461,7 +461,7 @@ Happiness (`HAPPINESS_CONFIG`) is a 0–100 SimCity 2000-style mayor rating. 50 
 
 `index.html` + `style.css`: glass panels, Inter + JetBrains Mono, SVG HUD sprites.
 
-- Top bar: pop, treasury, income, service cost (includes pensions), road cost, jobs available, employment %, happiness, tax slider, tick, and clock. Every money value is displayed in whole dollars through `formatMoney`, even though the loan ledger tracks cents internally for interest accuracy. The tax readout reserves 4ch for 0% through 100%, and its slider track is fixed at 72px so changing the rate does not move neighboring header items on desktop or mobile. Stockpiles live in the right HUD's Storage tab.
+- Top bar: pop, treasury, income, service cost (includes pensions), road cost, jobs available, employment %, happiness, tax slider, tick, and clock. Every money value is displayed in whole dollars through `formatMoney`, even though the loan ledger tracks cents internally for interest accuracy. The treasury chip has a hover/tap tooltip titled `Money / Tick`: tax income, service costs, road maintenance, utility operating costs, survey costs (shown only while a survey runs), loan payments due, and the resulting net per tick. The figures are world-wide — every visited city's economy plus the shared loan schedule — and the `Cities` row appears only when more than one city exists. The tax readout reserves 4ch for 0% through 100%, and its slider track is fixed at 72px so changing the rate does not move neighboring header items on desktop or mobile. Stockpiles live in the right HUD's Storage tab.
 - Right HUD tabs: Utility Demand & Capacity plus demographics, Storage for all stockpiles, and Service Budgets.
 - Overlay picker: Normal, Power, Water, Sewage, Pollution, Crime, Police, Fire, Hospital.
 - Utility HUD: demand/capacity meters, hospital patients, pollution avg/max, demographics, service + pension budget sliders.
@@ -1118,7 +1118,7 @@ Resolved by the user (rev 4): Conquer hybrid + world map + Firebase (Q1), victor
 
 - Product title: `index.html` `<title>SimConquer 2000</title>`, brand `SimConquer 2000`.
 - Onboarding: `src/engine/TutorialManager.js` shows a `#tutorial-banner` with six milestone steps (select a map tile, roads, utilities, residential + agriculture, jobs, population). The main menu owns the `Guided Tutorial` toggle button; switching it on and pressing `New Game` begins at Step 1, and the banner stays hidden while no world is loaded. State persists in `localStorage` keys `simconquer_tutorial_enabled` and `simconquer_tutorial_step`. Already-satisfied steps on the chosen map advance automatically after starting or loading a world. Map seed key is `simconquer_map_seed` (one-time legacy read of `bc2000_map_seed`). Save downloads are `simconquer2000-save-YYYY-MM-DD-HHMMSS-seed-<seed>.json`.
-- Version: `APP_VERSION` `0.3.11` in `src/version.js`; `package.json` is synchronized and version/cache-busting behavior is covered by the version-sync test.
+- Version: `APP_VERSION` `0.3.12` in `src/version.js`; `package.json` is synchronized and version/cache-busting behavior is covered by the version-sync test.
 - Entry / orchestration: `src/main.js` (`GameApp`), `src/engine/Simulation.js` (`tick`, `computeStats`, `updateGrowthAndDensity`).
 - Spatial model: `src/engine/Grid.js` (`createDefaultTile`, `generateProceduralTerrain`, placement).
 - View: `src/engine/Renderer.js`, `style.css`, overlay buttons in `index.html`.

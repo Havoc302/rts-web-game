@@ -247,6 +247,10 @@ span.stat-icon {
   pointer-events: auto;
 }
 
+.tooltip-wide {
+  min-width: 220px;
+}
+
 .tooltip-header {
   font-size: 0.72rem;
   font-weight: 700;

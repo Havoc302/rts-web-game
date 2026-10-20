@@ -1906,3 +1906,23 @@ Notes:
 Validation:
 - `node tests/run-all.js` passes all 52 test files.
 - Browser verification (`v0.3.11`): a fresh planet reported 125 `arctic` and 0 `ice` hexes; entering one produced biome `arctic` with 40,000 flat tiles, 0 ore, `canSurvey` false, and working road and meltwater pump placement. Seed 77767 reported 18 `tundra` hexes at 74.4° / -29.4 °C and 119 `arctic` hexes at 82° / -42.2 °C.
+
+Current task: Treasury hover with per-tick money summary (`0.3.12`).
+
+The user asked for a hover on the treasury that summarizes all incoming and outgoing money per tick.
+
+- [done] Turn the treasury into a `has-tooltip` stat item with a `Money / Tick` panel: tax income, service costs, road maintenance, utility operating costs, survey costs, loan payments due, and net per tick.
+- [done] Compute the figures world-wide in `GameApp.getTreasuryFlowSummary()` (every visited city's stats plus the shared loan schedule) and format them with the pure `treasuryFlowSnapshot()` helper.
+- [done] Hide the `Surveys` row when nothing is being surveyed and show a `Cities` row only when more than one city is in the world.
+- [done] Add HUD tests for the formatting, net arithmetic, and row visibility; bump every version source to `0.3.12`.
+- [done] De-flake `tests/simulation.test.js` uncovered during verification: growth-delta assertions now tick through a `tickDeterministic()` helper that suppresses random crime/fire rolls, and the procedural-terrain tests use a fixed seed because an unseeded 30x30 map can legitimately place zero rock clusters.
+
+Notes:
+- Values are whole dollars through `formatMoney`, matching every other money display.
+- Loan payments use the scheduled amount due, which is what the next tick will try to collect.
+- The existing per-chip income/expense readouts are unchanged; the tooltip is additive.
+
+Validation:
+- `node tests/run-all.js` passes all 52 test files.
+- Stability check after the de-flake: `tests/simulation.test.js` passed 80 consecutive runs and the full suite passed 15 consecutive runs with zero failures.
+- Browser verification (`v0.3.12`): with roads and zones at 30% tax the panel showed `Tax income +$1`, `Service costs -$0`, `Road maintenance -$14`, `Utilities -$0`, `Loan payments -$0`, `Net / tick -$13`, with the survey and city rows hidden; a run with a survey station active showed `Surveys -$10` and `Net / tick -$24`, proving the row appears only while surveying.

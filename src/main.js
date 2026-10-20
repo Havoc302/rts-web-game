@@ -14,6 +14,7 @@ import {
   getHudCadenceMs,
   recordUiTiming,
   shouldRefreshUi,
+  treasuryFlowSnapshot,
   uiTimingAverages,
 } from './engine/UiRefresh.js';
 import { deserializeGame, deserializeGameFromJson, serializeGameToJson } from './engine/SaveGame.js';
@@ -883,6 +884,9 @@ class GameApp {
     this.tutorialManager?.update(this.grid, this.simulation.stats);
     const started = this.enableUiTiming ? nowMs() : 0;
     const snapshot = buildHudSnapshot(this.simulation, this.treasury);
+    // The treasury is shared by every visited city, so the hover totals the whole world
+    // instead of describing only the active city.
+    Object.assign(snapshot, treasuryFlowSnapshot(this.getTreasuryFlowSummary()));
     const changed = changedHudFields(this._hudSnapshot, snapshot);
     const cadenceMs = getHudCadenceMs(this.isMobileLayout());
     const at = nowMs();
@@ -907,6 +911,34 @@ class GameApp {
       happiness.push(city.simulation.stats.happiness ?? 50);
     }
     return happiness.reduce((sum, value) => sum + value, 0) / happiness.length;
+  }
+
+  // World-wide per-tick money flows for the treasury hover. Every visited city settles
+  // against the same wallet, so these totals add up all of them plus the loan schedule.
+  getTreasuryFlowSummary() {
+    const simulations = this.getWorldSimulations();
+    let income = 0;
+    let services = 0;
+    let roads = 0;
+    let utilities = 0;
+    let surveys = 0;
+    for (const simulation of simulations) {
+      const stats = simulation.stats || {};
+      income += stats.incomePerTick || 0;
+      services += stats.serviceExpenses || 0;
+      roads += stats.roadExpenses || 0;
+      utilities += stats.utilityExpenses || 0;
+      surveys += simulation.surveyExpenses || 0;
+    }
+    return {
+      income,
+      services,
+      roads,
+      utilities,
+      surveys,
+      loans: this.loanManager?.scheduledPayment || 0,
+      cityCount: simulations.length,
+    };
   }
 
   getWorldSimulations() {

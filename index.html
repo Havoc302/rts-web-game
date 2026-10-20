@@ -110,9 +110,20 @@
             <div class="tooltip-row"><span class="label">Retirees:</span><span class="val" id="stat-retirees">0</span></div>
           </div>
         </div>
-        <div class="stat-item" title="Treasury">
+        <div class="stat-item has-tooltip" tabindex="0" aria-label="Treasury">
           <svg class="stat-icon"><use href="#hud-treasury"/></svg>
           <span class="value" id="stat-cash">$25,000</span>
+          <div class="stat-tooltip tooltip-wide">
+            <div class="tooltip-header">Money / Tick</div>
+            <div class="tooltip-row"><span class="label">Tax income:</span><span class="val" id="stat-cash-income">+$0</span></div>
+            <div class="tooltip-row"><span class="label">Service costs:</span><span class="val" id="stat-cash-service">-$0</span></div>
+            <div class="tooltip-row"><span class="label">Road maintenance:</span><span class="val" id="stat-cash-road">-$0</span></div>
+            <div class="tooltip-row"><span class="label">Utilities:</span><span class="val" id="stat-cash-utility">-$0</span></div>
+            <div class="tooltip-row" id="stat-cash-survey-row" style="display: none;"><span class="label">Surveys:</span><span class="val" id="stat-cash-survey">-$0</span></div>
+            <div class="tooltip-row"><span class="label">Loan payments:</span><span class="val" id="stat-cash-loans">-$0</span></div>
+            <div class="tooltip-row"><span class="label">Net / tick:</span><span class="val" id="stat-cash-net">+$0</span></div>
+            <div class="tooltip-row" id="stat-cash-cities-row" style="display: none;"><span class="label">Cities:</span><span class="val" id="stat-cash-cities">1</span></div>
+          </div>
         </div>
         <div class="stat-item" title="Income / Tick">
           <svg class="stat-icon"><use href="#hud-income"/></svg>

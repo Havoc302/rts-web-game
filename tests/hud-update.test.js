@@ -10,6 +10,7 @@ import {
   formatMoney,
   getHudCadenceMs,
   shouldRefreshUi,
+  treasuryFlowSnapshot,
   weatherIcons,
 } from '../src/engine/UiRefresh.js';
 import { RENDERER_CONFIG, TERRAIN, ZONE } from '../src/config.js';
@@ -65,6 +66,39 @@ function fakeDocument() {
   assert.strictEqual(stormy['stat-weather-cloud'], '90%');
   assert.strictEqual(stormy['stat-weather-temp'], `${Math.round(simulation.weatherManager.temperature)}°C`);
   assert.strictEqual(stormy['stat-weather-label'], simulation.weatherManager.getWeatherLabel());
+}
+
+// Treasury hover: every per-tick inflow and outflow, then the net.
+{
+  const flows = treasuryFlowSnapshot({
+    income: 128,
+    services: 30,
+    roads: 12,
+    utilities: 6,
+    surveys: 10,
+    loans: 5,
+    cityCount: 2,
+  });
+  assert.strictEqual(flows['stat-cash-income'], '+$128');
+  assert.strictEqual(flows['stat-cash-service'], '-$30');
+  assert.strictEqual(flows['stat-cash-road'], '-$12');
+  assert.strictEqual(flows['stat-cash-utility'], '-$6');
+  assert.strictEqual(flows['stat-cash-survey'], '-$10');
+  assert.strictEqual(flows['stat-cash-loans'], '-$5');
+  assert.strictEqual(flows['stat-cash-net'], '+$65', 'Net should subtract every outflow from income');
+  assert.strictEqual(flows['stat-cash-survey-row-visible'], 'flex', 'Active surveys should show their row');
+  assert.strictEqual(flows['stat-cash-cities'], '2');
+  assert.strictEqual(flows['stat-cash-cities-row-visible'], 'flex', 'Multi-city worlds should name the city count');
+
+  const simple = treasuryFlowSnapshot({ income: 20, services: 25, roads: 0, cityCount: 1 });
+  assert.strictEqual(simple['stat-cash-net'], '-$5', 'A deficit should render as a negative net');
+  assert.strictEqual(simple['stat-cash-survey-row-visible'], 'none', 'Idle surveys should hide their row');
+  assert.strictEqual(simple['stat-cash-cities-row-visible'], 'none', 'A single city needs no city-count row');
+  assert.strictEqual(simple['stat-cash-loans'], '-$0');
+
+  const empty = treasuryFlowSnapshot();
+  assert.strictEqual(empty['stat-cash-net'], '+$0');
+  assert.strictEqual(empty['stat-cash-income'], '+$0');
 }
 
 {

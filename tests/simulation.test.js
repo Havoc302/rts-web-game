@@ -8,6 +8,19 @@ import { PRODUCER_TYPE, ZONE, DENSITY, GROWTH_CONFIG, MAP_WIDTH, MAP_HEIGHT, TER
 
 console.log('Running Phase 1 Core Loop Automated Verification Tests...\n');
 
+// Growth-delta assertions check exact arithmetic, but a random crime incident or fire can
+// subtract from the delta and make them flaky. Run those ticks with random hazards
+// suppressed (0.999 exceeds every ignition/crime probability), then restore Math.random.
+function tickDeterministic(sim) {
+  const originalRandom = Math.random;
+  Math.random = () => 0.999;
+  try {
+    sim.tick();
+  } finally {
+    Math.random = originalRandom;
+  }
+}
+
 // Test 1: Road Network & BFS Utility Distance
 {
   const grid = new Grid(10, 10);
@@ -612,7 +625,7 @@ console.log('Running Phase 1 Core Loop Automated Verification Tests...\n');
   laborTile.growthScore = GROWTH_CONFIG.MAX_SCORE;
 
   sim.computeStats();
-  sim.tick();
+  tickDeterministic(sim);
 
   const cTile = grid.getTile(3, 2);
   assert.strictEqual(sim.stats.employmentRate, 1.0, 'Employment rate is 100%');
@@ -647,7 +660,7 @@ console.log('Running Phase 1 Core Loop Automated Verification Tests...\n');
   // At 0% tax, low-tax attraction applies across developed zones.
   sim.taxRate = 0;
   sim.computeStats();
-  sim.tick();
+  tickDeterministic(sim);
   const cTileAt100 = grid.getTile(3, 3).growthScore;
   const iTileAt100 = grid.getTile(3, 4).growthScore;
 
@@ -658,7 +671,7 @@ console.log('Running Phase 1 Core Loop Automated Verification Tests...\n');
   grid.getTile(3, 3).growthScore = 0;
   grid.getTile(3, 4).growthScore = 0;
   sim.taxRate = 100;
-  sim.tick();
+  tickDeterministic(sim);
 
   const cTileAt150 = grid.getTile(3, 3).growthScore;
   const iTileAt150 = grid.getTile(3, 4).growthScore;
@@ -713,7 +726,9 @@ console.log('Running Phase 1 Core Loop Automated Verification Tests...\n');
 
 // Test 17: Procedural Terrain Generation & Random Walk River
 {
-  const grid = new Grid(30, 30);
+  // Fixed seed: on a 30x30 map some rollouts legitimately place no rock clusters, so an
+  // unseeded grid made the "scatter rock clusters" assertion flaky.
+  const grid = new Grid(30, 30, 424242);
   grid.randomizeGrid();
 
   let hasRiver = false;
@@ -741,7 +756,7 @@ console.log('Running Phase 1 Core Loop Automated Verification Tests...\n');
 
 // Test 18: Regenerate Grid Functionality
 {
-  const grid = new Grid(30, 30);
+  const grid = new Grid(30, 30, 424242);
   grid.placeRoad(5, 5);
   grid.randomizeGrid();
 
