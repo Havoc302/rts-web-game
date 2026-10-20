@@ -74,9 +74,10 @@ function flatGrid(width = 20, height = 6) {
 
   const northCoast = new Grid(200, 200, 424242, BIOME_TYPES.PLAINS, 2, 3, ['N']);
   const isSalt = (grid, x, y) => grid.getTile(x, y).terrain === TERRAIN.SALT_WATER;
+  // Any of the three shore covers counts as beach here: sand, rock, or polar ice.
   const isBeach = (grid, x, y) => {
     const terrain = grid.getTile(x, y).terrain;
-    return terrain === TERRAIN.SAND || terrain === TERRAIN.MOUNTAIN;
+    return terrain === TERRAIN.SAND || terrain === TERRAIN.MOUNTAIN || terrain === TERRAIN.ICE;
   };
 
   assert.ok(countTerrain(northCoast, TERRAIN.SALT_WATER) > 0, 'A north coast paints salt water');
@@ -139,6 +140,48 @@ function flatGrid(width = 20, height = 6) {
   const tundraCoast = new Grid(200, 200, 424242, BIOME_TYPES.TUNDRA, 2, 3, ['S']);
   assert.ok(countTerrain(tundraCoast, TERRAIN.ICE) > 0, 'Coastal tundra keeps its frozen lakes');
   assert.ok(countTerrain(tundraCoast, TERRAIN.SALT_WATER) > 0, 'Coastal tundra gets an unfrozen sea');
+}
+
+// --- Polar coasts are ice and rock, never sand -------------------------------------------
+{
+  const arctic = new Grid(200, 200, 424242, BIOME_TYPES.ARCTIC, 2, 3, ['N']);
+  assert.strictEqual(countTerrain(arctic, TERRAIN.SAND), 0, 'An ice sheet has no sand shore');
+  assert.ok(countTerrain(arctic, TERRAIN.ICE) > 0, 'Polar shores should include an ice shelf');
+  assert.ok(countTerrain(arctic, TERRAIN.MOUNTAIN) > 0, 'Polar shores should include bare rock');
+
+  const isSalt = (x, y) => arctic.getTile(x, y).terrain === TERRAIN.SALT_WATER;
+  let shoreTiles = 0;
+  for (let x = 0; x < 200; x++) {
+    let depth = 0;
+    while (depth < 60 && isSalt(x, depth)) depth++;
+    if (depth === 0) continue;
+    for (let offset = 0; offset < 3; offset++) {
+      const terrain = arctic.getTile(x, depth + offset).terrain;
+      if (terrain === TERRAIN.ICE || terrain === TERRAIN.MOUNTAIN) shoreTiles++;
+    }
+  }
+  assert.ok(shoreTiles > 300, 'Most of the polar coastline is ice or rock shelf');
+
+  // Frozen shore still lets bridges across, and Arctic keeps its meltwater exemption so the
+  // city can still drink even though the shore itself is unbuildable.
+  const iceShore = arctic.tiles.flat().find((tile) => tile.terrain === TERRAIN.ICE);
+  assert.strictEqual(arctic.canPlaceBridge(iceShore.x, iceShore.y), true);
+  assert.strictEqual(arctic.hasMeltwaterAccess(PRODUCER_TYPE.WATER_TOWER), true,
+    'Arctic pumps tap meltwater instead of needing open water');
+
+  const buildableShore = arctic.tiles.flat().filter((tile) => {
+    const terrain = tile.terrain;
+    if (terrain !== TERRAIN.SAND) return false;
+    return [[0, -1], [1, 0], [0, 1], [-1, 0]].some(([dx, dy]) => isSalt(tile.x + dx, tile.y + dy));
+  });
+  assert.strictEqual(buildableShore.length, 0,
+    'A polar coast has no beach to build a Desalination Plant on');
+
+  // Temperate and tundra coasts still get sand.
+  const temperate = new Grid(200, 200, 424242, BIOME_TYPES.TEMPERATE, 2, 3, ['N']);
+  const tundra = new Grid(200, 200, 424242, BIOME_TYPES.TUNDRA, 2, 3, ['N']);
+  assert.ok(countTerrain(temperate, TERRAIN.SAND) > 0, 'Temperate coasts keep a sand beach');
+  assert.ok(countTerrain(tundra, TERRAIN.SAND) > 0, 'Tundra coasts keep a sand beach');
 }
 
 // --- Placement: sand is buildable, salt water is not fresh water --------------------------

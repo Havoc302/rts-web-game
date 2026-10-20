@@ -436,10 +436,16 @@ export class Grid {
     };
     const paintBeach = ({ x, y }) => {
       const tile = this.tiles[y][x];
-      const wasRock = tile.terrain === TERRAIN_TYPE.ROCK;
-      const rocky = wasRock ||
-        coastNoise(this.seed + 5153, x, y, COAST_CONFIG.ROCK_PATCH_SCALE) < COAST_CONFIG.ROCK_BEACH_CHANCE;
-      tile.terrain = rocky ? TERRAIN_TYPE.ROCK : TERRAIN_TYPE.SAND;
+      if (this.biome === BIOME_TYPES.ARCTIC) {
+        // An ice sheet has no sand: its shore is a broken shelf of ice and bare rock.
+        const icy = coastNoise(this.seed + 2029, x, y, COAST_CONFIG.ROCK_PATCH_SCALE) < COAST_CONFIG.POLAR_ICE_CHANCE;
+        tile.terrain = icy ? TERRAIN_TYPE.ICE : TERRAIN_TYPE.ROCK;
+      } else {
+        const wasRock = tile.terrain === TERRAIN_TYPE.ROCK;
+        const rocky = wasRock ||
+          coastNoise(this.seed + 5153, x, y, COAST_CONFIG.ROCK_PATCH_SCALE) < COAST_CONFIG.ROCK_BEACH_CHANCE;
+        tile.terrain = rocky ? TERRAIN_TYPE.ROCK : TERRAIN_TYPE.SAND;
+      }
       tile.riverFlowDir = null;
       painted++;
     };

@@ -669,6 +669,7 @@ export const COAST_CONFIG = {
   WOBBLE_SCALE: 7,                         // Wobble lattice size in tiles (higher = longer sweeps)
   ROCK_BEACH_CHANCE: 0.3,                  // Share of beach tiles that are rock instead of sand
   ROCK_PATCH_SCALE: 2,                     // Rock patch lattice size in tiles
+  POLAR_ICE_CHANCE: 0.55,                  // Share of a polar shoreline that is ice rather than rock
   BRIDGE_MAX_TILES: 10,                    // Longest continuous bridge run that may be built
 };
 

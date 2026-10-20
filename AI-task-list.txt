@@ -9,7 +9,7 @@ Agent handoff protocol:
 
 Open handoff (2026-10-20):
 - Active task: none in progress; the next item is to pick up the Phase 1 follow-ups listed in `docs/DESIGN.md`.
-- Latest completed task: ocean edge awareness, beaches, bridges, and the Desalination Plant (`0.4.0`); see the final task entry in this log.
+- Latest completed task: polar ice and rock shorelines (`0.4.1`); see the final task entry in this log.
 - Verified baseline: `npm test` passes all 54 test files.
 - Phase 1 follow-ups are tracked in `docs/DESIGN.md`; in particular, localStorage autosave and named tick-stage extraction are not implemented. Do not treat historical `Current task` headings below as active.
 
@@ -1995,4 +1995,18 @@ Notes:
 Validation:
 - `node tests/run-all.js` passes all 54 test files.
 - Browser verification (`v0.4.0`): a coastal hex with `coast: ['S']` generated 1,314 salt-water and 380 sand tiles; a Desalination Plant placed from the build menu onto a beach tile for $10,000 and the right HUD showed `Water 0.00 / 960.00` with `-$6` utility cost; the Bridge build panel listed `Max Span: 10 tiles of open water`; no console errors.
+
+
+Current task: Polar shorelines are ice and rock (`0.4.1`).
+
+The coastline painter used the same sand-or-rock beach for every biome, which put a sandy shore on an Arctic ice sheet.
+
+- [done] `COAST_CONFIG.POLAR_ICE_CHANCE` (0.55) split the polar shore between ice shelf and bare rock.
+- [done] `Grid.generateCoast` paints Arctic shore tiles as ice or rock instead of sand; temperate and tundra coasts keep sand.
+- [done] Polar coasts therefore have no buildable shore, so a Desalination Plant cannot be sited there; Arctic still uses the existing meltwater exemption for Water Pumps and Sewage Plants, and bridges still cross the ice shelf.
+- [done] Tests: `tests/coast.test.js` asserts the polar shore contains ice and rock and no sand, that it still allows bridges, and that temperate and tundra coasts keep sand. Bump every version source to `0.4.1`.
+
+Validation:
+- `node tests/run-all.js` passes all 54 test files.
+- Generation check on seed 424242, north-facing coast: Arctic shore tiles measured 213 ice / 189 rock / 0 sand, while tundra and temperate coasts stayed sand-dominant (341 and 337 sand tiles respectively).
 
