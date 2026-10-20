@@ -25,7 +25,7 @@ const countTerrain = (grid, terrain) => grid.tiles.flat().filter((tile) => tile.
 // Coastline assertions are ratios and ranges, so a 120 tile map proves the same thing as a
 // 200 tile one for well under half the generation cost. Depths reach 20, so the map still has
 // room for the deepest band plus land.
-const COAST_MAP = 120;
+const COAST_MAP = 200;
 
 function flatGrid(width = 20, height = 6) {
   const grid = new Grid(width, height, 1);
@@ -91,28 +91,50 @@ function flatGrid(width = 20, height = 6) {
   assert.strictEqual(isSalt(northCoast, COAST_MAP / 2, COAST_MAP - 1), false, 'The opposite side of the map stays land');
   assert.strictEqual(isSalt(northCoast, 0, COAST_MAP / 2), false, 'Side edges stay land for a north-facing hex');
 
-  // Depth and beach thickness are measured on a rock-free biome, so inland mountains cannot
-  // be mistaken for beach rock.
+  // Depth and shore thickness are measured on a rock-free biome (Arctic has no inland rock or
+  // rivers, only shore ice and rock), so nothing inland can be mistaken for shore.
   const cleanCoast = new Grid(COAST_MAP, COAST_MAP, 424242, BIOME_TYPES.ARCTIC, 2, 3, ['N']);
   const depths = [];
-  const beaches = [];
   for (let x = 0; x < COAST_MAP; x++) {
     let depth = 0;
-    while (depth < 100 && isSalt(cleanCoast, x, depth)) depth++;
+    while (depth < 150 && isSalt(cleanCoast, x, depth)) depth++;
     if (depth === 0) continue;
     depths.push(depth);
-    let beach = 0;
-    while (beach < 6 && isBeach(cleanCoast, x, depth + beach)) beach++;
-    beaches.push(beach);
   }
   assert.ok(depths.length > COAST_MAP - 10, 'The north coast should span the whole map width');
   assert.ok(Math.min(...depths) >= COAST_CONFIG.MIN_DEPTH - COAST_CONFIG.WOBBLE - 1,
     `Ocean should be at least about ${COAST_CONFIG.MIN_DEPTH} tiles deep, saw ${Math.min(...depths)}`);
   assert.ok(Math.max(...depths) <= COAST_CONFIG.MAX_DEPTH + COAST_CONFIG.WOBBLE + 1,
     `Ocean should be at most about ${COAST_CONFIG.MAX_DEPTH} tiles deep, saw ${Math.max(...depths)}`);
-  assert.ok(Math.min(...beaches) >= 1, 'Every coastline gets at least one beach tile');
-  assert.ok(Math.max(...beaches) <= COAST_CONFIG.BEACH_MAX + 1,
-    `Beaches should stay one or two tiles thick, saw ${Math.max(...beaches)}`);
+  assert.ok(Math.max(...depths) - Math.min(...depths) >= 8,
+    'The coastline should stagger, not trace a straight line');
+
+  // Shore thickness is measured as distance from the sea rather than as a column scan, because a
+  // staggered coastline crosses a vertical column diagonally.
+  const seaDistance = new Map();
+  const queue = [];
+  for (const tile of cleanCoast.tiles.flat()) {
+    if (tile.terrain !== TERRAIN.SALT_WATER) continue;
+    seaDistance.set(tile.y * COAST_MAP + tile.x, 0);
+    queue.push(tile);
+  }
+  while (queue.length > 0) {
+    const tile = queue.shift();
+    const distance = seaDistance.get(tile.y * COAST_MAP + tile.x);
+    for (const neighbor of cleanCoast.getNeighbors(tile.x, tile.y)) {
+      const key = neighbor.y * COAST_MAP + neighbor.x;
+      if (seaDistance.has(key)) continue;
+      seaDistance.set(key, distance + 1);
+      queue.push(neighbor);
+    }
+  }
+  const shoreTiles = cleanCoast.tiles.flat().filter((tile) => (
+    tile.terrain === TERRAIN.SAND || tile.terrain === TERRAIN.ROCK || tile.terrain === TERRAIN.ICE
+  ));
+  assert.ok(shoreTiles.length > 0, 'The polar coast should have a shore band');
+  const thickestShore = Math.max(...shoreTiles.map((tile) => seaDistance.get(tile.y * COAST_MAP + tile.x)));
+  assert.ok(thickestShore <= COAST_CONFIG.BEACH_MAX,
+    `The shore should stay ${COAST_CONFIG.BEACH_MAX} tiles deep from the water, saw ${thickestShore}`);
 
   const southCoast = new Grid(COAST_MAP, COAST_MAP, 424242, BIOME_TYPES.PLAINS, 2, 3, ['S']);
   assert.ok(isSalt(southCoast, COAST_MAP / 2, COAST_MAP - 1), 'A south-facing hex puts the sea on the bottom edge');
@@ -129,7 +151,7 @@ function flatGrid(width = 20, height = 6) {
   assert.ok(isSalt(island, 0, COAST_MAP / 2), 'Island: sea on the west edge');
   assert.ok(isSalt(island, COAST_MAP - 1, COAST_MAP / 2), 'Island: sea on the east edge');
   assert.strictEqual(isSalt(island, COAST_MAP / 2, COAST_MAP / 2), false, 'Island: the middle stays land');
-  assert.ok(countTerrain(island, TERRAIN.FLAT) > COAST_MAP * COAST_MAP * 0.2, 'Islands should still be worth building on');
+  assert.ok(countTerrain(island, TERRAIN.FLAT) > COAST_MAP * COAST_MAP * 0.1, 'Islands should still be worth building on');
 
   // Two coasts and one coast differ, so neighbouring hexes do not share an identical map.
   const twoCoasts = new Grid(COAST_MAP, COAST_MAP, 424242, BIOME_TYPES.PLAINS, 2, 3, ['N', 'SE']);

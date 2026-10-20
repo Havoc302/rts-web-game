@@ -476,6 +476,9 @@ export class Grid {
     const inFirstRing = (x, y) => x >= 0 && x < this.width && y >= 0 && y < this.height &&
       firstRingMask[this.terrainKey(x, y)] === 1;
     for (const cell of ring(inFirstRing)) {
+      // A second-ring candidate may itself be sea (it is only excluded from the first ring),
+      // and overwriting sea with beach would eat into the water.
+      if (isWater(cell.x, cell.y)) continue;
       const secondRing = coastNoise(this.seed + 8123, cell.x, cell.y, COAST_CONFIG.ROCK_PATCH_SCALE) <
         COAST_CONFIG.SECOND_RING_CHANCE;
       if (!secondRing) continue;

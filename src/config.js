@@ -660,13 +660,13 @@ export function getProducerUtilityUsage(producer) {
 // ocean-facing hex edge is one half-plane: salt water outside it, a beach strip inside it,
 // ordinary terrain beyond. Islands are simply hexes with several ocean edges at once.
 export const COAST_CONFIG = {
-  MIN_DEPTH: 4,                            // Minimum salt-water depth from the matching map side
-  MAX_DEPTH: 20,                           // Maximum salt-water depth
+  MIN_DEPTH: 20,                           // Minimum salt-water depth from the matching map side
+  MAX_DEPTH: 50,                           // Maximum salt-water depth
   BEACH_MIN: 1,                            // Minimum beach thickness inland of the water
   BEACH_MAX: 2,                            // Maximum beach thickness
   SECOND_RING_CHANCE: 0.55,                // Share of the coast whose beach is two tiles thick
-  WOBBLE: 2.4,                             // Coastline wobble amplitude in tiles
-  WOBBLE_SCALE: 7,                         // Wobble lattice size in tiles (higher = longer sweeps)
+  WOBBLE: 9,                               // Coastline wobble amplitude in tiles
+  WOBBLE_SCALE: 11,                         // Wobble lattice size in tiles (higher = longer sweeps)
   ROCK_BEACH_CHANCE: 0.3,                  // Share of beach tiles that are rock instead of sand
   ROCK_PATCH_SCALE: 2,                     // Rock patch lattice size in tiles
   POLAR_ICE_CHANCE: 0.55,                  // Share of a polar shoreline that is ice rather than rock

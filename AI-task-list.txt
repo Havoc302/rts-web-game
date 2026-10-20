@@ -9,7 +9,7 @@ Agent handoff protocol:
 
 Open handoff (2026-10-20):
 - Active task: none in progress; the next item is to pick up the Phase 1 follow-ups listed in `docs/DESIGN.md`.
-- Latest completed task: deeper coasts, seaward river mouths, parallel tests (`0.4.2`); see the final task entry in this log.
+- Latest completed task: wider, wobblier coastline (`0.4.3`); see the final task entry in this log.
 - Verified baseline: `npm test` passes all 54 test files.
 - Phase 1 follow-ups are tracked in `docs/DESIGN.md`; in particular, localStorage autosave and named tick-stage extraction are not implemented. Do not treat historical `Current task` headings below as active.
 
@@ -2024,4 +2024,20 @@ Validation:
 - Per-file timing before the change: 11.6 s serial total, with arctic 1.9 s, coast 1.3 s, biome-generation 1.2 s, overworld 1.2 s, tundra 1.0 s.
 - River mouth check across 35 maps (5 coast shapes x 7 city seeds): zero river tiles flow inland at the sea, and every map has 9-56 outward-flowing mouth tiles.
 - Browser verification (`v0.4.2`): a plains hex with `coast: ['NW']` rendered a 14 tile deep sea in the corner with the river cutting through the beach and its chevrons pointing into the sea; no console errors.
+
+Current task: Wider, wobblier coastline (`0.4.3`).
+
+- [done] Salt water depth raised from 4-20 to 20-50 tiles (`COAST_CONFIG.MIN_DEPTH`/`MAX_DEPTH`).
+- [done] Coastline wobble raised from 2.4 to 9 tiles over an 11-tile lattice, so the beach front staggers in long sweeps, headlands and bays instead of tracing a near-straight line.
+- [done] Fixed a bug where the second beach ring could paint over sea tiles that were only excluded from the first ring, which ate into the water and made the shore look up to three tiles thick in tight spots. The shore is now never more than `BEACH_MAX` tiles from the sea.
+- [done] Coast tests size back to the real 200x200 map (a 20-50 tile band needs the room), depth assertions widened, a stagger assertion added, and shore thickness now measured as distance from the sea rather than a column scan.
+
+Notes:
+- Land share at 200x200: 82-90% for a one-edge coast, 63-70% for two edges, 31-51% for a one-hex island, so islands stay buildable.
+- Because the sea is now 20-50 tiles wide, the 10-tile bridge limit rules out bridging open ocean; bridges remain a river feature.
+
+Validation:
+- `node tests/run-all.js` passes all 54 test files (about 3.8 s; the coast suite is now the critical path because it runs full-size maps).
+- Shore depth census on a 200x200 Arctic north coast: 248 tiles at one step from the sea, 180 at two, none deeper; median 1.
+- Browser verification (`v0.4.3`): a plains hex with `coast: ['NW']` rendered a large staggered sea across the corner (263 sea tiles) with a thin sand beach and the river cutting through to the water; no console errors.
 
