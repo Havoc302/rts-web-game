@@ -128,7 +128,7 @@ function applyTileOverride(tile, override) {
 }
 
 function collectTileOverrides(grid) {
-  const base = new Grid(grid.width, grid.height, grid.seed, grid.biome, grid.generationVersion, grid.biomeGenerationVersion ?? 1);
+  const base = new Grid(grid.width, grid.height, grid.seed, grid.biome, grid.generationVersion, grid.biomeGenerationVersion ?? 1, grid.coast ?? []);
   const overrides = [];
   for (let y = 0; y < grid.height; y++) {
     for (let x = 0; x < grid.width; x++) {
@@ -283,6 +283,7 @@ export function serializeGame(app, { includeFinance = true } = {}) {
       seed: app.grid.seed,
       biome: app.grid.biome ?? null,
       biomeGenerationVersion: app.grid.biomeGenerationVersion ?? 1,
+      coast: Array.isArray(app.grid.coast) ? [...app.grid.coast] : [],
       nextProducerId: app.grid.nextProducerId,
     },
     tiles: collectTileOverrides(app.grid),
@@ -385,7 +386,7 @@ function deserializeV2(document) {
     }
   }
 
-  const grid = new Grid(map.width, map.height, map.seed, map.biome ?? null, document.generationVersion, biomeGenerationVersion);
+  const grid = new Grid(map.width, map.height, map.seed, map.biome ?? null, document.generationVersion, biomeGenerationVersion, map.coast ?? []);
   for (const override of document.tiles) {
     if (!override || typeof override !== 'object') throw new Error('Invalid save tile override');
     assertNumber(override.x, 'tile.x', { integer: true, min: 0 });
@@ -445,7 +446,7 @@ export function createEmptySaveForTests() {
   return {
     saveVersion: SAVE_VERSION,
     generationVersion: GENERATION_VERSION,
-    map: { width: MAP_WIDTH, height: MAP_HEIGHT, seed: TERRAIN_GENERATION_CONFIG.DEFAULT_RANDOM_SEED, biome: null, nextProducerId: 1 },
+    map: { width: MAP_WIDTH, height: MAP_HEIGHT, seed: TERRAIN_GENERATION_CONFIG.DEFAULT_RANDOM_SEED, biome: null, coast: [], nextProducerId: 1 },
     tiles: [],
     producers: [],
   };

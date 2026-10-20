@@ -9,8 +9,8 @@ Agent handoff protocol:
 
 Open handoff (2026-10-20):
 - Active task: none in progress; the next item is to pick up the Phase 1 follow-ups listed in `docs/DESIGN.md`.
-- Latest completed task: frozen tundra water and decorative permafrost ground (`0.3.14`); see the final task entry in this log.
-- Verified baseline: `npm test` passes all 53 test files.
+- Latest completed task: ocean edge awareness, beaches, bridges, and the Desalination Plant (`0.4.0`); see the final task entry in this log.
+- Verified baseline: `npm test` passes all 54 test files.
 - Phase 1 follow-ups are tracked in `docs/DESIGN.md`; in particular, localStorage autosave and named tick-stage extraction are not implemented. Do not treat historical `Current task` headings below as active.
 
 Current task: Add standalone JSON game save export/import.
@@ -1970,3 +1970,29 @@ Notes:
 Validation:
 - `node tests/run-all.js` passes all 53 test files.
 - Browser verification (`v0.3.14`, planet seed 424242, tundra hex): terrain counts showed flat 32,863 / mountain 5,810 / ice 246 / water 1,081 with zero iced centreline tiles; a Water Tower placed on the open bank at (195,28) while the frozen banks around it refused; a bridge placed on ice at (193,29) rendered over the frozen tile; the map read as brown soil with grey frost patches and saturated blue river ice.
+
+Current task: Ocean edge awareness, beaches, bridges, and the Desalination Plant (`0.4.0`).
+
+City maps used to be landlocked: every hex generated a square map with a river and lakes but no sea, so a coastal hex looked identical to an inland one. City maps now inherit their coastline from the hex, and the sea is a real water type that only one building can drink from.
+
+- [done] `OverworldMap.getOceanFacingDirections(id)` classifies the six H3 neighbours by compass bearing into `N, NE, SE, S, SW, NW` and caches the ocean-facing ones. Deterministic per planet seed and cell.
+- [done] New `salt_water` and `sand` terrains. `isBuildableTerrain()` makes sand accept roads, zones, and buildings exactly like flat ground.
+- [done] `Grid.generateCoast()` paints each ocean-facing edge as a half-plane: salt water 3-10 tiles deep with a wobbling shoreline, then a 1-2 tile beach of sand or rock (`COAST_CONFIG`). Side edges use the matching map side, diagonal edges the matching corner; a hex with all six ocean edges also closes its east and west vertices so a one-hex island is surrounded by sea.
+- [done] Rivers and lakes generate before the coast, so a river now ends in a river mouth instead of running into the sea band.
+- [done] Salt water is not fresh water: `isWaterAdjacent` rejects it, Water Towers cannot drink it, and `getWaterfrontStatus` still grants the clean-water bonus because people like living beside any water.
+- [done] Sewage Plants may discharge into salt water (`allowsSaltWater`), which pollutes the coast and contaminates a Desalination Plant drawing from it.
+- [done] Bridges cross fresh water, ice, and salt water. A single bridge run is capped at `COAST_CONFIG.BRIDGE_MAX_TILES` (10) by `Grid.bridgeRunLength`, and the Bridge build panel shows the limit.
+- [done] Desalination Plant: $10,000, no tiers, 960 water (two tier-3 pumps), `requiresSaltWaterAdjacent`, upkeep `DESALINATION_OPERATING_COST` = 3x a pump. Allocated as a second `reset: false` water pass after pumps so it only covers the shortfall, and its power draw scales with the water it delivers (0 idle up to `PEAK_POWER` 55).
+- [done] `DESALINATION_CONFIG` in config; renderer draws the sea, sand, and the plant; inspector names terrains ("Beach Sand", "Salt Water") and the build panel describes desalination.
+- [done] Saves store the coast direction list in the map block, and the base grid used for tile diffs is rebuilt with it, so coastal cities survive save/import.
+- [done] Tests: new `tests/coast.test.js` (world edge detection, band geometry, islands, placement, bridges, allocation order, contamination); save test extended with coast round-trips. Bump every version source to `0.4.0`.
+
+Notes:
+- The desalination plant's `usedCapacity` is cleared at the start of the water pass, because the pump pass resets only pump types.
+- Rock beaches are ordinary mountain tiles, so they block the plant: a coastline can be unusable for desalination, which is accepted.
+- Arctic coasts still get a sand beach; only the coast geometry is biome-agnostic so far.
+
+Validation:
+- `node tests/run-all.js` passes all 54 test files.
+- Browser verification (`v0.4.0`): a coastal hex with `coast: ['S']` generated 1,314 salt-water and 380 sand tiles; a Desalination Plant placed from the build menu onto a beach tile for $10,000 and the right HUD showed `Water 0.00 / 960.00` with `-$6` utility cost; the Bridge build panel listed `Max Span: 10 tiles of open water`; no console errors.
+

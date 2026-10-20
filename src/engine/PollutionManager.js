@@ -70,21 +70,25 @@ export class PollutionManager {
       this.spreadPollution(grid, plant.x, plant.y, COAL_CONFIG.RADIUS, COAL_CONFIG.EMISSION);
     }
 
-    // Step 4: Source C — River discharge contamination
-    const waterTowers = grid.producers.filter((p) => p.type === PRODUCER_TYPE.WATER_TOWER);
+    // Step 4: Source C — River and ocean discharge contamination
+    const drinkers = grid.producers.filter((p) => (
+      p.type === PRODUCER_TYPE.WATER_TOWER || p.type === PRODUCER_TYPE.DESALINATION_PLANT
+    ));
     
     this.computeWaterPollution(grid);
 
-    for (const tower of waterTowers) {
-      const neighbors = grid.getNeighbors(tower.x, tower.y);
+    for (const plant of drinkers) {
+      const neighbors = grid.getNeighbors(plant.x, plant.y);
+      // A desalination plant removes salt, not sewage, so polluted seawater poisons it
+      // exactly like a water pump sitting on a polluted river.
       const isDownstreamFromSewage = neighbors.some(
-        (n) => n.terrain === TERRAIN.WATER && n.isPolluted
+        (n) => (n.terrain === TERRAIN.WATER || n.terrain === TERRAIN.SALT_WATER) && n.isPolluted
       );
 
       if (isDownstreamFromSewage) {
-        tower.contaminated = true;
+        plant.contaminated = true;
         this.spreadPollution(
-          grid, tower.x, tower.y,
+          grid, plant.x, plant.y,
           POLLUTION_CONFIG.CONTAMINATED_TOWER_RADIUS,
           POLLUTION_CONFIG.CONTAMINATED_TOWER_EMISSION
         );
@@ -132,7 +136,7 @@ export class PollutionManager {
       if (discharge <= 0) continue;
       const neighbors = grid.getNeighbors(plant.x, plant.y);
       for (const n of neighbors) {
-        if (n.terrain === TERRAIN.WATER) {
+        if (n.terrain === TERRAIN.WATER || n.terrain === TERRAIN.SALT_WATER) {
           addSourceStrength(n, discharge);
         }
       }

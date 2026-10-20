@@ -401,6 +401,10 @@ export class Renderer {
   renderLowDetailTile(ctx, tile, px, py) {
     if (tile.terrain === TERRAIN.WATER) {
       ctx.fillStyle = tile.isPolluted ? '#3f6212' : '#0369a1';
+    } else if (tile.terrain === TERRAIN.SALT_WATER) {
+      ctx.fillStyle = '#0e3550';
+    } else if (tile.terrain === TERRAIN.SAND) {
+      ctx.fillStyle = '#dbc999';
     } else if (tile.terrain === TERRAIN.ICE) {
       ctx.fillStyle = '#cfe6f6';
     } else if (tile.terrain === TERRAIN.FOREST) {
@@ -472,6 +476,29 @@ export class Renderer {
       ctx.fillStyle = 'rgba(226, 244, 255, 0.75)';
       ctx.fillRect(px + 21, py + 4, 3, 3);
       ctx.fillRect(px + 5, py + 22, 2, 2);
+    } else if (tile.terrain === TERRAIN.SAND) {
+      // Beach: the only buildable coastal ground.
+      const isAlt = (tile.x + tile.y) % 2 === 0;
+      ctx.fillStyle = isAlt ? '#e6d7ac' : '#dbc999';
+      ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+
+      ctx.fillStyle = isAlt ? '#f2e7c4' : '#cbb884';
+      ctx.fillRect(px + 6, py + 8, 3, 3);
+      ctx.fillRect(px + 20, py + 20, 2, 2);
+      ctx.fillRect(px + 12, py + 25, 2, 2);
+    } else if (tile.terrain === TERRAIN.SALT_WATER) {
+      // Open sea: darker and deeper than a river, with slow swell lines instead of flow chevrons.
+      const isAlt = (tile.x + tile.y) % 2 === 0;
+      ctx.fillStyle = isAlt ? '#123f5c' : '#0e3550';
+      ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+
+      const swell = (tile.x * 5 + tile.y * 3) % 12;
+      ctx.strokeStyle = 'rgba(96, 165, 200, 0.35)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(px + 3, py + 9 + swell * 0.6);
+      ctx.quadraticCurveTo(px + 16, py + 5 + swell * 0.6, px + 29, py + 10 + swell * 0.6);
+      ctx.stroke();
     } else if (tile.terrain === TERRAIN.MOUNTAIN) {
       ctx.fillStyle = '#334155';
       ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
@@ -995,6 +1022,16 @@ export class Renderer {
       ctx.fillRect(px + 17, py + 6, 9, 9);
       ctx.fillRect(px + 6, py + 17, 9, 9);
       ctx.fillRect(px + 17, py + 17, 9, 9);
+    } else if (prod.type === PRODUCER_TYPE.DESALINATION_PLANT) {
+      ctx.fillStyle = '#0c4a6e';
+      ctx.fillRect(px + 2, py + 2, 28, 28);
+      ctx.fillStyle = '#0ea5e9';
+      ctx.fillRect(px + 5, py + 5, 22, 12);
+      // Distillation stacks.
+      ctx.fillStyle = '#e0f2fe';
+      ctx.fillRect(px + 8, py + 19, 4, 9);
+      ctx.fillRect(px + 14, py + 19, 4, 9);
+      ctx.fillRect(px + 20, py + 19, 4, 9);
     } else if (prod.type === PRODUCER_TYPE.POLICE_STATION) {
       ctx.fillStyle = '#1e3a8a';
       ctx.fillRect(px + 2, py + 2, 28, 28);

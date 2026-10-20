@@ -1,6 +1,58 @@
-import { TERRAIN, TERRAIN_TYPE, ZONE, DENSITY, GROWTH_CONFIG, RESIDENTIAL_CAPACITY, MAP_WIDTH, MAP_HEIGHT, PRODUCER_CONFIG, PRODUCER_TYPE, ORE_CONFIG, ORE_GENERATION, SERVICE_GLOBAL_CONFIG, TERRAIN_GENERATION_CONFIG, ICE_CONFIG, MAP_SEED_STORAGE_KEY, MAP_SEED_STORAGE_KEY_LEGACY, BIOME_CONFIG, BIOME_TERRAIN_CONFIG, BIOME_LAKE_CONFIG, BIOME_GENERATION_VERSION, BIOME_TYPES, PRODUCER_TIER_MAX, clampTier, getProducerTier, isTieredService, isTieredProducer, getBatteryStorageForTier, getWindPeakForTier, getSolarPeakForTier, getWaterCapacityForTier, getSewageCapacityForTier, getServiceTierStat } from '../config.js';
+import { TERRAIN, TERRAIN_TYPE, ZONE, DENSITY, GROWTH_CONFIG, RESIDENTIAL_CAPACITY, MAP_WIDTH, MAP_HEIGHT, PRODUCER_CONFIG, PRODUCER_TYPE, ORE_CONFIG, ORE_GENERATION, SERVICE_GLOBAL_CONFIG, TERRAIN_GENERATION_CONFIG, ICE_CONFIG, COAST_CONFIG, COAST_DIRECTIONS, MAP_SEED_STORAGE_KEY, MAP_SEED_STORAGE_KEY_LEGACY, BIOME_CONFIG, BIOME_TERRAIN_CONFIG, BIOME_LAKE_CONFIG, BIOME_GENERATION_VERSION, BIOME_TYPES, PRODUCER_TIER_MAX, clampTier, getProducerTier, isTieredService, isTieredProducer, isBuildableTerrain, getBatteryStorageForTier, getWindPeakForTier, getSolarPeakForTier, getWaterCapacityForTier, getSewageCapacityForTier, getServiceTierStat } from '../config.js';
 
 const TIER_DENSITY = [DENSITY.LIGHT, DENSITY.MEDIUM, DENSITY.HIGH];
+
+// One anchor + outward normal per ocean-facing hex edge, in tile-map space. Side edges use
+// the middle of that map side; diagonal edges use the matching corner, so a hex that faces
+// the sea on two edges gets two different bands. A pointy-top hex has vertices at east and
+// west, so a hex that is ocean on all six edges also closes those two sides: that turns a
+// one-hex island into a real island instead of land running off the map edge.
+const COAST_EDGES = {
+  N: { ax: 0, ay: -0.5, nx: 0, ny: -1 },
+  NE: { ax: 0.5, ay: -0.5, nx: Math.SQRT1_2, ny: -Math.SQRT1_2 },
+  SE: { ax: 0.5, ay: 0.5, nx: Math.SQRT1_2, ny: Math.SQRT1_2 },
+  S: { ax: 0, ay: 0.5, nx: 0, ny: 1 },
+  SW: { ax: -0.5, ay: 0.5, nx: -Math.SQRT1_2, ny: Math.SQRT1_2 },
+  NW: { ax: -0.5, ay: -0.5, nx: -Math.SQRT1_2, ny: -Math.SQRT1_2 },
+};
+
+const ISLAND_EDGES = {
+  E: { ax: 0.5, ay: 0, nx: 1, ny: 0 },
+  W: { ax: -0.5, ay: 0, nx: -1, ny: 0 },
+};
+
+/** Keeps only known directions, in canonical order, without duplicates. */
+export function normalizeCoast(coast) {
+  if (!Array.isArray(coast)) return [];
+  const unique = new Set(coast.filter((direction) => COAST_DIRECTIONS.includes(direction)));
+  return COAST_DIRECTIONS.filter((direction) => unique.has(direction));
+}
+
+function coastHash(seed, x, y) {
+  let h = Math.imul((seed | 0) ^ Math.imul(x | 0, 0x27d4eb2d), 0x9e3779b1) >>> 0;
+  h = Math.imul(h ^ (y | 0), 0x85ebca6b) >>> 0;
+  h ^= h >>> 15;
+  h = Math.imul(h, 0xc2b2ae35) >>> 0;
+  h ^= h >>> 13;
+  return (h >>> 0) / 4294967296;
+}
+
+// Smooth value noise over a coarse lattice, used to bend the coastline.
+function coastNoise(seed, x, y, scale) {
+  const fx = x / scale;
+  const fy = y / scale;
+  const x0 = Math.floor(fx);
+  const y0 = Math.floor(fy);
+  const tx = (fx - x0) ** 2 * (3 - 2 * (fx - x0));
+  const ty = (fy - y0) ** 2 * (3 - 2 * (fy - y0));
+  const a = coastHash(seed, x0, y0);
+  const b = coastHash(seed, x0 + 1, y0);
+  const c = coastHash(seed, x0, y0 + 1);
+  const d = coastHash(seed, x0 + 1, y0 + 1);
+  const top = a + (b - a) * tx;
+  const bottom = c + (d - c) * tx;
+  return top + (bottom - top) * ty;
+}
 
 export function producerTypeForTool(tool) {
   if (!tool?.startsWith('producer_')) return null;
@@ -22,12 +74,15 @@ export function createPRNG(seed) {
 }
 
 export class Grid {
-  constructor(width = MAP_WIDTH, height = MAP_HEIGHT, seed = null, biome = null, generationVersion = TERRAIN_GENERATION_CONFIG.GENERATION_VERSION, biomeGenerationVersion = generationVersion >= 2 ? BIOME_GENERATION_VERSION : 1) {
+  constructor(width = MAP_WIDTH, height = MAP_HEIGHT, seed = null, biome = null, generationVersion = TERRAIN_GENERATION_CONFIG.GENERATION_VERSION, biomeGenerationVersion = generationVersion >= 2 ? BIOME_GENERATION_VERSION : 1, coast = []) {
     this.width = width;
     this.height = height;
     this.biome = biome;
     this.generationVersion = generationVersion;
     this.biomeGenerationVersion = biomeGenerationVersion;
+    // Hex edges that face ocean on the overworld. Persisted with the save so a loaded city
+    // regenerates exactly the same coastline.
+    this.coast = normalizeCoast(coast);
     this.seed = seed !== null ? parseInt(seed, 10) : this.getInitialSeed();
     this.random = createPRNG(this.seed);
     this.tiles = [];
@@ -92,13 +147,14 @@ export class Grid {
   }
 
   initGrid() {
-    this.randomizeGrid(this.seed, this.biome, this.generationVersion, this.biomeGenerationVersion);
+    this.randomizeGrid(this.seed, this.biome, this.generationVersion, this.biomeGenerationVersion, this.coast);
   }
 
-  randomizeGrid(seed = null, biome = this.biome, generationVersion = TERRAIN_GENERATION_CONFIG.GENERATION_VERSION, biomeGenerationVersion = BIOME_GENERATION_VERSION) {
+  randomizeGrid(seed = null, biome = this.biome, generationVersion = TERRAIN_GENERATION_CONFIG.GENERATION_VERSION, biomeGenerationVersion = BIOME_GENERATION_VERSION, coast = this.coast) {
     if (seed !== null && !isNaN(parseInt(seed, 10))) {
       this.seed = parseInt(seed, 10);
     }
+    if (coast !== undefined) this.coast = normalizeCoast(coast);
     if (biome !== undefined) {
       this.biome = biome;
     }
@@ -281,6 +337,7 @@ export class Grid {
 
     this.generateLakes(modifiers);
     this.freezeRiverBanks(modifiers);
+    this.generateCoast();
 
     const mapScale = (this.width * this.height) / TERRAIN_GENERATION_CONFIG.MAP_SCALE_BASE_AREA;
     const numForestClusters = Math.round(
@@ -308,6 +365,99 @@ export class Grid {
         TERRAIN_GENERATION_CONFIG.ROCK_CLUSTER_RADIUS_WOBBLE_RANGE,
         TERRAIN_GENERATION_CONFIG.ROCK_CLUSTER_RADIUS_WOBBLE_CENTER);
     }
+  }
+
+  // Paints the ocean side of a coastal city. Every ocean-facing hex edge becomes a
+  // half-plane: salt water outside it, a beach of sand or rock inside it, ordinary
+  // terrain beyond. Depths and beach widths are rolled per edge, so a hex that touches
+  // ocean on two sides gets two different bands, and an island hex closes in from all six.
+  generateCoast() {
+    if (this.coast.length === 0) return 0;
+    const extraEdges = this.coast.length === COAST_DIRECTIONS.length ? Object.values(ISLAND_EDGES) : [];
+    const edges = [...this.coast.map((direction) => COAST_EDGES[direction]), ...extraEdges]
+      .filter(Boolean)
+      .map((edge) => ({
+        ...edge,
+        depth: COAST_CONFIG.MIN_DEPTH +
+          Math.floor(this.random() * (COAST_CONFIG.MAX_DEPTH - COAST_CONFIG.MIN_DEPTH + 1)),
+      }));
+    if (edges.length === 0) return 0;
+
+    const halfW = this.width / 2;
+    const halfH = this.height / 2;
+    const anchors = edges.map((edge) => ({
+      x: edge.ax * this.width,
+      y: edge.ay * this.height,
+      nx: edge.nx,
+      ny: edge.ny,
+      depth: edge.depth,
+    }));
+
+    let painted = 0;
+    const water = new Uint8Array(this.width * this.height);
+    for (let y = 0; y < this.height; y++) {
+      const relY = y + 0.5 - halfH;
+      for (let x = 0; x < this.width; x++) {
+        const relX = x + 0.5 - halfW;
+        const wobble = (coastNoise(this.seed + 977, x, y, COAST_CONFIG.WOBBLE_SCALE) - 0.5) * 2 * COAST_CONFIG.WOBBLE;
+
+        let bestDistance = -Infinity;
+        for (const anchor of anchors) {
+          const signed = (relX - anchor.x) * anchor.nx + (relY - anchor.y) * anchor.ny;
+          const distance = signed + anchor.depth + wobble;
+          if (distance > bestDistance) bestDistance = distance;
+        }
+
+        if (bestDistance < 0) continue;
+        const tile = this.tiles[y][x];
+        tile.terrain = TERRAIN_TYPE.SALT_WATER;
+        tile.riverFlowDir = null;
+        water[this.terrainKey(x, y)] = 1;
+        painted++;
+      }
+    }
+    if (painted === 0) return 0;
+
+    // The beach is a dilation of the sea rather than another distance band: ring one is
+    // always painted, ring two only where the noise agrees, so the strip is always solid
+    // and one or two tiles thick even when the coastline steps sharply.
+    const isWater = (x, y) => x >= 0 && x < this.width && y >= 0 && y < this.height &&
+      water[this.terrainKey(x, y)] === 1;
+    const neighbors = [[0, -1], [1, 0], [0, 1], [-1, 0]];
+    const ring = (inside) => {
+      const found = [];
+      for (let y = 0; y < this.height; y++) {
+        for (let x = 0; x < this.width; x++) {
+          if (inside(x, y)) continue;
+          if (neighbors.some(([dx, dy]) => inside(x + dx, y + dy))) found.push({ x, y });
+        }
+      }
+      return found;
+    };
+    const paintBeach = ({ x, y }) => {
+      const tile = this.tiles[y][x];
+      const wasRock = tile.terrain === TERRAIN_TYPE.ROCK;
+      const rocky = wasRock ||
+        coastNoise(this.seed + 5153, x, y, COAST_CONFIG.ROCK_PATCH_SCALE) < COAST_CONFIG.ROCK_BEACH_CHANCE;
+      tile.terrain = rocky ? TERRAIN_TYPE.ROCK : TERRAIN_TYPE.SAND;
+      tile.riverFlowDir = null;
+      painted++;
+    };
+
+    const firstRing = ring(isWater);
+    const firstRingMask = new Uint8Array(this.width * this.height);
+    for (const cell of firstRing) {
+      paintBeach(cell);
+      firstRingMask[this.terrainKey(cell.x, cell.y)] = 1;
+    }
+    const inFirstRing = (x, y) => x >= 0 && x < this.width && y >= 0 && y < this.height &&
+      firstRingMask[this.terrainKey(x, y)] === 1;
+    for (const cell of ring(inFirstRing)) {
+      const secondRing = coastNoise(this.seed + 8123, cell.x, cell.y, COAST_CONFIG.ROCK_PATCH_SCALE) <
+        COAST_CONFIG.SECOND_RING_CHANCE;
+      if (secondRing) paintBeach(cell);
+    }
+    return painted;
   }
 
   paintTerrainCluster(cx, cy, radius, terrain, wobbleRange, wobbleCenter) {
@@ -564,8 +714,8 @@ export class Grid {
     const counts = { water: 0, forest: 0, mountain: 0 };
     for (const row of this.tiles) {
       for (const tile of row) {
-        // Frozen water is still water for world-map statistics.
-        if (tile.terrain === TERRAIN.WATER || tile.terrain === TERRAIN.ICE) counts.water++;
+        // Frozen water and ocean water are still water for world-map statistics.
+        if (tile.terrain === TERRAIN.WATER || tile.terrain === TERRAIN.ICE || tile.terrain === TERRAIN.SALT_WATER) counts.water++;
         else if (tile.terrain === TERRAIN.FOREST) counts.forest++;
         else if (tile.terrain === TERRAIN.MOUNTAIN) counts.mountain++;
       }
@@ -618,6 +768,16 @@ export class Grid {
     return neighbors.some((tile) => tile.terrain === TERRAIN_TYPE.RIVER);
   }
 
+  // Salt water feeds only a Desalination Plant; pumps cannot drink it.
+  isSaltWaterAdjacent(x, y) {
+    const neighbors = this.getNeighbors(x, y);
+    return neighbors.some((tile) => tile.terrain === TERRAIN_TYPE.SALT_WATER);
+  }
+
+  isBeachTile(x, y) {
+    return this.getTile(x, y)?.terrain === TERRAIN_TYPE.SAND;
+  }
+
   // True when any player-built tile (road, bridge, tunnel, zone, or building) lies inside
   // the square radius around (x, y). Used to decide whether a fire is close enough to the
   // player's city to justify an alert.
@@ -647,10 +807,12 @@ export class Grid {
   }
 
   // 'polluted' if any adjacent water is polluted, 'clean' if water is adjacent, otherwise null.
+  // The sea counts: people like living beside any water, fresh or salt.
   getWaterfrontStatus(x, y) {
+    const isWater = (tile) => tile.terrain === TERRAIN_TYPE.RIVER || tile.terrain === TERRAIN_TYPE.SALT_WATER;
     let status = null;
     for (const neighbor of this.getNeighbors(x, y)) {
-      if (neighbor.terrain !== TERRAIN_TYPE.RIVER) continue;
+      if (!isWater(neighbor)) continue;
       if (neighbor.isPolluted || neighbor.riverPollution > 0) return 'polluted';
       status = 'clean';
     }
@@ -660,13 +822,13 @@ export class Grid {
   canPlaceRoad(x, y) {
     const tile = this.getTile(x, y);
     if (!tile) return false;
-    return tile.terrain === TERRAIN_TYPE.EMPTY && !tile.destroyed && !tile.hasRoad && tile.zone === ZONE.NONE && !tile.producer;
+    return isBuildableTerrain(tile.terrain) && !tile.destroyed && !tile.hasRoad && tile.zone === ZONE.NONE && !tile.producer;
   }
 
   canZone(x, y) {
     const tile = this.getTile(x, y);
     if (!tile) return false;
-    if (tile.terrain !== TERRAIN_TYPE.EMPTY) return false;
+    if (!isBuildableTerrain(tile.terrain)) return false;
     if (tile.destroyed) return false;
     if (tile.hasRoad || tile.producer) return false;
     if (tile.zone !== ZONE.NONE) return false;
@@ -678,10 +840,14 @@ export class Grid {
     if (!tile) return false;
     const config = PRODUCER_CONFIG[producerType];
     const isMine = Boolean(config?.requiresDiscoveredOre);
-    if ((tile.terrain !== TERRAIN_TYPE.EMPTY && (!isMine || tile.terrain === TERRAIN_TYPE.RIVER)) || tile.destroyed || tile.hasRoad || tile.zone !== ZONE.NONE || tile.producer) return false;
+    if ((!isBuildableTerrain(tile.terrain) && (!isMine || tile.terrain === TERRAIN_TYPE.RIVER)) || tile.destroyed || tile.hasRoad || tile.zone !== ZONE.NONE || tile.producer) return false;
 
     if (config) {
-        if (config.requiresWaterAdjacent && !this.isWaterAdjacent(x, y) && !this.hasMeltwaterAccess(producerType)) {
+        const saltOk = config.allowsSaltWater && this.isSaltWaterAdjacent(x, y);
+        if (config.requiresWaterAdjacent && !this.isWaterAdjacent(x, y) && !this.hasMeltwaterAccess(producerType) && !saltOk) {
+          return false;
+        }
+        if (config.requiresSaltWaterAdjacent && !this.isSaltWaterAdjacent(x, y)) {
           return false;
         }
         if (config.requiresDiscoveredOre && (
@@ -896,6 +1062,9 @@ export class Grid {
     if (producerType === PRODUCER_TYPE.SEWAGE_PLANT) {
       producer.capacity = capacity == null ? getSewageCapacityForTier(resolvedTier) : capacity;
     }
+    if (producerType === PRODUCER_TYPE.DESALINATION_PLANT) {
+      producer.capacity = capacity == null ? PRODUCER_CONFIG[producerType].capacity : capacity;
+    }
     if (isTieredService(producerType)) {
       producer.filledJobs = 0;
       producer.totalJobs = 0;
@@ -917,7 +1086,7 @@ export class Grid {
     if (this.biome === BIOME_TYPES.ARCTIC) return false;
     const tile = this.getTile(x, y);
     if (!tile || tile.producer || tile.hasRoad || tile.oreDiscovered || tile.surveyingBy) return false;
-    if (tile.terrain === TERRAIN.WATER) return false;
+    if (tile.terrain === TERRAIN.WATER || tile.terrain === TERRAIN.SALT_WATER) return false;
     return tile.terrain !== TERRAIN.MOUNTAIN || !this.isMountainSurveyEnclosed(x, y);
   }
 
@@ -962,11 +1131,38 @@ export class Grid {
   }
 
   // Bridges cross open water and frozen water alike: ice is solid enough to build on.
+  // Bridges cross open water, frozen water, and the sea, but a single bridge may not be longer
+  // than COAST_CONFIG.BRIDGE_MAX_TILES tiles, so a wide lake still needs a different route.
   canPlaceBridge(x, y) {
     const tile = this.getTile(x, y);
     if (!tile) return false;
-    const isCrossable = tile.terrain === TERRAIN_TYPE.RIVER || tile.terrain === TERRAIN_TYPE.ICE;
-    return isCrossable && !tile.hasBridge;
+    const isCrossable = tile.terrain === TERRAIN_TYPE.RIVER ||
+      tile.terrain === TERRAIN_TYPE.ICE ||
+      tile.terrain === TERRAIN_TYPE.SALT_WATER;
+    if (!isCrossable || tile.hasBridge) return false;
+    return this.bridgeRunLength(x, y) <= COAST_CONFIG.BRIDGE_MAX_TILES;
+  }
+
+  // Length of the bridge run that would include (x, y): the connected span of already-built
+  // bridge tiles plus this one. The limit therefore caps how far a single crossing can reach.
+  bridgeRunLength(x, y) {
+    const start = this.getTile(x, y);
+    if (!start) return 0;
+    const limit = COAST_CONFIG.BRIDGE_MAX_TILES + 1;
+    const seen = new Set([this.terrainKey(x, y)]);
+    const queue = [start];
+    while (queue.length > 0 && seen.size < limit) {
+      const current = queue.shift();
+      for (const neighbor of this.getNeighbors8(current.x, current.y)) {
+        if (!neighbor.hasBridge) continue;
+        const key = this.terrainKey(neighbor.x, neighbor.y);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        queue.push(neighbor);
+        if (seen.size >= limit) break;
+      }
+    }
+    return seen.size;
   }
 
   placeBridge(x, y) {

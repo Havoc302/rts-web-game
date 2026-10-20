@@ -23,7 +23,7 @@ import { AudioManager } from './engine/AudioManager.js';
 import { LoanManager, loanTerms, shouldEndGame, isInsolvent } from './engine/LoanManager.js';
 import { advanceWorldEconomy } from './engine/WorldFinance.js';
 import { TutorialManager } from './engine/TutorialManager.js';
-import { APP_VERSION, ZONE, TERRAIN, PRODUCER_TYPE, PRODUCER_CONFIG, SERVICE_CONFIG, COSTS, TILE_SIZE, STARTING_TREASURY, RESIDENTIAL_CAPACITY, JOBS_PROVIDED, FOREST_POLLUTION_ABSORPTION, FOREST_DESIRABILITY_RADIUS, CRIME_CONFIG, MEDICAL_CONFIG, POWER_PRODUCER_TYPES, POLLUTION_CONFIG, COAL_CONFIG, BATTERY_CONFIG, RESOURCE_CONFIG, UTILITY_OPERATING_COST, SURVEY_COST_PER_TICK, TICKS_PER_HOUR, DENSITY, RENDERER_CONFIG, TERRAIN_GENERATION_CONFIG, MAP_SEED_STORAGE_KEY, EDUCATION_CONFIG, LOAN_CONFIG, splitDemographics, getZoneUpgradeCost, isZoneAtCapacity, PRODUCER_TIER_MAX, isTieredService, isTieredProducer, getProducerTier, getServiceTierStat, getServiceUpgradeCost, getPowerUpgradeCost, getProducerUpgradeCost, getBatteryStorageForTier, getWindPeakForTier, getSolarPeakForTier, getWaterCapacityForTier, getSewageCapacityForTier } from './config.js';
+import { APP_VERSION, ZONE, TERRAIN, PRODUCER_TYPE, PRODUCER_CONFIG, SERVICE_CONFIG, COSTS, TILE_SIZE, STARTING_TREASURY, RESIDENTIAL_CAPACITY, JOBS_PROVIDED, FOREST_POLLUTION_ABSORPTION, FOREST_DESIRABILITY_RADIUS, CRIME_CONFIG, MEDICAL_CONFIG, POWER_PRODUCER_TYPES, POLLUTION_CONFIG, COAL_CONFIG, BATTERY_CONFIG, RESOURCE_CONFIG, UTILITY_OPERATING_COST, DESALINATION_OPERATING_COST, DESALINATION_CONFIG, COAST_CONFIG, SURVEY_COST_PER_TICK, TICKS_PER_HOUR, DENSITY, RENDERER_CONFIG, TERRAIN_GENERATION_CONFIG, MAP_SEED_STORAGE_KEY, EDUCATION_CONFIG, LOAN_CONFIG, splitDemographics, getZoneUpgradeCost, isZoneAtCapacity, PRODUCER_TIER_MAX, isTieredService, isTieredProducer, getProducerTier, getServiceTierStat, getServiceUpgradeCost, getPowerUpgradeCost, getProducerUpgradeCost, getBatteryStorageForTier, getWindPeakForTier, getSolarPeakForTier, getWaterCapacityForTier, getSewageCapacityForTier } from './config.js';
 
 const nowMs = typeof performance !== 'undefined' ? () => performance.now() : () => Date.now();
 
@@ -32,6 +32,21 @@ function recipeOptions(ids) {
   return ids
     .map((id) => `<option value="${id}">${id === ALL_EVENLY ? 'All Evenly' : RECIPES[id].label}</option>`)
     .join('');
+}
+
+/** Human-readable terrain names for the inspector. */
+const TERRAIN_LABELS = {
+  [TERRAIN.FLAT]: 'Bare Ground',
+  [TERRAIN.SAND]: 'Beach Sand',
+  [TERRAIN.SALT_WATER]: 'Salt Water',
+  [TERRAIN.WATER]: 'Fresh Water',
+  [TERRAIN.ICE]: 'Ice',
+  [TERRAIN.MOUNTAIN]: 'Rock',
+  [TERRAIN.FOREST]: 'Forest',
+};
+
+function formatTerrainName(terrain) {
+  return TERRAIN_LABELS[terrain] || terrain;
 }
 
 class GameApp {
@@ -622,7 +637,8 @@ class GameApp {
     const cityGrid = id === this.currentCellId ? this.grid : this.cityStates.get(id)?.grid;
     if (cityGrid) return cityGrid.getTerrainPercentages();
     if (!this.terrainPreviewCache.has(id)) {
-      const previewGrid = new Grid(undefined, undefined, cell.seed, cell.biome);
+      const coast = this.planet?.getOceanFacingDirections(id) || [];
+      const previewGrid = new Grid(undefined, undefined, cell.seed, cell.biome, undefined, undefined, coast);
       this.terrainPreviewCache.set(id, previewGrid.getTerrainPercentages());
     }
     return this.terrainPreviewCache.get(id);
@@ -683,7 +699,8 @@ class GameApp {
       if (this.currentCellId) this.cityStates.set(this.currentCellId, this.captureCity());
       const saved = this.cityStates.get(id);
       const city = saved || (() => {
-        const grid = new Grid(this.grid.width, this.grid.height, cell.seed, cell.biome);
+        const coast = this.planet?.getOceanFacingDirections(id) || [];
+        const grid = new Grid(this.grid.width, this.grid.height, cell.seed, cell.biome, undefined, undefined, coast);
         const simulation = new Simulation(grid, cell.climate);
         simulation.isPaused = true;
         return { grid, simulation, camera: { x: 0, y: 0, zoom: 1 }, activeTool: 'pan', overlayMode: 'normal' };
@@ -1564,6 +1581,8 @@ class GameApp {
       const rows = [row('Cost', `$${config.cost.toLocaleString()}`)];
       if (POWER_PRODUCER_TYPES.includes(pType) || pType === PRODUCER_TYPE.WATER_TOWER || pType === PRODUCER_TYPE.SEWAGE_PLANT) {
         rows.push(row('Operating / Hour', `$${(UTILITY_OPERATING_COST * TICKS_PER_HOUR).toLocaleString()}`));
+      } else if (pType === PRODUCER_TYPE.DESALINATION_PLANT) {
+        rows.push(row('Operating / Hour', `$${(DESALINATION_OPERATING_COST * TICKS_PER_HOUR).toLocaleString()} (three pumps' worth)`));
       } else if (pType === PRODUCER_TYPE.SURVEY_STATION) {
         rows.push(row('Operating / Hour', `$0 idle / $${SURVEY_COST_PER_TICK * TICKS_PER_HOUR} surveying`));
       } else if (SERVICE_CONFIG[pType]) {
@@ -1577,7 +1596,8 @@ class GameApp {
       } else if (pType === PRODUCER_TYPE.REFINERY) {
         rows.push(row('Operating / Hour', '$0 direct (uses oil)'));
       }
-      if (config.requiresWaterAdjacent) rows.push(row('Requires', 'Adjacent to water'));
+      if (config.requiresWaterAdjacent) rows.push(row('Requires', config.allowsSaltWater ? 'Adjacent to fresh or salt water' : 'Adjacent to fresh water'));
+      if (config.requiresSaltWaterAdjacent) rows.push(row('Requires', 'Adjacent to salt water (coastal beach)'));
 
       if (config.utility === 'power') {
         if (pType === PRODUCER_TYPE.WINDMILL) {
@@ -1605,9 +1625,16 @@ class GameApp {
           rows.push(row('Pollution', 'None'));
         }
       } else if (config.utility === 'water' || config.utility === 'sewage') {
-        const capacityForTier = pType === PRODUCER_TYPE.WATER_TOWER ? getWaterCapacityForTier : getSewageCapacityForTier;
-        rows.push(row('Capacity (T1/T2/T3)', `${capacityForTier(1)} / ${capacityForTier(2)} / ${capacityForTier(3)}`));
-        rows.push(row('Upgrade Cost (T2/T3)', `$${getPowerUpgradeCost(pType, 1).toLocaleString()} / $${getPowerUpgradeCost(pType, 2).toLocaleString()}`));
+        if (pType === PRODUCER_TYPE.DESALINATION_PLANT) {
+          rows.push(row('Water Output', `${DESALINATION_CONFIG.CAPACITY} (about two fully upgraded pumps)`));
+          rows.push(row('Power Use', `0 idle up to ${DESALINATION_CONFIG.PEAK_POWER} at full output`));
+          rows.push(row('Supply Order', 'Serves only what water pumps cannot; never first'));
+          rows.push(row('Polluted Intake', 'Any adjacent polluted sea water contaminates the plant'));
+        } else {
+          const capacityForTier = pType === PRODUCER_TYPE.WATER_TOWER ? getWaterCapacityForTier : getSewageCapacityForTier;
+          rows.push(row('Capacity (T1/T2/T3)', `${capacityForTier(1)} / ${capacityForTier(2)} / ${capacityForTier(3)}`));
+          rows.push(row('Upgrade Cost (T2/T3)', `$${getPowerUpgradeCost(pType, 1).toLocaleString()} / $${getPowerUpgradeCost(pType, 2).toLocaleString()}`));
+        }
       } else if (config.jobs) {
         if (isTieredService(pType)) {
           rows.push(row('Staff Cap (T1/T2/T3)', `${getServiceTierStat('maxStaff', 1)} / ${getServiceTierStat('maxStaff', 2)} / ${getServiceTierStat('maxStaff', 3)}`));
@@ -1639,6 +1666,18 @@ class GameApp {
         rows.push(row('Survey Duration (Flat/Mountain)', `${config.surveyDuration.standard} / ${config.surveyDuration.mountain} ticks`));
       }
 
+      body.innerHTML = rows.join('');
+      panel.classList.add('visible');
+    } else if (tool === 'bridge' || tool === 'tunnel' || tool === 'road') {
+      const cost = tool === 'bridge' ? COSTS.BRIDGE : tool === 'tunnel' ? COSTS.TUNNEL : COSTS.ROAD;
+      title.textContent = tool === 'bridge' ? 'Bridge' : tool === 'tunnel' ? 'Tunnel' : 'Road';
+      const rows = [row('Cost', `$${cost.toLocaleString()}`)];
+      if (tool === 'bridge') {
+        rows.push(row('Crosses', 'Fresh water, frozen water, and the sea'));
+        rows.push(row('Max Span', `${COAST_CONFIG.BRIDGE_MAX_TILES} tiles of open water; wider crossings need another route`));
+      } else if (tool === 'tunnel') {
+        rows.push(row('Requires', 'Mountain tile'));
+      }
       body.innerHTML = rows.join('');
       panel.classList.add('visible');
     } else if (tool === 'zone_r' || tool === 'zone_c' || tool === 'zone_i' || tool === 'zone_a') {
@@ -1706,7 +1745,7 @@ class GameApp {
     }
 
     document.getElementById('inspect-coord').textContent = `(${tile.x}, ${tile.y})`;
-    document.getElementById('inspect-terrain').textContent = tile.terrain;
+    document.getElementById('inspect-terrain').textContent = formatTerrainName(tile.terrain);
 
     const effectRow = document.getElementById('terrain-effect-row');
     const effectVal = document.getElementById('inspect-terrain-effect');

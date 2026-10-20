@@ -69,6 +69,34 @@ for (const biome of Object.values(BIOME_TYPES)) {
   }
 }
 
+// Ocean-facing hex edges are part of the map identity: without them a coastal city reloads
+// as an inland one and the tile diff no longer matches.
+for (const coast of [[], ['N'], ['SE'], ['N', 'NE', 'SE', 'S', 'SW', 'NW']]) {
+  const grid = new Grid(40, 40, 424242, BIOME_TYPES.TEMPERATE, GENERATION_VERSION, 3, coast);
+  const app = makeApp(grid, new Simulation(grid));
+  const saved = serializeGame(app);
+  assert.deepStrictEqual(saved.map.coast, coast, 'The coast list is saved verbatim');
+  assert.strictEqual(saved.tiles.length, 0, 'A coastline is base terrain, not a tile override');
+
+  const restored = deserializeGame(saved);
+  assert.deepStrictEqual(restored.grid.coast, coast);
+  assert.deepStrictEqual(
+    restored.grid.tiles.flat().map((tile) => tile.terrain),
+    grid.tiles.flat().map((tile) => tile.terrain),
+    'Coastal terrain must survive save/import',
+  );
+
+  // Terrain edits on the coast are stored as overrides against the coastal base map.
+  const edited = grid.getTile(0, 0);
+  edited.terrain = TERRAIN.FLAT;
+  grid.terrainVersion++;
+  grid.terrainChangedTiles = null;
+  const editedSave = serializeGame(makeApp(grid, new Simulation(grid)));
+  const editedRestore = deserializeGame(editedSave);
+  assert.strictEqual(editedRestore.grid.getTile(0, 0).terrain, TERRAIN.FLAT,
+    'An edited coastal tile must round-trip through its override');
+}
+
 {
   const currentGrid = new Grid(8, 8, 22222);
   const visitedGrid = new Grid(8, 8, 33333);

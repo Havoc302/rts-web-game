@@ -17,7 +17,15 @@ export class UtilityManager {
     this.allocateUtility(grid, this.getRenewablePowerProducerTypes(), 'power', 'none', true, powerFactor);
     this.allocateUtility(grid, [PRODUCER_TYPE.BATTERY], 'power', 'none', false, powerFactor);
     this.allocateUtility(grid, this.getDispatchablePowerProducerTypes(), 'power', 'none', false, powerFactor);
+    // Desalination is billed as a second, non-resetting water pass, so its counter has to be
+    // cleared here or it would accumulate every tick.
+    for (const producer of grid.producers) {
+      if (producer.type === PRODUCER_TYPE.DESALINATION_PLANT) producer.usedCapacity = 0;
+    }
     this.allocateUtility(grid, PRODUCER_TYPE.WATER_TOWER, 'water', 'ascending');
+    // Desalination is the last water provider: it only serves tiles the pumps could not,
+    // which is also what makes its power draw track the shortfall it covers.
+    this.allocateUtility(grid, PRODUCER_TYPE.DESALINATION_PLANT, 'water', 'ascending', false);
     this.allocateUtility(grid, PRODUCER_TYPE.SEWAGE_PLANT, 'sewage', 'descending');
     this.allocateUtilityConsumers(grid, powerFactor);
     let hasPowerShortfall = grid.producers.some((producer) => producer.utilityShortfall?.power);
@@ -291,6 +299,9 @@ export class UtilityManager {
     const { connectedZonedTiles } = RoadNetwork.computeProducerDistances(grid, producerType);
 
     connectedZonedTiles.forEach((item) => {
+      // A later pass only cares about tiles that are still short, so it must not overwrite
+      // the distance reported for tiles an earlier provider already served.
+      if (!reset && !item.tile.shortfall[utilityKey]) return;
       item.tile.distanceToProducer[utilityKey] = item.distance;
     });
 

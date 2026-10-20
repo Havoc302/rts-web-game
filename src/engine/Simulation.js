@@ -1,4 +1,4 @@
-import { GROWTH_CONFIG, DENSITY, ZONE, TERRAIN, USAGE_RATES, POLLUTION_CONFIG, JOBS_PROVIDED, RESIDENTIAL_CAPACITY, LABOR_TAX_GROWTH_CONFIG, FOREST_DESIRABILITY_RADIUS, PRODUCER_TYPE, PRODUCER_CONFIG, POWER_PRODUCER_TYPES, ROAD_MAINTENANCE_COST, ROAD_MAINTENANCE_CONFIG, UTILITY_OPERATING_COST, TAX_REVENUE_CONFIG, CRIME_CONFIG, MEDICAL_CONFIG, HAPPINESS_CONFIG, SERVICE_GLOBAL_CONFIG, TICKS_PER_HOUR, HOURS_PER_DAY, DAY_START_HOUR, NIGHT_START_HOUR, DEMOGRAPHICS_CONFIG, FUEL_CONFIG, SURVEY_COST_PER_TICK, POPULATION_STABILIZATION_CONFIG, TEMPERATURE_CONFIG, temperaturePowerFactor, EDUCATION_CONFIG, FIRE_CONFIG, splitDemographics, getProducerUtilityUsage } from '../config.js';
+import { GROWTH_CONFIG, DENSITY, ZONE, TERRAIN, USAGE_RATES, POLLUTION_CONFIG, JOBS_PROVIDED, RESIDENTIAL_CAPACITY, LABOR_TAX_GROWTH_CONFIG, FOREST_DESIRABILITY_RADIUS, PRODUCER_TYPE, PRODUCER_CONFIG, POWER_PRODUCER_TYPES, ROAD_MAINTENANCE_COST, ROAD_MAINTENANCE_CONFIG, UTILITY_OPERATING_COST, DESALINATION_OPERATING_COST, TAX_REVENUE_CONFIG, CRIME_CONFIG, MEDICAL_CONFIG, HAPPINESS_CONFIG, SERVICE_GLOBAL_CONFIG, TICKS_PER_HOUR, HOURS_PER_DAY, DAY_START_HOUR, NIGHT_START_HOUR, DEMOGRAPHICS_CONFIG, FUEL_CONFIG, SURVEY_COST_PER_TICK, POPULATION_STABILIZATION_CONFIG, TEMPERATURE_CONFIG, temperaturePowerFactor, EDUCATION_CONFIG, FIRE_CONFIG, splitDemographics, getProducerUtilityUsage } from '../config.js';
 import { UtilityManager } from './UtilityManager.js';
 import { PollutionManager } from './PollutionManager.js';
 import { ServiceManager } from './ServiceManager.js';
@@ -478,13 +478,15 @@ export class Simulation {
       }
       if (POWER_PRODUCER_TYPES.includes(p.type) || p.type === PRODUCER_TYPE.WATER_TOWER || p.type === PRODUCER_TYPE.SEWAGE_PLANT) {
         stats.utilityExpenses += UTILITY_OPERATING_COST;
+      } else if (p.type === PRODUCER_TYPE.DESALINATION_PLANT) {
+        stats.utilityExpenses += DESALINATION_OPERATING_COST;
       }
       const countsForCapacity = POWER_PRODUCER_TYPES.includes(p.type)
         ? UtilityManager.contributesPowerToGrid(this.grid, p)
         : this.grid.isRoadAdjacent(p.x, p.y);
       if (!countsForCapacity) continue;
       if (POWER_PRODUCER_TYPES.includes(p.type)) stats.powerCapacity += p.capacity;
-      if (p.type === 'water_tower') stats.waterCapacity += p.capacity;
+      if (p.type === 'water_tower' || p.type === PRODUCER_TYPE.DESALINATION_PLANT) stats.waterCapacity += p.capacity;
       if (p.type === 'sewage_plant') stats.sewageCapacity += p.capacity;
       if (p.runningCost) {
         stats.serviceExpenses += p.runningCost;

@@ -1,5 +1,5 @@
 import { cellToBoundary, cellToChildren, cellToLatLng, getRes0Cells, gridDisk, latLngToCell } from 'h3-js';
-import { BIOME_TYPES, CLIMATE_CONFIG } from '../config.js';
+import { BIOME_TYPES, CLIMATE_CONFIG, COAST_DIRECTIONS } from '../config.js';
 import { createPRNG } from './Grid.js';
 
 export const OVERWORLD_RESOLUTION = 2;
@@ -32,6 +32,22 @@ const BIOME_CLIMATE = {
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
+}
+
+// Compass bearing in degrees, clockwise from north, between two hex centres.
+function bearingDegrees(fromLat, fromLng, toLat, toLng) {
+  const dLng = ((toLng - fromLng + 540) % 360) - 180;
+  const midLatRad = ((fromLat + toLat) / 2) * (Math.PI / 180);
+  const east = dLng * Math.cos(midLatRad);
+  const north = toLat - fromLat;
+  return ((Math.atan2(east, north) * 180) / Math.PI + 360) % 360;
+}
+
+// Snap a bearing to the nearest of the six hex edge directions.
+function coastSectorForBearing(bearing) {
+  const sectorSize = 360 / COAST_DIRECTIONS.length;
+  const index = Math.round(bearing / sectorSize) % COAST_DIRECTIONS.length;
+  return COAST_DIRECTIONS[index];
 }
 
 // Polar land outside the permanent cap is tundra no matter which continent region reaches it.
@@ -243,6 +259,30 @@ export class OverworldMap {
 
   getCell(id) {
     return this.cells.get(id) || null;
+  }
+
+  // Which of the hex's six edges face open ocean, in the canonical clockwise order
+  // N, NE, SE, S, SW, NW. The city map paints salt water on the matching side, so a hex
+  // with one ocean neighbour gets one band and an island hex gets six.
+  getOceanFacingDirections(id) {
+    const cell = this.cells.get(id);
+    if (!cell || cell.ocean) return [];
+    if (!this.coastCache) this.coastCache = new Map();
+    const cached = this.coastCache.get(id);
+    if (cached) return cached;
+
+    const [lat, lng] = cellToLatLng(id);
+    const sectors = new Set();
+    for (const neighborId of gridDisk(id, 1)) {
+      if (neighborId === id) continue;
+      const neighbor = this.cells.get(neighborId);
+      if (neighbor && !neighbor.ocean) continue;
+      const [neighborLat, neighborLng] = cellToLatLng(neighborId);
+      sectors.add(coastSectorForBearing(bearingDegrees(lat, lng, neighborLat, neighborLng)));
+    }
+    const directions = COAST_DIRECTIONS.filter((direction) => sectors.has(direction));
+    this.coastCache.set(id, directions);
+    return directions;
   }
 
   setHomeSeed(seed) {

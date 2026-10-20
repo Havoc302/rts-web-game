@@ -34,8 +34,14 @@ export const TERRAIN = {
   WATER: 'water',
   FOREST: 'forest',
   // Permanent ice over a frozen water body. Lakes are frozen end to end, while rivers keep
-  // an open centre lane and freeze in patches along their banks.
+  // an open lane and freeze in patches along their banks.
   ICE: 'ice',
+  // Ocean water. A city hex that touches ocean on the overworld gets a salt-water band on
+  // the matching side of the square map. Fresh-water rules do not apply: pumps cannot drink
+  // it, but sewage can be discharged into it and only a Desalination Plant can tap it.
+  SALT_WATER: 'salt_water',
+  // Buildable beach ground between salt water and the inland terrain.
+  SAND: 'sand',
 };
 
 export const TERRAIN_TYPE = {
@@ -44,7 +50,14 @@ export const TERRAIN_TYPE = {
   ROCK: TERRAIN.MOUNTAIN,
   FOREST: TERRAIN.FOREST,
   ICE: TERRAIN.ICE,
+  SALT_WATER: TERRAIN.SALT_WATER,
+  SAND: TERRAIN.SAND,
 };
+
+/** Flat and beach ground accept roads, zones, and buildings. */
+export function isBuildableTerrain(terrain) {
+  return terrain === TERRAIN.FLAT || terrain === TERRAIN.SAND;
+}
 
 export const ZONE = {
   NONE: 'none',
@@ -79,6 +92,7 @@ export const PRODUCER_TYPE = {
   NUCLEAR_PLANT: 'nuclear_plant',
   WATER_TOWER: 'water_tower',
   SEWAGE_PLANT: 'sewage_plant',
+  DESALINATION_PLANT: 'desalination_plant',
   SURVEY_STATION: 'survey_station',
   MINE_IRON: 'mine_iron',
   MINE_BAUXITE: 'mine_bauxite',
@@ -622,6 +636,13 @@ export function getProducerUtilityUsage(producer) {
     });
   }
   const base = PRODUCER_CONFIG[type]?.utilityUsage || { power: 0, water: 0, sewage: 0 };
+  if (type === PRODUCER_TYPE.DESALINATION_PLANT) {
+    // Peaking plant: draw tracks the water actually delivered, so an idle plant is nearly
+    // free and a plant covering the whole shortfall pays the full bill.
+    const capacity = producer.capacity || PRODUCER_CONFIG[type]?.capacity || DESALINATION_CONFIG.CAPACITY;
+    const outputShare = capacity > 0 ? Math.min(1, Math.max(0, (producer.usedCapacity || 0) / capacity)) : 0;
+    return { power: DESALINATION_CONFIG.PEAK_POWER * outputShare, water: 0, sewage: 0 };
+  }
   if (isTieredUtilityProducer(type)) {
     // Utility draw rises with capacity, so a tier-2/3 plant is not four times as
     // efficient as four tier-1 plants for the same load.
@@ -634,6 +655,35 @@ export function getProducerUtilityUsage(producer) {
   }
   return { ...base };
 }
+
+// Ocean coastline painted onto a city map whose hex touches ocean on the overworld. Each
+// ocean-facing hex edge is one half-plane: salt water outside it, a beach strip inside it,
+// ordinary terrain beyond. Islands are simply hexes with several ocean edges at once.
+export const COAST_CONFIG = {
+  MIN_DEPTH: 3,                            // Minimum salt-water depth from the matching map side
+  MAX_DEPTH: 10,                           // Maximum salt-water depth
+  BEACH_MIN: 1,                            // Minimum beach thickness inland of the water
+  BEACH_MAX: 2,                            // Maximum beach thickness
+  SECOND_RING_CHANCE: 0.55,                // Share of the coast whose beach is two tiles thick
+  WOBBLE: 2.4,                             // Coastline wobble amplitude in tiles
+  WOBBLE_SCALE: 7,                         // Wobble lattice size in tiles (higher = longer sweeps)
+  ROCK_BEACH_CHANCE: 0.3,                  // Share of beach tiles that are rock instead of sand
+  ROCK_PATCH_SCALE: 2,                     // Rock patch lattice size in tiles
+  BRIDGE_MAX_TILES: 10,                    // Longest continuous bridge run that may be built
+};
+
+// The six hex edges a city map can present to the sea, clockwise from north. A pointy-top
+// hex has neighbour edges at these bearings and no pure east/west edge.
+export const COAST_DIRECTIONS = ['N', 'NE', 'SE', 'S', 'SW', 'NW'];
+
+// Desalination Plant: one fixed building, no tiers. Produces as much water as two tier-3
+// pumps (2 x 480) and is always the last water provider, so its power draw tracks the gap
+// it is actually filling.
+export const DESALINATION_CONFIG = {
+  CAPACITY: 960,                           // Water produced at full output
+  PEAK_POWER: 55,                          // Power draw at full output (two tier-3 pumps draw 16)
+  MAINTENANCE_MULTIPLIER: 3,               // Upkeep relative to one water pump
+};
 
 export const PRODUCER_CONFIG = {
   [PRODUCER_TYPE.POWER_PLANT]: {
@@ -714,8 +764,22 @@ export const PRODUCER_CONFIG = {
     capacity: SEWAGE_TIER_CONFIG.capacity[0],
     cost: SEWAGE_TIER_CONFIG.cost[0],
     color: '#8e44ad',
+    // Sewage can be discharged into fresh water or the sea.
     requiresWaterAdjacent: true,
+    allowsSaltWater: true,
     utilityUsage: { power: 2, water: 1 },
+  },
+  [PRODUCER_TYPE.DESALINATION_PLANT]: {
+    name: 'Desalination Plant',
+    category: PRODUCER_CATEGORY.WATER,
+    utility: 'water',
+    capacity: DESALINATION_CONFIG.CAPACITY,
+    cost: 10000,
+    color: '#0ea5e9',
+    // Only the sea will do: this building exists for coastal cities.
+    requiresSaltWaterAdjacent: true,
+    // Power is billed per unit of water produced, see getProducerUtilityUsage.
+    utilityUsage: { power: 0, sewage: 0 },
   },
   [PRODUCER_TYPE.SURVEY_STATION]: {
     name: 'Survey Station',
@@ -1168,6 +1232,9 @@ export const ICE_CONFIG = {
   GROUND_PATCH_CHANCE: 0.28,               // Share of bare tundra ground covered by frost patches
   GROUND_PATCH_SCALE: 3,                   // Patch lattice size in tiles (higher = bigger patches)
 };
+
+// A Desalination Plant costs three times a water pump to keep running.
+export const DESALINATION_OPERATING_COST = UTILITY_OPERATING_COST * DESALINATION_CONFIG.MAINTENANCE_MULTIPLIER;
 
 // Renderer tuning controls. These affect presentation and frame-time behavior.
 export const RENDERER_CONFIG = {
