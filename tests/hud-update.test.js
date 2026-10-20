@@ -68,6 +68,27 @@ function fakeDocument() {
   assert.strictEqual(stormy['stat-weather-label'], simulation.weatherManager.getWeatherLabel());
 }
 
+// Population hover: residents over total residential capacity; service chip folds in roads.
+{
+  const grid = new Grid(8, 8, 1);
+  flatten(grid);
+  grid.placeRoad(1, 1);
+  grid.placeZone(2, 1, ZONE.RESIDENTIAL);
+  grid.placeZone(1, 2, ZONE.RESIDENTIAL);
+  const simulation = new Simulation(grid);
+  // Stats recompute per-block caps from density, so set the explicit caps afterwards.
+  grid.getTile(2, 1).maxPopulation = 500;
+  grid.getTile(1, 2).maxPopulation = 25;
+  simulation.stats.population = 120;
+  simulation.stats.serviceExpenses = 30;
+  simulation.stats.roadExpenses = 12;
+  const snapshot = buildHudSnapshot(simulation, 1000);
+  assert.strictEqual(snapshot['stat-housing'], '120 / 525', 'Housing shows residents over every residential block cap');
+  assert.strictEqual(snapshot['stat-service-expenses'], '-$42', 'Service chip includes road maintenance');
+  assert.strictEqual(snapshot['stat-service-road'], '-$12', 'Service tooltip keeps the road cost separate');
+  assert.strictEqual(snapshot['stat-road-expenses'], undefined, 'The standalone road readout is gone');
+}
+
 // Treasury hover: every per-tick inflow and outflow, then the net.
 {
   const flows = treasuryFlowSnapshot({

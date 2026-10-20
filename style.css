@@ -191,7 +191,6 @@ body.app-idle #app {
 #stat-cash { min-width: 4ch; }
 #stat-income,
 #stat-service-expenses,
-#stat-road-expenses,
 #stat-utility-expenses { min-width: 5ch; }
 #stat-emp-rate { min-width: 4ch; }
 #stat-day { min-width: 7ch; }

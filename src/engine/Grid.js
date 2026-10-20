@@ -590,6 +590,26 @@ export class Grid {
     return neighbors.some((tile) => tile.terrain === TERRAIN_TYPE.RIVER);
   }
 
+  // True when any player-built tile (road, bridge, tunnel, zone, or building) lies inside
+  // the square radius around (x, y). Used to decide whether a fire is close enough to the
+  // player's city to justify an alert.
+  hasPlayerDevelopmentWithin(x, y, radius) {
+    const span = Math.max(0, Math.floor(Number(radius) || 0));
+    const minX = Math.max(0, x - span);
+    const maxX = Math.min(this.width - 1, x + span);
+    const minY = Math.max(0, y - span);
+    const maxY = Math.min(this.height - 1, y + span);
+    for (let ty = minY; ty <= maxY; ty++) {
+      for (let tx = minX; tx <= maxX; tx++) {
+        const tile = this.tiles[ty][tx];
+        if (tile.hasRoad || tile.hasBridge || tile.hasTunnel || tile.zone !== ZONE.NONE || tile.producer) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
   // An Arctic ice sheet is solid water, so pumps and sewage plants can tap the meltwater
   // below it without touching an open river or lake. Other water-hungry buildings still
   // need water.

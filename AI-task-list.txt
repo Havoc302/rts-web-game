@@ -1926,3 +1926,24 @@ Validation:
 - `node tests/run-all.js` passes all 52 test files.
 - Stability check after the de-flake: `tests/simulation.test.js` passed 80 consecutive runs and the full suite passed 15 consecutive runs with zero failures.
 - Browser verification (`v0.3.12`): with roads and zones at 30% tax the panel showed `Tax income +$1`, `Service costs -$0`, `Road maintenance -$14`, `Utilities -$0`, `Loan payments -$0`, `Net / tick -$13`, with the survey and city rows hidden; a run with a survey station active showed `Surveys -$10` and `Net / tick -$24`, proving the row appears only while surveying.
+
+Current task: HUD, alert, traffic, and mouse-input polish (`0.3.13`).
+
+Six small changes requested together: housing on the population hover, road cost folded into the service chip, fire alerts limited to nearby development, population-driven traffic, emergency vehicles, and right-click/deselect plus click-to-inspect.
+
+- [done] Population hover adds `Housing: current / total`, summing the cap of every residential block.
+- [done] Removed the standalone Road Cost top-bar chip. The Service Cost chip now shows services + road maintenance, and its hover has a dedicated `Road maintenance` row above the service breakdown.
+- [done] Fire alerts only fire when a player-built tile (road, bridge, tunnel, zone, or building) is within `FIRE_CONFIG.ALERT_DEVELOPMENT_RADIUS` (20) tiles, measured as a square box via `Grid.hasPlayerDevelopmentWithin`.
+- [done] Traffic count is population-driven: every 500 residents adds a band worth 1-3 dots, rolled once per band so the total steps up with growth and drops on population loss.
+- [done] Emergency vehicles: white body with red/blue corner pixels that swap four times a second, capped at one at a time, only possible while a police station, fire station, or hospital exists, with a 12% roll per new car.
+- [done] Removed the Inspect Tile tool. Pan is the only pointer mode and a click always opens the inspector. Right click without dragging clears the tool, tile, and inspector; right-drag still pans. Legacy saves recording `inspect` fold into Pan.
+- [done] Tests: new `tests/fire-alert.test.js`; traffic tests rewritten for bands and emergency gates; HUD tests cover housing and the merged service/road chip. Bump every version source to `0.3.13`.
+
+Notes:
+- Right-click deselect uses the same 5px drag threshold as the left button, so a pan gesture never clears the selection.
+- The emergency light phase uses accumulated render time, so it animates independently of simulation speed.
+- The traffic band rolls live in `TrafficManager.carBands`; they are ephemeral and regenerate on load rather than being saved.
+
+Validation:
+- `node tests/run-all.js` passes all 53 test files.
+- Browser verification (`v0.3.13`): housing hover read `60 / 500` for a single high-density block; the service chip showed `-$4` with `Road maintenance -$4` in its hover and no road chip in the bar; traffic on a 7-road grid produced 1-3 dots per 500 residents and a police station allowed one emergency car; a wildfire with no nearby roads or zones produced no alert, and adding a road within 20 tiles produced `Fire reported`; left click opened the inspector, right click cleared it, and right-drag panned without clearing.

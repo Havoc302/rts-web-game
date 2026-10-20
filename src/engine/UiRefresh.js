@@ -1,4 +1,4 @@
-import { DAY_START_HOUR, MEDICAL_CONFIG, NIGHT_START_HOUR, PRODUCER_CONFIG, PRODUCER_TYPE, RENDERER_CONFIG, ZONE, temperaturePowerFactor } from '../config.js';
+import { DAY_START_HOUR, MEDICAL_CONFIG, NIGHT_START_HOUR, PRODUCER_CONFIG, PRODUCER_TYPE, RENDERER_CONFIG, RESIDENTIAL_CAPACITY, ZONE, temperaturePowerFactor } from '../config.js';
 import { formatDerrickOutput, formatProducerCapacity, formatSiloStorage, getProducerConnectionStatus, getTileUtilityStatus } from './InspectorStatus.js';
 
 // Money is displayed in whole dollars everywhere. The ledger may still carry cents
@@ -94,6 +94,13 @@ export function getHudCadenceMs(isMobile) {
 export function buildHudSnapshot(simulation, treasury) {
   const stats = simulation.stats;
   const stockpile = stats.resources?.stockpile || {};
+  // Every residential block's current cap, used by the population hover.
+  let housingCapacity = 0;
+  for (const tile of simulation.grid?.getActiveZonedTiles?.() ?? []) {
+    if (tile.zone !== ZONE.RESIDENTIAL) continue;
+    housingCapacity += tile.maxPopulation || RESIDENTIAL_CAPACITY[tile.density] || 0;
+  }
+  const serviceAndRoadExpenses = stats.serviceExpenses + stats.roadExpenses;
   const pollPct = stats.maxPollution > 0
     ? Math.min(100, Math.round((stats.avgPollution / Math.max(stats.maxPollution, 1)) * 100))
     : 0;
@@ -104,11 +111,12 @@ export function buildHudSnapshot(simulation, treasury) {
     'alerts-panel-visible': (treasury <= 0 || (stats.alerts || []).length > 0) ? 'block' : 'none',
     'alerts-panel-data': JSON.stringify(treasury <= 0 ? [{ id: 'treasury', message: 'Treasury is empty', x: null, y: null }, ...(stats.alerts || [])] : (stats.alerts || [])),
     'stat-pop': stats.population.toLocaleString(),
+    'stat-housing': `${stats.population.toLocaleString()} / ${housingCapacity.toLocaleString()}`,
     'stat-cash': formatMoney(treasury),
     'stat-income': `+${formatMoney(stats.incomePerTick)}`,
-    'stat-service-expenses': `-${formatMoney(stats.serviceExpenses)}`,
+    'stat-service-expenses': `-${formatMoney(serviceAndRoadExpenses)}`,
     'stat-service-breakdown': formatBreakdown(stats.serviceExpenseBreakdown),
-    'stat-road-expenses': `-${formatMoney(stats.roadExpenses)}`,
+    'stat-service-road': `-${formatMoney(stats.roadExpenses)}`,
     'stat-utility-expenses': `-${formatMoney(stats.utilityExpenses || 0)}`,
     'stat-school-seats': `${(stats.schoolCapacity || 0).toLocaleString()} / ${(stats.schoolDemand || 0).toLocaleString()}`,
     'stat-uni-seats': `${(stats.universityCapacity || 0).toLocaleString()} / ${(stats.universityDemand || 0).toLocaleString()}`,

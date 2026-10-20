@@ -1,4 +1,4 @@
-import { GROWTH_CONFIG, DENSITY, ZONE, TERRAIN, USAGE_RATES, POLLUTION_CONFIG, JOBS_PROVIDED, RESIDENTIAL_CAPACITY, LABOR_TAX_GROWTH_CONFIG, FOREST_DESIRABILITY_RADIUS, PRODUCER_TYPE, PRODUCER_CONFIG, POWER_PRODUCER_TYPES, ROAD_MAINTENANCE_COST, ROAD_MAINTENANCE_CONFIG, UTILITY_OPERATING_COST, TAX_REVENUE_CONFIG, CRIME_CONFIG, MEDICAL_CONFIG, HAPPINESS_CONFIG, SERVICE_GLOBAL_CONFIG, TICKS_PER_HOUR, HOURS_PER_DAY, DAY_START_HOUR, NIGHT_START_HOUR, DEMOGRAPHICS_CONFIG, FUEL_CONFIG, SURVEY_COST_PER_TICK, POPULATION_STABILIZATION_CONFIG, TEMPERATURE_CONFIG, temperaturePowerFactor, EDUCATION_CONFIG, splitDemographics, getProducerUtilityUsage } from '../config.js';
+import { GROWTH_CONFIG, DENSITY, ZONE, TERRAIN, USAGE_RATES, POLLUTION_CONFIG, JOBS_PROVIDED, RESIDENTIAL_CAPACITY, LABOR_TAX_GROWTH_CONFIG, FOREST_DESIRABILITY_RADIUS, PRODUCER_TYPE, PRODUCER_CONFIG, POWER_PRODUCER_TYPES, ROAD_MAINTENANCE_COST, ROAD_MAINTENANCE_CONFIG, UTILITY_OPERATING_COST, TAX_REVENUE_CONFIG, CRIME_CONFIG, MEDICAL_CONFIG, HAPPINESS_CONFIG, SERVICE_GLOBAL_CONFIG, TICKS_PER_HOUR, HOURS_PER_DAY, DAY_START_HOUR, NIGHT_START_HOUR, DEMOGRAPHICS_CONFIG, FUEL_CONFIG, SURVEY_COST_PER_TICK, POPULATION_STABILIZATION_CONFIG, TEMPERATURE_CONFIG, temperaturePowerFactor, EDUCATION_CONFIG, FIRE_CONFIG, splitDemographics, getProducerUtilityUsage } from '../config.js';
 import { UtilityManager } from './UtilityManager.js';
 import { PollutionManager } from './PollutionManager.js';
 import { ServiceManager } from './ServiceManager.js';
@@ -561,7 +561,11 @@ export class Simulation {
     stats.alerts = [];
     const addAlert = (id, message, tile = null) => stats.alerts.push({ id, message, x: tile?.x ?? null, y: tile?.y ?? null });
     const fireTile = Array.from(this.grid.getActiveFireTiles())[0];
-    if (fireTile) addAlert(`fire:${fireTile.x},${fireTile.y}`, 'Fire reported', fireTile);
+    // Only surface fires close enough to the player's own works; a distant wildfire in
+    // unclaimed forest is scenery, not an emergency.
+    if (fireTile && this.grid.hasPlayerDevelopmentWithin(fireTile.x, fireTile.y, FIRE_CONFIG.ALERT_DEVELOPMENT_RADIUS)) {
+      addAlert(`fire:${fireTile.x},${fireTile.y}`, 'Fire reported', fireTile);
+    }
     const crimeTile = Array.from(this.grid.activeZonedTiles).find((tile) => (tile.crime || 0) >= CRIME_CONFIG.CRIME_PENALTY_THRESHOLD);
     if (crimeTile) addAlert(`crime:${crimeTile.x},${crimeTile.y}`, 'Crime is high', crimeTile);
     if (stats.patientDemand > 0 && stats.patientCapacity / stats.patientDemand < 0.25) {

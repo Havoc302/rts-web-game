@@ -80,6 +80,12 @@ class GameApp {
     this.dismissedAlerts = new Set();
     this.isMouseDown = false;
     this.isRightMouseDown = false;
+    this.rightHasDragged = false;
+    this.rightDownStartX = 0;
+    this.rightDownStartY = 0;
+    this.mouseDownStartX = 0;
+    this.mouseDownStartY = 0;
+    this.mouseHasDragged = false;
     this.lastMouseX = 0;
     this.lastMouseY = 0;
     this.lastTouchX = 0;
@@ -1206,15 +1212,18 @@ class GameApp {
   }
 
   setActiveTool(tool) {
+    // The Inspect tool was removed: the default Pan tool inspects on click. Saves written
+    // before the change record 'inspect', so fold it into Pan.
+    const resolvedTool = tool === 'inspect' ? 'pan' : tool;
     document.querySelectorAll('.tool-btn').forEach((b) => b.classList.remove('active'));
-    const btn = document.querySelector(`.tool-btn[data-tool="${tool}"]`);
+    const btn = document.querySelector(`.tool-btn[data-tool="${resolvedTool}"]`);
     if (btn) btn.classList.add('active');
-    this.activeTool = tool;
-    const overlayMode = tool === 'survey' ? 'survey' : 'normal';
+    this.activeTool = resolvedTool;
+    const overlayMode = resolvedTool === 'survey' ? 'survey' : 'normal';
     document.querySelectorAll('.overlay-btn').forEach((b) => b.classList.toggle('active', b.dataset.mode === overlayMode));
     this.renderer.setOverlayMode(overlayMode);
-    this.renderer.placementTool = ['pan', 'inspect', 'bulldoze'].includes(this.activeTool) ? null : this.activeTool;
-    if (this.activeTool !== 'inspect' && this.activeTool !== 'pan') {
+    this.renderer.placementTool = ['pan', 'bulldoze'].includes(this.activeTool) ? null : this.activeTool;
+    if (this.activeTool !== 'pan') {
       document.getElementById('inspector-panel').classList.remove('visible');
       this.renderer.selectedTile = null;
     }
@@ -1235,6 +1244,9 @@ class GameApp {
     this.canvas.addEventListener('mousedown', (e) => {
       if (e.button === 2) {
         this.isRightMouseDown = true;
+        this.rightDownStartX = e.clientX;
+        this.rightDownStartY = e.clientY;
+        this.rightHasDragged = false;
       } else if (e.button === 0) {
         this.isMouseDown = true;
         this.mouseDownStartX = e.clientX;
@@ -1249,7 +1261,11 @@ class GameApp {
     });
 
     window.addEventListener('mouseup', (e) => {
-      if (e.button === 2) this.isRightMouseDown = false;
+      if (e.button === 2) {
+        this.isRightMouseDown = false;
+        // A right click that did not drag clears the current tool and tile selection.
+        if (!this.rightHasDragged) this.clearSelection();
+      }
       if (e.button === 0) {
         if (this.isMouseDown && this.activeTool === 'pan' && !this.mouseHasDragged) {
           this.handleCanvasClick(e);
@@ -1263,7 +1279,11 @@ class GameApp {
         const dx = e.clientX - this.lastMouseX;
         const dy = e.clientY - this.lastMouseY;
         this.renderer.setCamera(this.renderer.cameraX + dx, this.renderer.cameraY + dy);
-        if (Math.hypot(e.clientX - this.mouseDownStartX, e.clientY - this.mouseDownStartY) > 5) {
+        if (this.isRightMouseDown) {
+          if (Math.hypot(e.clientX - this.rightDownStartX, e.clientY - this.rightDownStartY) > 5) {
+            this.rightHasDragged = true;
+          }
+        } else if (Math.hypot(e.clientX - this.mouseDownStartX, e.clientY - this.mouseDownStartY) > 5) {
           this.mouseHasDragged = true;
         }
       } else {
@@ -1376,6 +1396,16 @@ class GameApp {
     );
   }
 
+  // Right click without dragging deselects everything: the current build tool, the selected
+  // tile, and the inspector, leaving the default Pan/inspect tool active.
+  clearSelection() {
+    this.renderer.selectedTile = null;
+    this.renderer.hoverTile = null;
+    document.getElementById('inspector-panel')?.classList.remove('visible');
+    document.getElementById('build-info-panel')?.classList.remove('visible');
+    this.setActiveTool('pan');
+  }
+
   screenToTile(screenX, screenY) {
     const mapPixelWidth = this.grid.width * TILE_SIZE;
     const mapPixelHeight = this.grid.height * TILE_SIZE;
@@ -1401,21 +1431,11 @@ class GameApp {
       return;
     }
 
-    if (this.activeTool === 'inspect') {
+    if (this.activeTool === 'pan') {
+      // Pan is the default tool: a click inspects whatever tile it lands on.
       this.renderer.selectedTile = tile;
       document.getElementById('inspector-panel').classList.add('visible');
       this.updateInspector(tile, { force: true });
-      return;
-    }
-    if (this.activeTool === 'pan') {
-      this.renderer.selectedTile = tile;
-      const inspector = document.getElementById('inspector-panel');
-      if (!tile.destroyed && isZoneAtCapacity(tile)) {
-        inspector.classList.add('visible');
-        this.updateInspector(tile, { force: true });
-      } else {
-        inspector.classList.remove('visible');
-      }
       return;
     }
 

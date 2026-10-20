@@ -1093,6 +1093,9 @@ export const FIRE_CONFIG = {
   BASE_SUPPRESSION_POWER: 55,             // Suppression subtracted from fire damage per tick when a station covers the tile
   MOUNTAIN_IGNITION_CHANCE: 0.0001,       // Mountains hold fuel and can ignite
   REPAIR_PER_TICK: 0.1,                   // After a non-destroying fire, tax/use restored by this fraction per tick
+  // Fires only raise the alert strip when a player-built tile is this close (square radius),
+  // so remote wildfires in unclaimed forest stay as scenery instead of nagging the player.
+  ALERT_DEVELOPMENT_RADIUS: 20,
 };
 
 // Global service staffing, coverage, and operating-cost balance controls.
@@ -1165,7 +1168,15 @@ export const RENDERER_CONFIG = {
 };
 
 export const TRAFFIC_CONFIG = {
-  MAX_CARS_PER_ROAD_TILE: 0.3,
+  // Traffic scales with residents: every 500 people adds a band worth 1-3 dots, rolled once
+  // when the band appears so the count steps up instead of jittering every tick.
+  POPULATION_PER_BAND: 500,
+  MIN_CARS_PER_BAND: 1,
+  MAX_CARS_PER_BAND: 3,
+  // Chance a newly spawned car is an emergency vehicle, and the only time one may exist is
+  // when a police station, fire station, or hospital is standing.
+  EMERGENCY_CAR_CHANCE: 0.12,
+  EMERGENCY_LIGHTS: ['#ef4444', '#3b82f6'],
   COLORS: ['#ff4d4d', '#4d79ff', '#ffff4d', '#ffffff', '#4dff88'],
   SPEED_MIN: 0.02,
   SPEED_MAX: 0.04,

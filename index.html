@@ -108,6 +108,7 @@
             <div class="tooltip-row"><span class="label">Workers:</span><span class="val" id="stat-workforce">0</span></div>
             <div class="tooltip-row"><span class="label">School-age:</span><span class="val" id="stat-school-age">0</span></div>
             <div class="tooltip-row"><span class="label">Retirees:</span><span class="val" id="stat-retirees">0</span></div>
+            <div class="tooltip-row"><span class="label">Housing:</span><span class="val" id="stat-housing">0 / 0</span></div>
           </div>
         </div>
         <div class="stat-item has-tooltip" tabindex="0" aria-label="Treasury">
@@ -132,11 +133,11 @@
         <div class="stat-item has-tooltip" title="Service Cost / Tick">
           <svg class="stat-icon"><use href="#hud-service"/></svg>
           <span class="value" id="stat-service-expenses">-$0</span>
-          <div class="stat-tooltip"><div class="tooltip-header">Service Costs</div><div class="tooltip-row"><span class="val" id="stat-service-breakdown">None</span></div></div>
-        </div>
-        <div class="stat-item" title="Road Cost / Tick">
-          <svg class="stat-icon"><use href="#hud-road"/></svg>
-          <span class="value" id="stat-road-expenses">-$0</span>
+          <div class="stat-tooltip">
+            <div class="tooltip-header">Service Costs</div>
+            <div class="tooltip-row"><span class="label">Road maintenance:</span><span class="val" id="stat-service-road">-$0</span></div>
+            <div class="tooltip-row"><span class="val" id="stat-service-breakdown">None</span></div>
+          </div>
         </div>
         <div class="stat-item" title="Utility Operating Cost / Tick">
           <span class="stat-icon" aria-hidden="true">⚡</span>
@@ -359,10 +360,6 @@
           <button class="tool-btn mobile-only-control active" data-tool="pan">
             <span class="icon">✋</span>
             <span class="name">Pan Map</span>
-          </button>
-          <button class="tool-btn" data-tool="inspect">
-            <span class="icon">🔍</span>
-            <span class="name">Inspect Tile</span>
           </button>
           <button class="tool-btn danger" data-tool="bulldoze">
             <span class="icon">🚜</span>

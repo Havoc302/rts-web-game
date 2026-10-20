@@ -2,7 +2,7 @@ import assert from 'assert';
 import { TrafficManager, getAdjacentRoadTiles } from '../src/engine/TrafficManager.js';
 import { Grid } from '../src/engine/Grid.js';
 import { Simulation } from '../src/engine/Simulation.js';
-import { TERRAIN, TILE_SIZE } from '../src/config.js';
+import { PRODUCER_TYPE, TERRAIN, TILE_SIZE, TRAFFIC_CONFIG } from '../src/config.js';
 
 function flatten(grid) {
   for (const row of grid.tiles) {
@@ -14,19 +14,42 @@ function flatten(grid) {
 
 console.log('=== traffic-manager.test.js ===');
 
-// 1. Density Math
+// 1. Population-band density
 {
-  const tm = new TrafficManager({ maxCarsPerRoadTile: 0.3 });
-  assert.strictEqual(tm.calculateTargetCarCount(0, 100, 50), 0, 'Zero population produces zero cars');
-  assert.strictEqual(tm.calculateTargetCarCount(0, 0, 50), 0, 'Zero population with zero capacity produces zero cars');
+  const tm = new TrafficManager();
+  assert.strictEqual(tm.calculateTargetCarCount(0), 0, 'Zero population produces zero cars');
 
-  // 100 roads, 80 pop / 100 cap -> 0.8 saturation -> 100 * 0.8 * 0.3 = 24
-  const count = tm.calculateTargetCarCount(80, 100, 100);
-  assert.strictEqual(count, 24, 'Partial saturation calculates expected car count');
+  const originalRandom = Math.random;
+  Math.random = () => 0.5; // Each band rolls 1 + floor(0.5 * 3) = 2 dots.
+  try {
+    assert.strictEqual(tm.calculateTargetCarCount(200), 2, 'Up to 500 residents form one band of 1-3 cars');
+    assert.strictEqual(tm.calculateTargetCarCount(200), 2, 'Repeated calls keep the rolled band value');
+    assert.strictEqual(tm.calculateTargetCarCount(500), 2, 'Exactly 500 residents is still one band');
+    assert.strictEqual(tm.calculateTargetCarCount(501), 4, 'One resident over 500 starts a second band');
+    assert.strictEqual(tm.calculateTargetCarCount(1200), 6, 'Three bands contribute 2 dots each');
+    assert.strictEqual(tm.calculateTargetCarCount(200), 2, 'Population loss drops the extra bands');
+  } finally {
+    Math.random = originalRandom;
+  }
 
-  // Over-capacity population is capped at 1.0 saturation
-  const cappedCount = tm.calculateTargetCarCount(200, 100, 100);
-  assert.strictEqual(cappedCount, 30, 'Over-capacity population caps saturation at 1.0');
+  // Every band contributes between 1 and 3 dots.
+  const bands = new TrafficManager();
+  const rolls = [0, 0.999, 0.5];
+  let rollIndex = 0;
+  Math.random = () => rolls[rollIndex++ % rolls.length];
+  let counts;
+  try {
+    counts = [
+      bands.calculateTargetCarCount(500),
+      bands.calculateTargetCarCount(1000),
+      bands.calculateTargetCarCount(1500),
+    ];
+  } finally {
+    Math.random = originalRandom;
+  }
+  assert.ok(counts[0] >= 1 && counts[0] <= 3, 'One band yields 1-3 cars');
+  assert.ok(counts[1] >= 2 && counts[1] <= 6, 'Two bands yield 2-6 cars');
+  assert.ok(counts[2] >= 3 && counts[2] <= 9, 'Three bands yield 3-9 cars');
 }
 
 // 2. Road Adjacency & Particle Syncing
@@ -225,6 +248,62 @@ console.log('=== traffic-manager.test.js ===');
   // North: X shifted left by offsetPx (-6.4)
   assert.strictEqual(drawnPositions[3].x, centerPx - offsetPx, 'Northbound car shifts left (West / -X)');
   assert.strictEqual(drawnPositions[3].y, centerPx, 'Northbound car maintains Y center');
+}
+
+// 8. Emergency vehicles are gated on civic services and capped at one
+{
+  const roadsOnly = new Grid(20, 20);
+  flatten(roadsOnly);
+  roadsOnly.placeRoad(5, 5);
+  const noService = new TrafficManager({ grid: roadsOnly, emergencyCarChance: 1 });
+  noService.rebuildRoadCache(roadsOnly);
+  noService.syncCarCount(4, noService.activeRoadArray);
+  assert.strictEqual(noService.cars.filter((car) => car.emergency).length, 0,
+    'No emergency vehicle can spawn without a police, fire, or hospital building');
+
+  const served = new Grid(20, 20);
+  flatten(served);
+  served.placeRoad(5, 5);
+  served.placeProducer(6, 5, PRODUCER_TYPE.POLICE_STATION);
+  const withService = new TrafficManager({ grid: served, emergencyCarChance: 1 });
+  withService.rebuildRoadCache(served);
+  withService.syncCarCount(5, withService.activeRoadArray);
+  assert.strictEqual(withService.cars.filter((car) => car.emergency).length, 1,
+    'At most one emergency vehicle exists at a time');
+  assert.ok(withService.hasEmergencyService(served), 'A police station enables emergency traffic');
+
+  const neverRolls = new TrafficManager({ grid: served, emergencyCarChance: 0 });
+  neverRolls.rebuildRoadCache(served);
+  neverRolls.syncCarCount(4, neverRolls.activeRoadArray);
+  assert.strictEqual(neverRolls.cars.filter((car) => car.emergency).length, 0,
+    'The spawn chance still gates emergency vehicles');
+}
+
+// 9. Emergency lights flash red and blue in opposite corners
+{
+  const tm = new TrafficManager({ carSize: 3 });
+  tm.cars = [{ x: 5.5, y: 5.5, dirX: 0, dirY: 0, color: '#ffffff', emergency: true }];
+  tm.elapsed = 0;
+  const fills = [];
+  const mockCtx = {
+    fillStyle: '#000000',
+    save() {},
+    restore() {},
+    fillRect(x, y, w, h) { fills.push({ color: this.fillStyle, x, y, w, h }); },
+  };
+  tm.draw(mockCtx, TILE_SIZE, { x: 0, y: 0 });
+  const [redLight, blueLight] = TRAFFIC_CONFIG.EMERGENCY_LIGHTS;
+  assert.ok(fills.some((fill) => fill.color === redLight && fill.w === 1 && fill.h === 1), 'Emergency car has a red corner pixel');
+  assert.ok(fills.some((fill) => fill.color === blueLight && fill.w === 1 && fill.h === 1), 'Emergency car has a blue corner pixel');
+  assert.ok(fills.some((fill) => fill.color === '#f8fafc' && fill.w === 3 && fill.h === 3), 'Emergency car keeps a visible body');
+
+  // Lights swap colours as time passes.
+  tm.elapsed = 0.3;
+  fills.length = 0;
+  tm.draw(mockCtx, TILE_SIZE, { x: 0, y: 0 });
+  const redCorner = fills.find((fill) => fill.color === redLight && fill.w === 1);
+  const blueCorner = fills.find((fill) => fill.color === blueLight && fill.w === 1);
+  assert.ok(redCorner && blueCorner, 'Both light colours are still drawn after the flash phase flips');
 }
 
 console.log('TrafficManager tests passed.');
