@@ -1,0 +1,309 @@
+import assert from 'assert';
+import { TrafficManager, getAdjacentRoadTiles } from '../../src/engine/TrafficManager.js';
+import { Grid } from '../../src/engine/Grid.js';
+import { Simulation } from '../../src/engine/Simulation.js';
+import { PRODUCER_TYPE, TERRAIN, TILE_SIZE, TRAFFIC_CONFIG } from '../../src/config.js';
+
+function flatten(grid) {
+  for (const row of grid.tiles) {
+    for (const tile of row) {
+      tile.terrain = TERRAIN.FLAT;
+    }
+  }
+}
+
+console.log('=== traffic-manager.case.js ===');
+
+// 1. Population-band density
+{
+  const tm = new TrafficManager();
+  assert.strictEqual(tm.calculateTargetCarCount(0), 0, 'Zero population produces zero cars');
+
+  const originalRandom = Math.random;
+  Math.random = () => 0.5; // Each band rolls 1 + floor(0.5 * 3) = 2 dots.
+  try {
+    assert.strictEqual(tm.calculateTargetCarCount(200), 2, 'Up to 500 residents form one band of 1-3 cars');
+    assert.strictEqual(tm.calculateTargetCarCount(200), 2, 'Repeated calls keep the rolled band value');
+    assert.strictEqual(tm.calculateTargetCarCount(500), 2, 'Exactly 500 residents is still one band');
+    assert.strictEqual(tm.calculateTargetCarCount(501), 4, 'One resident over 500 starts a second band');
+    assert.strictEqual(tm.calculateTargetCarCount(1200), 6, 'Three bands contribute 2 dots each');
+    assert.strictEqual(tm.calculateTargetCarCount(200), 2, 'Population loss drops the extra bands');
+  } finally {
+    Math.random = originalRandom;
+  }
+
+  // Every band contributes between 1 and 3 dots.
+  const bands = new TrafficManager();
+  const rolls = [0, 0.999, 0.5];
+  let rollIndex = 0;
+  Math.random = () => rolls[rollIndex++ % rolls.length];
+  let counts;
+  try {
+    counts = [
+      bands.calculateTargetCarCount(500),
+      bands.calculateTargetCarCount(1000),
+      bands.calculateTargetCarCount(1500),
+    ];
+  } finally {
+    Math.random = originalRandom;
+  }
+  assert.ok(counts[0] >= 1 && counts[0] <= 3, 'One band yields 1-3 cars');
+  assert.ok(counts[1] >= 2 && counts[1] <= 6, 'Two bands yield 2-6 cars');
+  assert.ok(counts[2] >= 3 && counts[2] <= 9, 'Three bands yield 3-9 cars');
+}
+
+// 2. Road Adjacency & Particle Syncing
+{
+  const grid = new Grid(20, 20);
+  flatten(grid);
+  grid.placeRoad(5, 5);
+  grid.placeRoad(6, 5);
+  grid.placeRoad(7, 5);
+
+  const neighbors = getAdjacentRoadTiles(6, 5, grid);
+  assert.strictEqual(neighbors.length, 2, 'Middle road tile has 2 road neighbors');
+
+  const tm = new TrafficManager({ grid });
+  tm.rebuildRoadCache(grid);
+  assert.strictEqual(tm.getAdjacentRoadTiles(6, 5, grid).length, 2, 'Cached road adjacency matches grid neighbors');
+
+  // Sync car count up
+  tm.syncCarCount(5, tm.activeRoadArray);
+  assert.strictEqual(tm.cars.length, 5, 'Spawns target number of cars');
+
+  for (const car of tm.cars) {
+    assert(car.x >= 5.5 && car.x <= 7.5, 'Car spawned on valid road coordinates');
+    assert(car.y === 5.5, 'Car spawned on road y coordinate');
+    assert(typeof car.speed === 'number' && car.speed > 0, 'Car has valid speed');
+    assert(typeof car.color === 'string' && car.color.length > 0, 'Car has valid color');
+  }
+
+  // Sync car count down
+  tm.syncCarCount(2, tm.activeRoadArray);
+  assert.strictEqual(tm.cars.length, 2, 'Trims cars to new lower target count');
+}
+
+// 3. Movement Logic & U-Turn Prevention
+{
+  const grid = new Grid(20, 20);
+  flatten(grid);
+  // Straight 3-tile road: (5,5) - (6,5) - (7,5)
+  grid.placeRoad(5, 5);
+  grid.placeRoad(6, 5);
+  grid.placeRoad(7, 5);
+
+  const tm = new TrafficManager({ grid });
+  tm.rebuildRoadCache(grid);
+
+  // Place a car arriving at (6.5, 5.5) from (5,5)
+  tm.cars = [{
+    x: 6.5,
+    y: 5.5,
+    targetX: 6.5,
+    targetY: 5.5,
+    prevTileX: 5,
+    prevTileY: 5,
+    speed: 0.05,
+    color: '#ff4d4d',
+  }];
+
+  // Update step with car reaching target
+  tm.update(1.0, grid);
+
+  // Because car arrived from (5,5) to (6,5), and (6,5) has neighbors (5,5) and (7,5),
+  // forward-choice filtering should steer toward (7,5) instead of immediately turning around to (5,5)
+  const car = tm.cars[0];
+  assert.strictEqual(car.targetX, 7.5, 'Car continues forward through road intersection/segment');
+  assert.strictEqual(car.targetY, 5.5, 'Car stays on road track');
+}
+
+// 4. Dead-End & Bulldoze Handling
+{
+  const grid = new Grid(20, 20);
+  flatten(grid);
+  grid.placeRoad(10, 10);
+  grid.placeRoad(11, 10);
+
+  const tm = new TrafficManager({ grid });
+  tm.rebuildRoadCache(grid);
+
+  // Car arriving at dead-end (11,10) coming from (10,10)
+  tm.cars = [{
+    x: 11.5,
+    y: 10.5,
+    targetX: 11.5,
+    targetY: 10.5,
+    prevTileX: 10,
+    prevTileY: 10,
+    speed: 0.1,
+    color: '#4d79ff',
+  }];
+
+  // Step into dead-end: should turn around to (10,10) since it is the only neighbor
+  tm.update(1.0, grid);
+  assert.strictEqual(tm.cars[0].targetX, 10.5, 'Car turns around at dead-end');
+
+  // Now bulldoze (10,10) and (11,10), and place a new road at (2,2)
+  grid.bulldoze(10, 10);
+  grid.bulldoze(11, 10);
+  grid.placeRoad(2, 2);
+  tm.rebuildRoadCache(grid);
+
+  // Stepping should respawn the car on active road (2,2)
+  tm.update(1.0, grid);
+  assert.strictEqual(tm.cars[0].targetX, 2.5, 'Car stranded on bulldozed road respawns on active road');
+  assert.strictEqual(tm.cars[0].targetY, 2.5, 'Car stranded on bulldozed road respawns on active road');
+}
+
+// 5. Batched Rendering & Culling
+{
+  const tm = new TrafficManager();
+  tm.cars = [
+    { x: 1.5, y: 1.5, targetX: 2.5, targetY: 1.5, speed: 0.02, color: '#ff4d4d' },
+    { x: 2.5, y: 1.5, targetX: 3.5, targetY: 1.5, speed: 0.02, color: '#ff4d4d' },
+    { x: 100.5, y: 100.5, targetX: 101.5, targetY: 100.5, speed: 0.02, color: '#4d79ff' }, // offscreen
+  ];
+
+  const fillStyleAssignments = [];
+  const fillRectCalls = [];
+  let saveCalled = false;
+  let restoreCalled = false;
+
+  const mockCtx = {
+    get fillStyle() { return ''; },
+    set fillStyle(val) { fillStyleAssignments.push(val); },
+    save() { saveCalled = true; },
+    restore() { restoreCalled = true; },
+    fillRect(x, y, w, h) { fillRectCalls.push({ x, y, w, h }); },
+  };
+
+  const visibleBounds = { left: 0, top: 0, right: 200, bottom: 200 };
+  tm.draw(mockCtx, TILE_SIZE, { x: 0, y: 0 }, visibleBounds);
+
+  assert(saveCalled && restoreCalled, 'ctx.save and ctx.restore called');
+  assert.strictEqual(fillStyleAssignments.length, 1, 'Batched rendering sets fillStyle only once for color');
+  assert.strictEqual(fillStyleAssignments[0], '#ff4d4d', 'Batch color matches on-screen car');
+  assert.strictEqual(fillRectCalls.length, 2, 'Only the 2 on-screen cars are rendered; offscreen car culled');
+}
+
+// 6. Integration with Simulation Stats & Grid
+{
+  const grid = new Grid(20, 20);
+  flatten(grid);
+  for (let i = 0; i < 10; i++) {
+    grid.placeRoad(i, 5);
+  }
+  const sim = new Simulation(grid);
+  sim.computeStats();
+
+  assert.strictEqual(typeof sim.stats.maxPopulationCapacity, 'number', 'Simulation stats has maxPopulationCapacity');
+
+  const tm = new TrafficManager({ grid });
+  tm.updateDensity(sim, grid);
+  // Zero population -> 0 cars
+  assert.strictEqual(tm.cars.length, 0, 'Zero population city has 0 traffic cars');
+}
+
+// 7. Left-Side Lane Driving Offsets
+{
+  const tm = new TrafficManager({ laneOffset: 0.2 });
+  const drawnPositions = [];
+  const mockCtx = {
+    get fillStyle() { return ''; },
+    set fillStyle(v) {},
+    save() {},
+    restore() {},
+    fillRect(x, y, w, h) { drawnPositions.push({ x, y }); },
+  };
+
+  // 4 cars on tile (5, 5) heading in 4 cardinal directions
+  // Center is at 5.5 in tile units = 176px at TILE_SIZE = 32
+  // Offset of 0.2 tiles = 6.4px
+  tm.cars = [
+    { x: 5.5, y: 5.5, targetX: 6.5, targetY: 5.5, dirX: 1, dirY: 0, color: '#ff4d4d' },   // East -> lane offset North (-Y)
+    { x: 5.5, y: 5.5, targetX: 4.5, targetY: 5.5, dirX: -1, dirY: 0, color: '#ff4d4d' },  // West -> lane offset South (+Y)
+    { x: 5.5, y: 5.5, targetX: 5.5, targetY: 6.5, dirX: 0, dirY: 1, color: '#ff4d4d' },   // South -> lane offset East (+X)
+    { x: 5.5, y: 5.5, targetX: 5.5, targetY: 4.5, dirX: 0, dirY: -1, color: '#ff4d4d' },  // North -> lane offset West (-X)
+  ];
+
+  tm.draw(mockCtx, TILE_SIZE, { x: 0, y: 0 });
+  assert.strictEqual(drawnPositions.length, 4, 'All 4 directional cars drawn');
+
+  const halfCar = tm.carSize / 2; // 1.5
+  const centerPx = 5.5 * TILE_SIZE - halfCar; // 174.5
+  const offsetPx = 0.2 * TILE_SIZE; // 6.4
+
+  // East: Y shifted up by offsetPx (-6.4)
+  assert.strictEqual(drawnPositions[0].x, centerPx, 'Eastbound car maintains X center');
+  assert.strictEqual(drawnPositions[0].y, centerPx - offsetPx, 'Eastbound car shifts left (North / -Y)');
+
+  // West: Y shifted down by offsetPx (+6.4)
+  assert.strictEqual(drawnPositions[1].x, centerPx, 'Westbound car maintains X center');
+  assert.strictEqual(drawnPositions[1].y, centerPx + offsetPx, 'Westbound car shifts left (South / +Y)');
+
+  // South: X shifted right by offsetPx (+6.4)
+  assert.strictEqual(drawnPositions[2].x, centerPx + offsetPx, 'Southbound car shifts left (East / +X)');
+  assert.strictEqual(drawnPositions[2].y, centerPx, 'Southbound car maintains Y center');
+
+  // North: X shifted left by offsetPx (-6.4)
+  assert.strictEqual(drawnPositions[3].x, centerPx - offsetPx, 'Northbound car shifts left (West / -X)');
+  assert.strictEqual(drawnPositions[3].y, centerPx, 'Northbound car maintains Y center');
+}
+
+// 8. Emergency vehicles are gated on civic services and capped at one
+{
+  const roadsOnly = new Grid(20, 20);
+  flatten(roadsOnly);
+  roadsOnly.placeRoad(5, 5);
+  const noService = new TrafficManager({ grid: roadsOnly, emergencyCarChance: 1 });
+  noService.rebuildRoadCache(roadsOnly);
+  noService.syncCarCount(4, noService.activeRoadArray);
+  assert.strictEqual(noService.cars.filter((car) => car.emergency).length, 0,
+    'No emergency vehicle can spawn without a police, fire, or hospital building');
+
+  const served = new Grid(20, 20);
+  flatten(served);
+  served.placeRoad(5, 5);
+  served.placeProducer(6, 5, PRODUCER_TYPE.POLICE_STATION);
+  const withService = new TrafficManager({ grid: served, emergencyCarChance: 1 });
+  withService.rebuildRoadCache(served);
+  withService.syncCarCount(5, withService.activeRoadArray);
+  assert.strictEqual(withService.cars.filter((car) => car.emergency).length, 1,
+    'At most one emergency vehicle exists at a time');
+  assert.ok(withService.hasEmergencyService(served), 'A police station enables emergency traffic');
+
+  const neverRolls = new TrafficManager({ grid: served, emergencyCarChance: 0 });
+  neverRolls.rebuildRoadCache(served);
+  neverRolls.syncCarCount(4, neverRolls.activeRoadArray);
+  assert.strictEqual(neverRolls.cars.filter((car) => car.emergency).length, 0,
+    'The spawn chance still gates emergency vehicles');
+}
+
+// 9. Emergency lights flash red and blue in opposite corners
+{
+  const tm = new TrafficManager({ carSize: 3 });
+  tm.cars = [{ x: 5.5, y: 5.5, dirX: 0, dirY: 0, color: '#ffffff', emergency: true }];
+  tm.elapsed = 0;
+  const fills = [];
+  const mockCtx = {
+    fillStyle: '#000000',
+    save() {},
+    restore() {},
+    fillRect(x, y, w, h) { fills.push({ color: this.fillStyle, x, y, w, h }); },
+  };
+  tm.draw(mockCtx, TILE_SIZE, { x: 0, y: 0 });
+  const [redLight, blueLight] = TRAFFIC_CONFIG.EMERGENCY_LIGHTS;
+  assert.ok(fills.some((fill) => fill.color === redLight && fill.w === 1 && fill.h === 1), 'Emergency car has a red corner pixel');
+  assert.ok(fills.some((fill) => fill.color === blueLight && fill.w === 1 && fill.h === 1), 'Emergency car has a blue corner pixel');
+  assert.ok(fills.some((fill) => fill.color === '#f8fafc' && fill.w === 3 && fill.h === 3), 'Emergency car keeps a visible body');
+
+  // Lights swap colours as time passes.
+  tm.elapsed = 0.3;
+  fills.length = 0;
+  tm.draw(mockCtx, TILE_SIZE, { x: 0, y: 0 });
+  const redCorner = fills.find((fill) => fill.color === redLight && fill.w === 1);
+  const blueCorner = fills.find((fill) => fill.color === blueLight && fill.w === 1);
+  assert.ok(redCorner && blueCorner, 'Both light colours are still drawn after the flash phase flips');
+}
+
+console.log('TrafficManager tests passed.');

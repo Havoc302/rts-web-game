@@ -224,7 +224,7 @@ flowchart TB
 | Terrain chunk size | 64 tiles (2048 px, under a 4096 GPU cap) | `RENDERER_CONFIG.TERRAIN_CHUNK_TILES` |
 | Mobile HUD cadence | 500 ms on coarse-pointer layouts | `RENDERER_CONFIG.HUD_MOBILE_CADENCE_MS` |
 | Dev | `"dev": "npx serve ."` | `package.json` |
-| Version | `0.2.20` from `src/version.js`, synchronized with `package.json` and cache-busting consumers | `tests/version-sync.test.js` |
+| Version | `0.2.20` from `src/version.js`, synchronized with `package.json` and cache-busting consumers | `tests/cases/version-sync.case.js` |
 | `config.js` | 690 lines total (~637 non-blank) | file |
 | `Renderer.js` | 897 lines | file |
 
@@ -999,7 +999,7 @@ Police, fire, and hospital overlay controls are exposed in the current HTML, and
 ### Versioning
 
 - Single source: `APP_VERSION` in `src/version.js`, re-exported by `src/config.js` where needed.
-- `package.json` `version` and the HTML badge/cache-busting consumers must match; `tests/version-sync.test.js` protects the package/source pair.
+- `package.json` `version` and the HTML badge/cache-busting consumers must match; `tests/cases/version-sync.case.js` protects the package/source pair.
 - Patch for fixes, minor for features (`APP_VERSION` bumps also retire older saves, since loads require an exact build match).
 
 ---
@@ -1082,7 +1082,7 @@ Phase 1 stays paused-by-default sandbox (0% tax, $25,000) for solo city-building
 
 28. **Overworld Biome Generation.** `BIOME_TYPES` (`PLAINS`, `HILLY`, `MOUNTAINOUS`, `SWAMP`) modify procedural terrain generation: Hilly/Mountainous scale rock clusters (+25% / +50%); Plains reduce rock clusters (-50%); Swamp reduces forest (-50%), increases lakes (4-6), and forces fork/merge rivers. `generateProceduralTerrain(biome)` accepts the biome directly.
 
-29. **Single-source versioning.** `src/version.js` (`APP_VERSION = '0.2.20'`) is the single source of truth for version strings. `package.json` version and cache-busting consumers derive from it. Verified by `tests/version-sync.test.js`.
+29. **Single-source versioning.** `src/version.js` (`APP_VERSION = '0.2.20'`) is the single source of truth for version strings. `package.json` version and cache-busting consumers derive from it. Verified by `tests/cases/version-sync.case.js`.
 
 30. **Desktop pan, inspect, and drag painting.** Left-drag with the Pan tool pans the camera. A left click without dragging inspects the tile under the cursor, because Pan is the default and only pointer mode; the separate Inspect Tile tool was removed. Right-drag also pans, and a right click without dragging clears everything selected — the active build tool, the selected tile, and the inspector — returning to Pan. Left-drag painting is restricted to repeatable tools (roads, bridges, tunnels, zones, bulldoze); single-placement buildings and surveys do not drag-paint.
 
@@ -1090,13 +1090,13 @@ Phase 1 stays paused-by-default sandbox (0% tax, $25,000) for solo city-building
 
 32. **Tundra polar rings.** The temperature gradient runs equator-to-pole with the cold concentrated in the caps (`LATITUDE_GRADIENT_POWER`, `POLE_TEMP = -40`), replacing the earlier gentler hemisphere-wide falloff. Any land hex inside `POLAR_CAP_LATITUDE` (72°) is biome-forced to **tundra** regardless of continent region, so polar generation follows latitude rather than hemisphere geography. Tundra cities have small frozen lakes and a part-frozen river but no forest, and freezing cities report snow instead of rain. Verified by `tests/tundra-biome.test.js`.
 
-33. **Temperature load: uncapped power, capped happiness.** Outside the 10-35 °C comfort band, power demand scales linearly and without a ceiling (`1 + excursion / POWER_DEMAND_DOUBLE_EXCURSION`, so 2x at 20 °C out and 3.5x at 40 °C out) on every tile that draws power, while the happiness penalty ramps on the same slope but stops at `HAPPINESS_PENALTY_CAP` because past a point it is simply cold. The two deliberately differ: a freeze should be a real infrastructure problem, not an infinite mood sink. Water and sewage are untouched, and the medical exposure rule keeps its own 5/35 °C thresholds. Verified by `tests/temperature-load.test.js`.
+33. **Temperature load: uncapped power, capped happiness.** Outside the 10-35 °C comfort band, power demand scales linearly and without a ceiling (`1 + excursion / POWER_DEMAND_DOUBLE_EXCURSION`, so 2x at 20 °C out and 3.5x at 40 °C out) on every tile that draws power, while the happiness penalty ramps on the same slope but stops at `HAPPINESS_PENALTY_CAP` because past a point it is simply cold. The two deliberately differ: a freeze should be a real infrastructure problem, not an infinite mood sink. Water and sewage are untouched, and the medical exposure rule keeps its own 5/35 °C thresholds. Verified by `tests/cases/temperature-load.case.js`.
 
 34. **Arctic ice caps.** Poleward of `ARCTIC_CAP_LATITUDE` (78°) the surface is `BIOME_TYPES.ARCTIC` regardless of what the continent generator produced, so frozen ocean is buildable Arctic ice with a city seed and no cell in that band is ever ocean. The edge is drawn with a seeded smooth wobble (`ARCTIC_CAP_WOBBLE`), so the Arctic coastline is irregular and deterministic rather than a line of latitude, and each hex carries its own seeded weather mix, wind mean, and gale chance so the sheet has regional variety. Arctic is deliberately featureless — no forest, rock, lakes, rivers, or hidden ore, and no surveying — because it exists to be the barren, brutal end of the climate gradient rather than a resource frontier. It is still legal ground: roads, zones, and buildings place normally, and pumps/sewage plants tap meltwater without adjacent open water so an Arctic city is survivable. Its weather profile is the harshest in the game: near-permanent overcast and a climate wind mean plus gale chance that periodically reaches the windmill-damaging top of the wind scale. Verified by `tests/arctic-biome.test.js`.
 
-35. **Running out of money is a forced decision, not a soft debt spiral.** A treasury strictly below zero after a world tick sets `insolvent`, pauses the clock, and opens a modal that cannot be dismissed except by taking a loan (from the same option list and terms as the finance panel) or confirming bankruptcy. Speed controls refuse to resume while insolvent, and one loan is not guaranteed to be enough — a deep deficit keeps the modal up for another loan. Bankruptcy is terminal (`gameOverReason = 'bankruptcy'`) and uses the existing game-over screen with a `Bankrupt` title; the reason is persisted sparsely in the save's `finance` block so a reload shows the right ending. Triggering only below zero (not at exactly zero) leaves an empty treasury playable while tax income is still arriving. Verified by `tests/insolvency.test.js` and the save round-trip test.
+35. **Running out of money is a forced decision, not a soft debt spiral.** A treasury strictly below zero after a world tick sets `insolvent`, pauses the clock, and opens a modal that cannot be dismissed except by taking a loan (from the same option list and terms as the finance panel) or confirming bankruptcy. Speed controls refuse to resume while insolvent, and one loan is not guaranteed to be enough — a deep deficit keeps the modal up for another loan. Bankruptcy is terminal (`gameOverReason = 'bankruptcy'`) and uses the existing game-over screen with a `Bankrupt` title; the reason is persisted sparsely in the save's `finance` block so a reload shows the right ending. Triggering only below zero (not at exactly zero) leaves an empty treasury playable while tax income is still arriving. Verified by `tests/cases/insolvency.case.js` and the save round-trip test.
 
-36. **Debt risk is priced per loan.** Every loan already outstanding adds 10 percentage points to the next loan's rate, so debt stacks get progressively more expensive instead of costing the same as the first loan. The premium is additive on top of the happiness-derived base rate, applied at origination only (existing loans keep their locked rate), capped at 100%, and shown as its own `Risk Premium` row in both loan previews so a jump from 11% to 21% is explainable. Verified by `tests/loan-manager.test.js`.
+36. **Debt risk is priced per loan.** Every loan already outstanding adds 10 percentage points to the next loan's rate, so debt stacks get progressively more expensive instead of costing the same as the first loan. The premium is additive on top of the happiness-derived base rate, applied at origination only (existing loans keep their locked rate), capped at 100%, and shown as its own `Risk Premium` row in both loan previews so a jump from 11% to 21% is explainable. Verified by `tests/cases/loan-manager.case.js`.
 
 37. **Polar water freezes, but only where water stops moving.** `ICE_CONFIG` freezes tundra lakes end to end and fringes river banks, never the flowing centre lane. That is the physically defensible split without seasons — still water freezes first and shallow thermokarst ponds freeze solid, while a channel keeps enough momentum and latent heat to stay open — and it preserves two systems that would otherwise break: downstream river pollution travels the open lane, and a Water Tower or Sewage Plant needs open water, so the unfrozen stretch becomes a real site-selection decision rather than a formality. Frozen banks deliberately stop counting as waterfront, which doubles the value of the same gap for residential growth. Bridges accept ice and open water through one `canPlaceBridge` check. Verified by `tests/tundra-biome.test.js`.
 
@@ -1106,7 +1106,7 @@ Phase 1 stays paused-by-default sandbox (0% tax, $25,000) for solo city-building
 
 40. **A river mouth is always the downstream end.** `generateRiver` picks sources from land edges and downstream ends from ocean-facing ones (`getCoastalRiverMouths` maps each hex edge to a map edge and the half of it the sea covers, so corner coasts pin their mouths to the corner band), and an island hex springs from its biggest mountain range instead of a shoreline. Two passes then guarantee the result: `carveRiverMouths` cuts beach tiles that sit between a river and the sea, and `orientRiverMouths` points every mouth tile's `riverFlowDir` at the sea it enters. Without these, a wandering path could end behind a sand bar or leave the flow pointing inland. Verified by `tests/coast.test.js`.
 
-41. **The test suite runs in parallel.** `tests/run-all.js` spawns each `*.test.js` as its own process with a bounded worker pool (`TEST_CONCURRENCY` overrides, default `2 x CPU`), buffers output, and prints it in filename order so a failure reads exactly as it would serially. Generation-heavy suites also use 120x120 maps where their assertions are ratios or ranges; the full suite went from about 11.6 s serial to about 2.8 s.
+41. **The test suite runs in parallel, in two tiers.** `tests/run-all.js` treats every top-level `*.test.js` as an entry point and spawns each one as its own process with a bounded worker pool (`TEST_CONCURRENCY` overrides; the default is 4, because one heavy suite owns the wall time and spawning every entry point at once just makes them queue — 3.8 s at 3-4 workers versus 4.3 s at 12). Output is buffered and printed in filename order, so a failure reads exactly as it would serially. The seven generation-heavy suites (`coast`, `arctic-biome`, `overworld`, `tundra-biome`, `biome-generation`, `small-town-soak`, `save-game`, plus `simulation`) stay as single files so a failure points straight at one generator. The remaining 46 small suites are entries in seven topic bundles (`economy`, `population`, `industry`, `services`, `infrastructure`, `environment`, `ui`) that import their `tests/cases/*.case.js` modules into one process through `tests/harness.js`: each case keeps its own module scope, a failure is recorded and the rest still run (the bundle then exits non-zero), and globals a case stubs for itself (`document`, `localStorage`, `AbortController`) are restored afterwards so they cannot leak into the next case. Individual cases still run on their own (`node tests/cases/tutorial.case.js`). Generation-heavy suites also use 120x120 maps where their assertions are ratios or ranges; the full run went from about 11.6 s serial to about 3.8 s.
 
 42. **Mountains are terrain the river carves, not terrain painted over it.** Rock clusters used to be painted after the river, so the range always hid the channel and there was no high ground to spring from. `generateRockClusters` now runs before `prepareCoast`/`generateRiver`, `paintTerrainCluster` still only fills empty ground (so a range never covers a river or lake) and `paintRiverSegment` writes unconditionally (so the river cuts through), and `BIOME_GENERATION_VERSION` moved to 4 because a given seed now produces different terrain. Lakes are painted after the river and only fill empty ground, so they no longer appear inside a range. Verified by `tests/coast.test.js` and `tests/biome-generation.test.js`.
 
@@ -1134,7 +1134,7 @@ Resolved by the user (rev 4): Conquer hybrid + world map + Firebase (Q1), victor
 
 - Product title: `index.html` `<title>SimConquer 2000</title>`, brand `SimConquer 2000`.
 - Onboarding: `src/engine/TutorialManager.js` shows a `#tutorial-banner` with six milestone steps (select a map tile, roads, utilities, residential + agriculture, jobs, population). The main menu owns the `Guided Tutorial` toggle button; switching it on and pressing `New Game` begins at Step 1, and the banner stays hidden while no world is loaded. State persists in `localStorage` keys `simconquer_tutorial_enabled` and `simconquer_tutorial_step`. Already-satisfied steps on the chosen map advance automatically after starting or loading a world. Map seed key is `simconquer_map_seed` (one-time legacy read of `bc2000_map_seed`). Save downloads are `simconquer2000-save-YYYY-MM-DD-HHMMSS-seed-<seed>.json`.
-- Version: `APP_VERSION` `0.4.6` in `src/version.js`; `package.json` is synchronized and version/cache-busting behavior is covered by the version-sync test.
+- Version: `APP_VERSION` `0.4.7` in `src/version.js`; `package.json` is synchronized and version/cache-busting behavior is covered by the version-sync test.
 - Entry / orchestration: `src/main.js` (`GameApp`), `src/engine/Simulation.js` (`tick`, `computeStats`, `updateGrowthAndDensity`).
 - Spatial model: `src/engine/Grid.js` (`createDefaultTile`, `generateProceduralTerrain`, placement).
 - View: `src/engine/Renderer.js`, `style.css`, overlay buttons in `index.html`.
@@ -1266,14 +1266,14 @@ The PR descriptions below were written for the earlier rev 4 planning snapshot. 
 ### PR 4a — Pause, placement treasury, famine
 
 - **Title:** simTick is the only economic tick; pause freezes resources; famine clears
-- **Files:** `src/engine/Simulation.js`, `src/engine/ResourceManager.js`, `src/main.js`, `tests/tick-pause.test.js` (new), `tests/resource-management.test.js`
+- **Files:** `src/engine/Simulation.js`, `src/engine/ResourceManager.js`, `src/main.js`, `tests/cases/tick-pause.case.js` (new), `tests/cases/resource-management.case.js`
 - **Depends on:** PR 3
 - **Description:** Gate `ResourceManager.update` on `advanceWorld`. Placement: `treasury -= cost` then `tick(false)` only — **no** `treasury += income`, **no** `tick(true)` on place, **no** expense subtraction on place. `tick(false)` is **preview**: skip `prepareTick`; `allocateAll` must not reroll wind or write `storedEnergy` (snapshot/restore or a `mutateStorage=false` flag). `consumeFood` sets `populationLoss = 0` when `shortfall === 0`; apply loss only on advancing ticks. Tests: paused place does not change stockpile/`tickCount`/treasury except construction cost; `storedEnergy` and wind `capacity` are unchanged across `tick(false)`; feeding a city zeros `populationLoss`.
 
 ### PR 4b — Civic jobs owned by ServiceManager
 
 - **Title:** Stop ResourceManager from clobbering civic staffing
-- **Files:** `src/engine/ResourceManager.js`, `tests/service-buildings.test.js` (must `simulation.tick()`)
+- **Files:** `src/engine/ResourceManager.js`, `tests/cases/service-buildings.case.js` (must `simulation.tick()`)
 - **Depends on:** PR 3 (categories), PR 4a (stable tick)
 - **Description:** `updateProducerJobs` mutates only `category === 'resource' | 'factory'`. Full-tick assertion: hospital `totalJobs` after `tick()` still matches `ServiceManager` rules, not `jobs.light * empRate`.
 
@@ -1301,7 +1301,7 @@ The PR descriptions below were written for the earlier rev 4 planning snapshot. 
 ### PR 7 — Close civilian resource loops + honest HUD
 
 - **Title:** Consume goods, FUEL recipe, road fuel sink, surface hidden stats
-- **Files:** `src/config.js`, `ResourceManager.js`, `main.js`, `index.html`, `tests/resource-management.test.js`
+- **Files:** `src/config.js`, `ResourceManager.js`, `main.js`, `index.html`, `tests/cases/resource-management.case.js`
 - **Depends on:** PR 4a; PR 6 preferred so saves include new stockpile keys
 - **Description:** Decrement `consumerGoods` then `goodsRatio = consumed/demand` (Key Decision 12). Industrial `FUEL` recipe. `FUEL_PER_ROAD_TILE = 0.002`. HUD: happiness, bars, oil, fuel, arms, tanks. Tests assert goods and fuel stockpiles fall.
 

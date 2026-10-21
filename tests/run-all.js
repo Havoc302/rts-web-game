@@ -4,10 +4,12 @@ import os from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-// Test files are independent processes that write nothing to disk, so they run in parallel:
-// Node startup dominates the cheap files, and the few heavy generators overlap instead of
-// queueing. Output is buffered per file and printed in filename order, so a failing run reads
-// exactly as it would serially. Override the worker count with TEST_CONCURRENCY=<n>.
+// Every `*.test.js` in this directory is an entry point: the heavy generators stand alone, while
+// the small suites are bundles that import several `cases/*.case.js` modules into one process
+// (see `tests/harness.js`). Each entry point is still an independent process that writes nothing
+// to disk, so they run in parallel. Output is buffered per file and printed in filename order, so
+// a failing run reads exactly as it would serially. Override the worker count with
+// TEST_CONCURRENCY=<n>.
 const testsDir = dirname(fileURLToPath(import.meta.url));
 const files = readdirSync(testsDir)
   .filter((name) => name.endsWith('.test.js'))
@@ -17,9 +19,13 @@ const requested = Number(process.env.TEST_CONCURRENCY);
 const cpuCount = typeof os.availableParallelism === 'function'
   ? os.availableParallelism()
   : (os.cpus() || []).length || 2;
+// A handful of workers is fastest: one heavy suite owns most of the wall time, so spawning every
+// entry point at once just makes them queue behind each other (measured 3.8 s at 3 workers versus
+// 4.27 s at 12 on a 12-core machine). Cap the default, and keep the CPU count for small machines.
+const MAX_DEFAULT_WORKERS = 4;
 const concurrency = Math.max(1, Math.min(
   files.length,
-  Number.isFinite(requested) && requested > 0 ? Math.floor(requested) : cpuCount * 2,
+  Number.isFinite(requested) && requested > 0 ? Math.floor(requested) : Math.max(2, Math.min(cpuCount, MAX_DEFAULT_WORKERS)),
 ));
 
 function runFile(file) {

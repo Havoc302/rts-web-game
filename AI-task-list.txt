@@ -9,8 +9,8 @@ Agent handoff protocol:
 
 Open handoff (2026-10-20):
 - Active task: none in progress; the next item is to pick up the Phase 1 follow-ups listed in `docs/DESIGN.md`.
-- Latest completed task: rivers spring from the biggest mountain range when there is no land edge (`0.4.6`); see the final task entry in this log.
-- Verified baseline: `npm test` passes all 54 test files.
+- Latest completed task: small test files consolidated into topic suites (`0.4.7`); see the final task entry in this log.
+- Verified baseline: `npm test` passes 54 suites across 15 entry points.
 - Phase 1 follow-ups are tracked in `docs/DESIGN.md`; in particular, localStorage autosave and named tick-stage extraction are not implemented. Do not treat historical `Current task` headings below as active.
 
 Current task: Add standalone JSON game save export/import.
@@ -2086,4 +2086,21 @@ Validation:
 - Island hexes (all six edges ocean, 200x200): mountain masses 38-40 per map; springs land on a mountain-mass point on seeds 424242 and 90210 (clearance 50/51) and on the next-largest qualifying mass on seed 77764 (clearance 58); seed 12345 has no tile 50 tiles from the sea and keeps the previous clearest-point fallback (48), so the inland rule still wins over a coastal mountain.
 - Coastal hexes still spring from land edges: N coast 55-163 tiles of clearance, NW+SW 159-175, N+NW+SW 61-124, with 0 inland-flowing mouths and 500-1,400 river tiles per map.
 - Browser check: the game boots at `v0.4.6` with no page errors.
+
+Current task: Consolidate the small test files into topic suites (`0.4.7`).
+
+Measured first: 54 entry points cost 12.4 s serially and 2.16 s of that was bare Node startup, while five files held 80% of the work and `coast.test.js` alone pinned the parallel wall time.
+
+- [done] The eight heaviest suites stay as single files so a failure still points at one generator: `coast`, `arctic-biome`, `overworld`, `tundra-biome`, `biome-generation`, `small-town-soak`, `save-game`, `simulation`.
+- [done] The other 46 suites moved to `tests/cases/*.case.js` (imports rewritten from `../src/` to `../../src/`, and the `index.html`, `style.css` and `package.json` reads adjusted) and are now entries in seven topic bundles: `economy`, `population`, `industry`, `services`, `infrastructure`, `environment`, `ui`.
+- [done] `tests/harness.js` imports each case into one process, records failures without stopping the rest, restores any globals a case stubs (`document`, `localStorage`, `AbortController`) and exits non-zero when anything failed. Verified with a deliberate failing case: the next case still ran and the bundle exited 1.
+- [done] `tests/run-all.js` documents the two tiers and caps the default pool at 4 workers (measured 3.8 s at 3-4 versus 4.3 s at 12 and 4.8 s at 24).
+- [done] `docs/DESIGN.md` decision 41 describes the layout and its references to moved suites point at `tests/cases/`. Versions bumped to `0.4.7`.
+
+Validation:
+- 54 suites in 15 entry points; `node tests/run-all.js` passes with "All 15 test files passed." in about 3.8 s (was 4.5-7 s for 54 files, and 12.4 s serial).
+- Per-file cost after the change: bundles 0.4-0.9 s each, `coast.test.js` 3.8 s (still the long pole), `arctic-biome` 1.6 s, `overworld` 1.2 s, `tundra-biome` 0.9 s, `biome-generation` 0.7 s.
+- Individual cases still run alone: `node tests/cases/tutorial.case.js` passes.
+- Failure isolation probe: a throwing case printed its stack, the following case still ran, exit code 1.
+
 

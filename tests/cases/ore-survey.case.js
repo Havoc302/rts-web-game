@@ -1,0 +1,145 @@
+import assert from 'assert';
+import { Grid } from '../../src/engine/Grid.js';
+import { Simulation } from '../../src/engine/Simulation.js';
+import { UtilityManager } from '../../src/engine/UtilityManager.js';
+import { PRODUCER_TYPE, TERRAIN, ORE_CONFIG, ZONE } from '../../src/config.js';
+
+function clearTerrain(grid) {
+  for (const row of grid.tiles) {
+    for (const tile of row) tile.terrain = TERRAIN.FLAT;
+  }
+}
+
+// Ore generation is weighted toward mountain terrain.
+{
+  const grid = new Grid(40, 40, 24680);
+  let mountainTiles = 0;
+  let mountainDeposits = 0;
+  let flatTiles = 0;
+  let flatDeposits = 0;
+  for (const row of grid.tiles) {
+    for (const tile of row) {
+      if (tile.terrain === TERRAIN.MOUNTAIN) {
+        mountainTiles++;
+        if (tile.ore) mountainDeposits++;
+      } else if (tile.terrain === TERRAIN.FLAT) {
+        flatTiles++;
+        if (tile.ore) flatDeposits++;
+      }
+    }
+  }
+  assert.strictEqual(Object.keys(ORE_CONFIG).length, 7, 'Seven ore types should exist: iron, bauxite, coal, oil, uranium, copper and titanium');
+  assert.ok(mountainTiles > 0 && flatTiles > 0, 'Test map should contain mountain and flat terrain');
+  assert.ok(mountainDeposits / mountainTiles > flatDeposits / flatTiles, 'Mountains should have a higher ore deposit rate');
+}
+
+// A connected producer and a zoned tile compete for the same limited power.
+{
+  const grid = new Grid(12, 12, 1);
+  clearTerrain(grid);
+  grid.getTile(0, 3).terrain = TERRAIN.WATER;
+  grid.placeProducer(1, 1, PRODUCER_TYPE.POWER_PLANT, 2);
+  const pump = grid.placeProducer(1, 3, PRODUCER_TYPE.WATER_TOWER, 100);
+  for (let y = 1; y <= 6; y++) grid.placeRoad(2, y);
+  grid.placeZone(3, 6, ZONE.RESIDENTIAL);
+  const distantHome = grid.getTile(3, 6);
+  distantHome.population = 25;
+  distantHome.maxPopulation = 25;
+
+  UtilityManager.allocateAll(grid);
+  assert.strictEqual(pump.utilityShortfall.power, false, 'A nearby pump should receive power before a distant home');
+  assert.strictEqual(distantHome.shortfall.power, true, 'The farther home should lose power when the pump uses the remaining capacity');
+}
+
+{
+  const grid = new Grid(12, 12, 1);
+  clearTerrain(grid);
+  grid.getTile(0, 3).terrain = TERRAIN.WATER;
+  grid.getTile(0, 5).terrain = TERRAIN.WATER;
+  grid.placeProducer(1, 1, PRODUCER_TYPE.POWER_PLANT, 7);
+  const pump = grid.placeProducer(1, 3, PRODUCER_TYPE.WATER_TOWER, 100);
+  const sewage = grid.placeProducer(1, 5, PRODUCER_TYPE.SEWAGE_PLANT, 100);
+  const survey = grid.placeProducer(3, 3, PRODUCER_TYPE.SURVEY_STATION, 0);
+  const police = grid.placeProducer(3, 4, PRODUCER_TYPE.POLICE_STATION, 0);
+  for (let y = 1; y <= 8; y++) grid.placeRoad(2, y);
+  grid.placeZone(3, 8, ZONE.RESIDENTIAL);
+  const distantHome = grid.getTile(3, 8);
+  distantHome.population = 25;
+  distantHome.maxPopulation = 25;
+
+  UtilityManager.allocateAll(grid);
+  for (const producer of [pump, sewage, survey, police]) {
+    assert.strictEqual(producer.utilityShortfall.power, false, `${producer.type} should retain power before the distant home`);
+    assert.strictEqual(producer.operational, true, `${producer.type} should remain operational after power is reranked`);
+  }
+  assert.strictEqual(distantHome.shortfall.power, true, 'The distant home is shed after nearer utility and civic buildings');
+}
+
+// Survey stations need all utilities and survey one target at a time.
+{
+  const grid = new Grid(12, 12, 1);
+  clearTerrain(grid);
+  grid.tiles[3][0].terrain = TERRAIN.WATER;
+  grid.tiles[5][0].terrain = TERRAIN.WATER;
+  grid.tiles[4][4].terrain = TERRAIN.MOUNTAIN;
+  const simulation = new Simulation(grid);
+
+  grid.placeProducer(1, 1, PRODUCER_TYPE.POWER_PLANT, 100);
+  grid.placeProducer(1, 3, PRODUCER_TYPE.WATER_TOWER, 100);
+  grid.placeProducer(1, 5, PRODUCER_TYPE.SEWAGE_PLANT, 100);
+  grid.placeProducer(3, 3, PRODUCER_TYPE.SURVEY_STATION, 0);
+  for (let y = 1; y <= 5; y++) grid.placeRoad(2, y);
+  grid.placeRoad(3, 3);
+
+  simulation.tick();
+  const station = grid.producers.find((producer) => producer.type === PRODUCER_TYPE.SURVEY_STATION);
+  const powerPlant = grid.producers.find((producer) => producer.type === PRODUCER_TYPE.POWER_PLANT);
+  assert.strictEqual(station.operational, true, 'Survey station should operate when all utilities are connected');
+  assert.strictEqual(powerPlant.usedCapacity, 6, 'Idle survey station plus water/sewage baseline draws should use 6 power');
+  assert.strictEqual(simulation.stats.powerDemand, 6, 'HUD demand includes the pump, sewage plant, and idle Survey Station');
+  assert.strictEqual(grid.startSurvey(3, 4), true, 'Survey station should accept one target');
+  assert.strictEqual(grid.startSurvey(4, 4), false, 'A busy survey station should reject a second target');
+
+  simulation.tick();
+  assert.strictEqual(powerPlant.usedCapacity, 16, 'Active survey should add a ten-unit power demand on top of the 6-unit baseline');
+  assert.strictEqual(simulation.stats.powerDemand, 16, 'Active survey power adds ten units to baseline producer demand');
+
+  for (let i = 0; i < 8; i++) simulation.tick();
+  assert.strictEqual(grid.getTile(3, 4).oreDiscovered, false, 'Standard survey should take ten ticks');
+  simulation.tick();
+  assert.strictEqual(grid.getTile(3, 4).oreDiscovered, true, 'Standard survey should complete after ten ticks');
+
+  assert.strictEqual(grid.startSurvey(4, 4), true, 'Station should accept another target after completion');
+  for (let i = 0; i < 19; i++) simulation.tick();
+  assert.strictEqual(grid.getTile(4, 4).oreDiscovered, false, 'Mountain survey should take twenty ticks');
+  simulation.tick();
+  assert.strictEqual(grid.getTile(4, 4).oreDiscovered, true, 'Mountain survey should complete after twenty ticks');
+}
+
+{
+  const grid = new Grid(8, 8, 1);
+  clearTerrain(grid);
+  const enclosedMountain = grid.getTile(4, 4);
+  enclosedMountain.terrain = TERRAIN.MOUNTAIN;
+  for (const neighbor of grid.getNeighbors(4, 4)) neighbor.terrain = TERRAIN.MOUNTAIN;
+
+  assert.strictEqual(grid.canSurvey(4, 4), false, 'A mountain enclosed by mountains should require tunnel access to survey');
+  grid.getTile(4, 3).hasTunnel = true;
+  grid.getTile(4, 3).hasRoad = true;
+  assert.strictEqual(grid.canSurvey(4, 4), true, 'An adjacent tunnel should provide access to survey an enclosed mountain');
+
+  grid.getTile(5, 4).terrain = TERRAIN.FLAT;
+  grid.getTile(5, 4).hasTunnel = false;
+  grid.getTile(5, 4).hasRoad = false;
+  assert.strictEqual(grid.canSurvey(4, 4), true, 'An exposed mountain should not require a tunnel to survey');
+}
+
+{
+  const grid = new Grid(8, 8, 1);
+  clearTerrain(grid);
+  grid.getTile(2, 2).terrain = TERRAIN.WATER;
+  assert.strictEqual(grid.canSurvey(2, 2), false, 'Water tiles cannot be mined, so they cannot be surveyed');
+  assert.strictEqual(grid.startSurvey(2, 2), false);
+}
+
+console.log('Ore and survey tests passed.');
