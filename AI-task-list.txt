@@ -9,8 +9,8 @@ Agent handoff protocol:
 
 Open handoff (2026-10-20):
 - Active task: none in progress; the next item is to pick up the Phase 1 follow-ups listed in `docs/DESIGN.md`.
-- Latest completed task: coast test maps are generated once and shared (`0.4.8`); see the final task entry in this log.
-- Verified baseline: `npm test` passes 54 suites across 15 entry points.
+- Latest completed task: space bar pauses and resumes (`0.4.9`); see the final task entry in this log.
+- Verified baseline: `npm test` passes 55 suites across 15 entry points.
 - Phase 1 follow-ups are tracked in `docs/DESIGN.md`; in particular, localStorage autosave and named tick-stage extraction are not implemented. Do not treat historical `Current task` headings below as active.
 
 Current task: Add standalone JSON game save export/import.
@@ -2118,4 +2118,18 @@ Validation:
 - `node tests/coast.test.js` passes in about 2.2 s (was 3.8 s); the suite reports 25 shared maps for 42 requests.
 - `node tests/run-all.js` passes all 15 entry points in about 2.9-3.1 s (was 3.8-3.9 s); `coast.test.js` 2.9 s under parallel load.
 - Assertions untouched in intent: every block keeps the same coverage, and the determinism check still compares two independent generations.
+
+Current task: Space bar pauses and resumes (`0.4.9`).
+
+- [done] New `src/engine/Hotkeys.js` holds the bindings as a pure `resolveHotkey(event)` plus `isTypingTarget`, so the mapping is testable without a DOM.
+- [done] `bindUIEvents` listens for keydown, calls `preventDefault()` and toggles pause; the pause button tooltip now reads "Pause (Space)".
+- [done] `togglePause` resumes at `lastSpeed` (the speed the player last chose) instead of always 1x, and refuses while the main menu or the globe is open. Game over, insolvency, the title screen and save gating are still enforced by `setSpeed`, so the shortcut cannot bypass them.
+- [done] Buttons are deliberately not treated as text entry: a HUD button keeps focus after a mouse click, and swallowing Space there made the shortcut stop working right after choosing a tool. `preventDefault()` stops the focused button from also clicking on keyup.
+- [done] `tests/cases/hotkeys.case.js` covers Space (including the legacy `Spacebar` key and `code: 'Space'`), modifier keys, already-handled events, text fields, editable regions and focused buttons; it is part of the `ui` bundle.
+- [done] `docs/DESIGN.md` decision 43 records the shortcut. Versions bumped to `0.4.9`.
+
+Validation:
+- `node tests/run-all.js` passes all 15 entry points in about 3.5 s.
+- Browser check: with a tool button focused by a mouse click, Space resumed at 1x and a second press paused; with a text input focused, Space did nothing; no page errors. New Game opens on the globe, where Space correctly does nothing until the city is open.
+
 

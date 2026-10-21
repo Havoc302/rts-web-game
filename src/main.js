@@ -23,6 +23,7 @@ import { AudioManager } from './engine/AudioManager.js';
 import { LoanManager, loanTerms, shouldEndGame, isInsolvent } from './engine/LoanManager.js';
 import { advanceWorldEconomy } from './engine/WorldFinance.js';
 import { TutorialManager } from './engine/TutorialManager.js';
+import { HOTKEY_ACTION, resolveHotkey } from './engine/Hotkeys.js';
 import { APP_VERSION, ZONE, TERRAIN, PRODUCER_TYPE, PRODUCER_CONFIG, SERVICE_CONFIG, COSTS, TILE_SIZE, STARTING_TREASURY, RESIDENTIAL_CAPACITY, JOBS_PROVIDED, FOREST_POLLUTION_ABSORPTION, FOREST_DESIRABILITY_RADIUS, CRIME_CONFIG, MEDICAL_CONFIG, POWER_PRODUCER_TYPES, POLLUTION_CONFIG, COAL_CONFIG, BATTERY_CONFIG, RESOURCE_CONFIG, UTILITY_OPERATING_COST, DESALINATION_OPERATING_COST, DESALINATION_CONFIG, COAST_CONFIG, SURVEY_COST_PER_TICK, TICKS_PER_HOUR, DENSITY, RENDERER_CONFIG, TERRAIN_GENERATION_CONFIG, MAP_SEED_STORAGE_KEY, EDUCATION_CONFIG, LOAN_CONFIG, splitDemographics, getZoneUpgradeCost, isZoneAtCapacity, PRODUCER_TIER_MAX, isTieredService, isTieredProducer, getProducerTier, getServiceTierStat, getServiceUpgradeCost, getPowerUpgradeCost, getProducerUpgradeCost, getBatteryStorageForTier, getWindPeakForTier, getSolarPeakForTier, getWaterCapacityForTier, getSewageCapacityForTier } from './config.js';
 
 const nowMs = typeof performance !== 'undefined' ? () => performance.now() : () => Date.now();
@@ -110,6 +111,8 @@ class GameApp {
     this.touchMoved = false;
 
     this.simInterval = null;
+    // Space resumes the speed the player was last running at instead of always 1x.
+    this.lastSpeed = 1;
     this._hudSnapshot = null;
     this._hudAppliedAt = null;
     this._pendingHud = false;
@@ -258,6 +261,15 @@ class GameApp {
     document.getElementById('btn-speed-2').addEventListener('click', () => this.setSpeed(2));
     document.getElementById('btn-speed-5').addEventListener('click', () => this.setSpeed(5));
     document.getElementById('btn-restart-game')?.addEventListener('click', () => window.location.reload());
+
+    // Space is the only global shortcut: pause and resume without hunting for the speed
+    // buttons. It stands down while the player is typing, over the menu or the globe, and at
+    // the title screen, where there is no simulation to run.
+    document.addEventListener('keydown', (event) => {
+      if (resolveHotkey(event) !== HOTKEY_ACTION.TOGGLE_PAUSE) return;
+      event.preventDefault();
+      this.togglePause();
+    });
 
     document.querySelectorAll('[data-service-budget]').forEach((slider) => {
       slider.addEventListener('input', (e) => {
@@ -864,6 +876,20 @@ class GameApp {
     });
   }
 
+  /** Space bar: pause when the city is running, otherwise resume at the last speed used. */
+  togglePause() {
+    if (!this.simulation) return false;
+    // The menu, the globe, the title screen, game over and insolvency all have their own rules
+    // about when time may run; `setSpeed` enforces them, so only the choice is made here.
+    if (document.getElementById('main-menu')?.style.display === 'flex') return false;
+    if (this.overworldView?.isOpen) return false;
+    if (this.simulation.isPaused || this.simulation.speed === 0) {
+      return this.setSpeed(this.lastSpeed || 1);
+    }
+    this.lastSpeed = this.simulation.speed;
+    return this.setSpeed(0);
+  }
+
   setSpeed(speed) {
     if (this.gameOver && speed !== 0) return false;
     // Insolvency is a hard stop: the player must borrow or declare bankruptcy first.
@@ -881,6 +907,7 @@ class GameApp {
       document.getElementById(id).classList.add('active');
       this.simulation.isPaused = false;
       this.simulation.speed = speed;
+      this.lastSpeed = speed;
       if (this.simInterval) clearInterval(this.simInterval);
       this.simInterval = setInterval(() => this.simTick(), 4000 / speed);
     }

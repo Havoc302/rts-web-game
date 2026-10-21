@@ -1110,6 +1110,8 @@ Phase 1 stays paused-by-default sandbox (0% tax, $25,000) for solo city-building
 
 42. **Mountains are terrain the river carves, not terrain painted over it.** Rock clusters used to be painted after the river, so the range always hid the channel and there was no high ground to spring from. `generateRockClusters` now runs before `prepareCoast`/`generateRiver`, `paintTerrainCluster` still only fills empty ground (so a range never covers a river or lake) and `paintRiverSegment` writes unconditionally (so the river cuts through), and `BIOME_GENERATION_VERSION` moved to 4 because a given seed now produces different terrain. Lakes are painted after the river and only fill empty ground, so they no longer appear inside a range. Verified by `tests/coast.test.js` and `tests/biome-generation.test.js`.
 
+43. **Space toggles pause.** It is the only global keyboard shortcut. The mapping lives in `src/engine/Hotkeys.js` as a pure `resolveHotkey(event)` so it can be tested without a DOM (`tests/cases/hotkeys.case.js`), and the app handler calls `preventDefault()` before toggling so a focused HUD button cannot also fire its click on keyup. It resumes at the speed the player last chose (`lastSpeed`) rather than always 1x, and it stands down while a text field has focus, when a modifier is held, and when the event was already handled. Menu-open, the globe, the title screen, game over and insolvency are refused by `togglePause` itself, so the shortcut inherits the same rules as the speed buttons. Verified in the browser: a focused tool button still lets Space pause and resume, and a focused text field swallows it.
+
 ---
 
 ## Open Questions
@@ -1134,7 +1136,7 @@ Resolved by the user (rev 4): Conquer hybrid + world map + Firebase (Q1), victor
 
 - Product title: `index.html` `<title>SimConquer 2000</title>`, brand `SimConquer 2000`.
 - Onboarding: `src/engine/TutorialManager.js` shows a `#tutorial-banner` with six milestone steps (select a map tile, roads, utilities, residential + agriculture, jobs, population). The main menu owns the `Guided Tutorial` toggle button; switching it on and pressing `New Game` begins at Step 1, and the banner stays hidden while no world is loaded. State persists in `localStorage` keys `simconquer_tutorial_enabled` and `simconquer_tutorial_step`. Already-satisfied steps on the chosen map advance automatically after starting or loading a world. Map seed key is `simconquer_map_seed` (one-time legacy read of `bc2000_map_seed`). Save downloads are `simconquer2000-save-YYYY-MM-DD-HHMMSS-seed-<seed>.json`.
-- Version: `APP_VERSION` `0.4.8` in `src/version.js`; `package.json` is synchronized and version/cache-busting behavior is covered by the version-sync test.
+- Version: `APP_VERSION` `0.4.9` in `src/version.js`; `package.json` is synchronized and version/cache-busting behavior is covered by the version-sync test.
 - Entry / orchestration: `src/main.js` (`GameApp`), `src/engine/Simulation.js` (`tick`, `computeStats`, `updateGrowthAndDensity`).
 - Spatial model: `src/engine/Grid.js` (`createDefaultTile`, `generateProceduralTerrain`, placement).
 - View: `src/engine/Renderer.js`, `style.css`, overlay buttons in `index.html`.
