@@ -9,8 +9,8 @@ Agent handoff protocol:
 
 Open handoff (2026-10-20):
 - Active task: none in progress; the next item is to pick up the Phase 1 follow-ups listed in `docs/DESIGN.md`.
-- Latest completed task: food meter and flashing shortage bars (`0.4.11`); see the final task entry in this log.
-- Verified baseline: `npm test` rebuilds `simconquer2000/` and passes 56 suites across 15 entry points.
+- Latest completed task: notifications panel with timestamps (`0.4.12`); see the final task entry in this log.
+- Verified baseline: `npm test` rebuilds `simconquer2000/` and passes 57 suites across 15 entry points.
 - Phase 1 follow-ups are tracked in `docs/DESIGN.md`; in particular, localStorage autosave and named tick-stage extraction are not implemented. Do not treat historical `Current task` headings below as active.
 
 Current task: Add standalone JSON game save export/import.
@@ -2164,4 +2164,20 @@ Validation:
 - `npm test` rebuilds the snapshot and passes all 15 entry points in about 3.5 s.
 - Browser: forcing demand above supply turned the Food bar 100% wide, red (`rgb(239, 68, 68)`), animating `meter-short-pulse`, and the alerts panel showed "Food shortage — citizens are going hungry"; power short behaved the same; restoring supply cleared both classes and the alert. No page errors.
 - Snapshot rebuilt at `0.4.11` (31 files, 4780.8 KB).
+
+Current task: Notifications panel with timestamps (`0.4.12`).
+
+Requested: a warnings panel next to the Services/Storage/Budgets/Finance tabs that logs every warning, scrolls up as new ones appear at the bottom, stamps them and lets the player clear them.
+
+- [done] `src/engine/NotificationLog.js` keeps a rolling history (50 entries, newest last) fed by the same `notifications-data` payload the HUD snapshot already builds, with the empty-treasury warning folded in. Each entry carries the in-game stamp of when the warning appeared (`D3 14:00`, from `TICKS_PER_HOUR`/`HOURS_PER_DAY`, the header clock's source).
+- [done] A standing warning is logged once rather than every tick, while the same alert id escalating its wording ("supply is below demand" to "going hungry") earns a second line. Entries whose condition has passed stay as dimmed history.
+- [done] `×` clears an entry and silences that exact wording until its condition clears and returns, matching the old banner's dismiss behaviour. Rows with coordinates still jump the camera.
+- [done] Panel markup sits immediately left of the utility HUD (`#notifications-panel`), with a scrollable list that follows the newest entry to the bottom, a live count, and `No warnings` when empty. On mobile it docks above the drawer row and hides while empty.
+- [done] Replaced the old full-width alert banner and renamed its snapshot keys to `notifications-data` (dropping the dead `alerts-panel` / `alerts-panel-visible` keys). DOM rebuilds are keyed by a signature that includes the entry count, so an emptied log still redraws.
+- [done] `tests/cases/notifications.case.js` covers stamps, dedupe while active, wording escalation, resolved history, dismiss/reappear, the 50-entry cap and malformed alerts; added to the `ui` bundle. `docs/DESIGN.md` decision 46 and the HUD section record the behaviour. Versions bumped to `0.4.12`.
+
+Validation:
+- `npm test` rebuilds the snapshot (32 files) and passes all 15 entry points in about 3.5 s.
+- Browser: panel renders left of the utility HUD with no overlap (notification box 2089-2349 px, HUD 2361-2621 px at 2560 wide); three forced warnings appeared in order stamped D1 05:00 / D1 20:00 / D1 20:00, the fire row was clickable, the count read 3 and the list followed the newest entry; 17 entries made it scroll with the newest at the bottom; the X removed one and it did not return while the condition stayed active; clearing the log emptied the rows and showed `No warnings`. No page errors.
+
 

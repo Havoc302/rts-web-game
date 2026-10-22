@@ -187,9 +187,6 @@
         </div>
       </div>
 
-      <div id="alerts-panel" class="alerts-panel" style="display: none;" role="status" aria-live="polite"></div>
-
-
       <div class="speed-controls">
         <button class="btn-icon active" id="btn-pause" title="Pause (Space)">⏸</button>
         <button class="btn-icon" id="btn-speed-1" title="1x Speed">▶</button>
@@ -228,6 +225,15 @@
         <button class="overlay-btn" data-mode="police">🚓 Police</button>
         <button class="overlay-btn" data-mode="fire">🚒 Fire</button>
         <button class="overlay-btn" data-mode="hospital">🏥 Hospital</button>
+      </div>
+
+      <!-- Warnings log: every alert the city raises, newest at the bottom. -->
+      <div class="notifications-panel glass" id="notifications-panel" data-empty="true" aria-label="Notifications">
+        <div class="notifications-header">
+          <h3>Notifications</h3>
+          <span class="notifications-count" id="notifications-count">0</span>
+        </div>
+        <div class="notifications-list" id="notifications-list" role="log" aria-live="polite"></div>
       </div>
 
       <!-- Utilities HUD -->

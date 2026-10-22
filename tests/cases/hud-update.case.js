@@ -267,8 +267,8 @@ function fakeDocument() {
   const simulation = new Simulation(grid);
   simulation.computeStats();
   const snapshot = buildHudSnapshot(simulation, 25000);
-  // These two drive the alerts panel instead of being elements of their own.
-  const nonElementKeys = new Set(['alerts-panel-visible', 'alerts-panel-data']);
+  // The notification feed is a JSON payload that drives the panel, not an element of its own.
+  const nonElementKeys = new Set(['notifications-data']);
   const missing = Object.keys(snapshot).filter((key) => !nonElementKeys.has(key) && !markup.includes(`id="${key}"`));
   assert.deepStrictEqual(missing, [], 'Every HUD snapshot field should have a matching element in index.html');
   for (const key of ['stat-sand', 'stat-glass', 'stat-computer-chips']) {

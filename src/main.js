@@ -24,6 +24,7 @@ import { LoanManager, loanTerms, shouldEndGame, isInsolvent } from './engine/Loa
 import { advanceWorldEconomy } from './engine/WorldFinance.js';
 import { TutorialManager } from './engine/TutorialManager.js';
 import { HOTKEY_ACTION, resolveHotkey } from './engine/Hotkeys.js';
+import { NotificationLog } from './engine/NotificationLog.js';
 import { APP_VERSION, ZONE, TERRAIN, PRODUCER_TYPE, PRODUCER_CONFIG, SERVICE_CONFIG, COSTS, TILE_SIZE, STARTING_TREASURY, RESIDENTIAL_CAPACITY, JOBS_PROVIDED, FOREST_POLLUTION_ABSORPTION, FOREST_DESIRABILITY_RADIUS, CRIME_CONFIG, MEDICAL_CONFIG, POWER_PRODUCER_TYPES, POLLUTION_CONFIG, COAL_CONFIG, BATTERY_CONFIG, RESOURCE_CONFIG, UTILITY_OPERATING_COST, DESALINATION_OPERATING_COST, DESALINATION_CONFIG, COAST_CONFIG, SURVEY_COST_PER_TICK, TICKS_PER_HOUR, DENSITY, RENDERER_CONFIG, TERRAIN_GENERATION_CONFIG, MAP_SEED_STORAGE_KEY, EDUCATION_CONFIG, LOAN_CONFIG, splitDemographics, getZoneUpgradeCost, isZoneAtCapacity, PRODUCER_TIER_MAX, isTieredService, isTieredProducer, getProducerTier, getServiceTierStat, getServiceUpgradeCost, getPowerUpgradeCost, getProducerUpgradeCost, getBatteryStorageForTier, getWindPeakForTier, getSolarPeakForTier, getWaterCapacityForTier, getSewageCapacityForTier } from './config.js';
 
 const nowMs = typeof performance !== 'undefined' ? () => performance.now() : () => Date.now();
@@ -93,7 +94,9 @@ class GameApp {
     this.worldActive = false;
     this.activeTool = 'pan';
     this.autoSwitchToPan = false;
-    this.dismissedAlerts = new Set();
+    // Warnings log shown next to the utility HUD. It keeps history, unlike the live alert list.
+    this.notificationLog = new NotificationLog();
+    this._notificationSignature = '';
     this.isMouseDown = false;
     this.isRightMouseDown = false;
     this.rightHasDragged = false;
@@ -459,6 +462,8 @@ class GameApp {
 
     // A new world discards the whole visible session: cities, wallet, loans, and terminal state.
     this.cityStates.clear();
+    this.notificationLog.clear();
+    this._notificationSignature = '';
     this.terrainPreviewCache.clear();
     this.overworldSeedOverrides.clear();
     this.currentCellId = null;
@@ -733,6 +738,9 @@ class GameApp {
       this.renderer.trafficManager.lastCoverageVersion = -1;
       this.renderer.setCamera(city.camera.x, city.camera.y, city.camera.zoom);
       this.setActiveTool(city.activeTool);
+      // Warnings belong to the city that raised them.
+      this.notificationLog.clear();
+      this._notificationSignature = '';
       this.renderer.setOverlayMode(city.overlayMode);
       document.querySelectorAll('.overlay-btn').forEach((button) => button.classList.toggle('active', button.dataset.mode === city.overlayMode));
       document.getElementById('seed-input').value = city.grid.seed;
@@ -788,6 +796,8 @@ class GameApp {
       localStorage.setItem('simconquer_home_seed', this.homeSeed);
       this.cityStates = new Map();
       this.terrainPreviewCache.clear();
+      this.notificationLog.clear();
+      this._notificationSignature = '';
       for (const visited of imported.overworld?.visited || []) {
         this.cityStates.set(visited.cellId, this.restoreImportedCity(deserializeGame(visited.city)));
       }
@@ -946,7 +956,7 @@ class GameApp {
       return false;
     }
     applyHudSnapshot(snapshot, changed, document);
-    this.renderAlerts(snapshot['alerts-panel-data']);
+    this.renderNotifications(snapshot['notifications-data']);
     this._hudSnapshot = snapshot;
     this._hudAppliedAt = at;
     this._pendingHud = false;
@@ -1169,46 +1179,69 @@ class GameApp {
     if (modal) modal.hidden = false;
   }
 
-  renderAlerts(serializedAlerts) {
-    const panel = document.getElementById('alerts-panel');
-    if (!panel) return;
+  renderNotifications(serializedAlerts) {
     let alerts = [];
     try {
       alerts = JSON.parse(serializedAlerts || '[]');
     } catch {
       alerts = [];
     }
-    const active = new Set(alerts.map((alert) => alert.id));
-    for (const dismissed of this.dismissedAlerts) {
-      if (!active.has(dismissed)) this.dismissedAlerts.delete(dismissed);
+    const added = this.notificationLog.record(alerts, this.simulation.tickCount);
+    this.renderNotificationRows();
+    // Newest warnings sit at the bottom, so the list follows them up.
+    if (added.length > 0) {
+      const list = document.getElementById('notifications-list');
+      if (list) list.scrollTop = list.scrollHeight;
     }
-    const visible = alerts.filter((alert) => !this.dismissedAlerts.has(alert.id));
-    panel.replaceChildren();
-    for (const alert of visible) {
+  }
+
+  renderNotificationRows() {
+    const panel = document.getElementById('notifications-panel');
+    const list = document.getElementById('notifications-list');
+    if (!panel || !list) return;
+    const entries = this.notificationLog.entries;
+    panel.dataset.empty = entries.length === 0 ? 'true' : 'false';
+    const count = document.getElementById('notifications-count');
+    if (count) count.textContent = String(entries.length);
+
+    // Rebuilding on every tick would fight the scroll position, so only redraw when the log or a
+    // warning's live state actually changed. The count is part of the signature so an emptied log
+    // still differs from the empty "force redraw" sentinel.
+    const signature = `${entries.length}:${entries.map((entry) => `${entry.key}:${entry.open ? 1 : 0}`).join(',')}`;
+    if (signature === this._notificationSignature) return;
+    this._notificationSignature = signature;
+
+    list.replaceChildren();
+    for (const entry of entries) {
       const row = document.createElement('div');
-      row.className = 'alert-row';
-      if (alert.x != null && alert.y != null) {
-        row.classList.add('alert-actionable');
+      row.className = entry.open ? 'notification-row' : 'notification-row resolved';
+      row.dataset.key = String(entry.key);
+      if (entry.x != null && entry.y != null) {
+        row.classList.add('notification-actionable');
         row.title = 'Jump to location';
-        row.addEventListener('click', () => this.jumpToAlert(alert));
+        row.addEventListener('click', () => this.jumpToAlert({ x: entry.x, y: entry.y }));
       }
+      const stamp = document.createElement('span');
+      stamp.className = 'notification-stamp';
+      stamp.textContent = entry.stamp;
       const text = document.createElement('span');
-      text.textContent = alert.message;
-      const dismiss = document.createElement('button');
-      dismiss.type = 'button';
-      dismiss.className = 'alert-dismiss';
-      dismiss.textContent = '×';
-      dismiss.title = 'Dismiss alert';
-      dismiss.setAttribute('aria-label', `Dismiss ${alert.message}`);
-      dismiss.addEventListener('click', (event) => {
+      text.className = 'notification-text';
+      text.textContent = entry.message;
+      const clear = document.createElement('button');
+      clear.type = 'button';
+      clear.className = 'notification-dismiss';
+      clear.textContent = '×';
+      clear.title = 'Clear notification';
+      clear.setAttribute('aria-label', `Clear ${entry.message}`);
+      clear.addEventListener('click', (event) => {
         event.stopPropagation();
-        this.dismissedAlerts.add(alert.id);
-        this.renderAlerts(JSON.stringify(alerts));
+        this.notificationLog.dismiss(entry.key);
+        this._notificationSignature = '';
+        this.renderNotificationRows();
       });
-      row.append(text, dismiss);
-      panel.appendChild(row);
+      row.append(stamp, text, clear);
+      list.appendChild(row);
     }
-    panel.style.display = visible.length > 0 ? 'block' : 'none';
   }
 
   jumpToAlert(alert) {

@@ -110,9 +110,10 @@ export function buildHudSnapshot(simulation, treasury) {
   const roundStock = (value) => String(Math.round(value || 0));
 
   return {
-    'alerts-panel': JSON.stringify(treasury <= 0 ? [{ id: 'treasury', message: 'Treasury is empty', x: null, y: null }, ...(stats.alerts || [])] : (stats.alerts || [])),
-    'alerts-panel-visible': (treasury <= 0 || (stats.alerts || []).length > 0) ? 'block' : 'none',
-    'alerts-panel-data': JSON.stringify(treasury <= 0 ? [{ id: 'treasury', message: 'Treasury is empty', x: null, y: null }, ...(stats.alerts || [])] : (stats.alerts || [])),
+    // Notifications feed: the live warnings, with the treasury treated as one of them.
+    'notifications-data': JSON.stringify(treasury <= 0
+      ? [{ id: 'treasury', message: 'Treasury is empty', x: null, y: null }, ...(stats.alerts || [])]
+      : (stats.alerts || [])),
     'stat-pop': stats.population.toLocaleString(),
     'stat-housing': `${stats.population.toLocaleString()} / ${housingCapacity.toLocaleString()}`,
     'stat-cash': formatMoney(treasury),
