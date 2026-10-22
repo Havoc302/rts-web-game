@@ -1,0 +1,453 @@
+import { APP_VERSION, BIOME_GENERATION_VERSION, DENSITY, LOAN_CONFIG, MAP_HEIGHT, MAP_WIDTH, PRODUCER_TYPE, ROAD_MAINTENANCE_CONFIG, TERRAIN_GENERATION_CONFIG, ZONE } from '../config.js';
+import { Grid } from './Grid.js';
+
+export const SAVE_VERSION = 2;
+export const GENERATION_VERSION = TERRAIN_GENERATION_CONFIG.GENERATION_VERSION;
+
+// Every key a save written by this build contains. The version gate rejects older saves
+// before validation, so anything missing here is a corrupt file rather than an older one.
+const REQUIRED_STOCKPILE_KEYS = [
+  'food', 'coal', 'oil', 'fuel', 'ironOre', 'bauxiteOre', 'copperOre', 'titaniumOre', 'sand',
+  'ironBar', 'bauxiteBar', 'copperBar', 'steel', 'glass', 'polysilicon',
+  'consumerGoods', 'computerChips', 'arms', 'tanks',
+];
+
+const EMPTY_SHORTFALL = { power: false, water: false, sewage: false };
+
+function clone(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function assertNumber(value, name, { integer = false, min = -Infinity, max = Infinity } = {}) {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < min || value > max || (integer && !Number.isInteger(value))) {
+    throw new Error(`Invalid save field: ${name}`);
+  }
+}
+
+function sameDir(a, b) {
+  if (!a && !b) return true;
+  if (!a || !b) return false;
+  return a.x === b.x && a.y === b.y;
+}
+
+function anyShortfall(shortfall) {
+  return Boolean(shortfall && (shortfall.power || shortfall.water || shortfall.sewage));
+}
+
+function collectTileOverride(tile, base) {
+  const override = { x: tile.x, y: tile.y };
+  let extra = 0;
+  const add = (key, value) => {
+    override[key] = value;
+    extra += 1;
+  };
+
+  if (tile.terrain !== base.terrain) add('terrain', tile.terrain);
+  if (!sameDir(tile.riverFlowDir, base.riverFlowDir)) add('riverFlowDir', tile.riverFlowDir);
+  if (tile.hasRoad) add('hasRoad', true);
+  if (tile.hasBridge) add('hasBridge', true);
+  if (tile.hasTunnel) add('hasTunnel', true);
+  if (tile.roadDamage) add('roadDamage', tile.roadDamage);
+  if (tile.destroyed) add('destroyed', true);
+  if (tile.zone && tile.zone !== ZONE.NONE) {
+    add('zone', tile.zone);
+    if (tile.density && tile.density !== DENSITY.LIGHT) add('density', tile.density);
+    if (tile.growthScore) add('growthScore', tile.growthScore);
+    if (tile.recipe && tile.recipe !== 'CONSUMER_GOODS') add('recipe', tile.recipe);
+  }
+  if (tile.population) add('population', tile.population);
+  if (tile.maxPopulation) add('maxPopulation', tile.maxPopulation);
+  if (tile.filledJobs) add('filledJobs', tile.filledJobs);
+  if (tile.totalJobs) add('totalJobs', tile.totalJobs);
+  if (tile.relocatedPopulation) add('relocatedPopulation', tile.relocatedPopulation);
+  if (tile.fireDisplacedPopulation) add('fireDisplacedPopulation', tile.fireDisplacedPopulation);
+  if (tile.populationLoss) add('populationLoss', tile.populationLoss);
+  if (anyShortfall(tile.shortfall)) add('shortfall', { ...EMPTY_SHORTFALL, ...tile.shortfall });
+  if (tile.connected) add('connected', true);
+  if (tile.pollution) add('pollution', tile.pollution);
+  if (tile.isPolluted) add('isPolluted', true);
+  if (tile.riverPollution) add('riverPollution', tile.riverPollution);
+  if (tile.crime) add('crime', tile.crime);
+  if (tile.crimeDecayTicks) add('crimeDecayTicks', tile.crimeDecayTicks);
+  if (tile.onFire) add('onFire', true);
+  if (tile.fireDamage) add('fireDamage', tile.fireDamage);
+  if ((tile.fireRepair ?? 1) !== 1) add('fireRepair', tile.fireRepair);
+  if (tile.forestFireInjury != null) add('forestFireInjury', tile.forestFireInjury);
+  if (tile.oreDiscovered) {
+    add('oreDiscovered', true);
+    if (tile.discoveredOre) add('discoveredOre', tile.discoveredOre);
+  }
+  if (tile.surveyingBy) {
+    add('surveyingBy', tile.surveyingBy);
+    if (tile.surveyProgress) add('surveyProgress', tile.surveyProgress);
+    if (tile.surveyRequired) add('surveyRequired', tile.surveyRequired);
+  }
+
+  return extra > 0 ? override : null;
+}
+
+function applyTileOverride(tile, override) {
+  if (override.terrain != null) tile.terrain = override.terrain;
+  if ('riverFlowDir' in override) tile.riverFlowDir = override.riverFlowDir;
+  if (override.hasRoad) tile.hasRoad = true;
+  if (override.hasBridge) tile.hasBridge = true;
+  if (override.hasTunnel) tile.hasTunnel = true;
+  if (override.roadDamage != null) tile.roadDamage = override.roadDamage;
+  if (override.destroyed) tile.destroyed = true;
+  if (override.zone) tile.zone = override.zone;
+  if (override.density) tile.density = override.density;
+  if (override.growthScore != null) tile.growthScore = override.growthScore;
+  if (override.recipe) tile.recipe = override.recipe;
+  if (override.population != null) tile.population = override.population;
+  if (override.maxPopulation != null) tile.maxPopulation = override.maxPopulation;
+  if (override.filledJobs != null) tile.filledJobs = override.filledJobs;
+  if (override.totalJobs != null) tile.totalJobs = override.totalJobs;
+  if (override.relocatedPopulation) tile.relocatedPopulation = override.relocatedPopulation;
+  if (override.fireDisplacedPopulation) tile.fireDisplacedPopulation = override.fireDisplacedPopulation;
+  if (override.populationLoss) tile.populationLoss = override.populationLoss;
+  if (override.shortfall) tile.shortfall = { ...EMPTY_SHORTFALL, ...override.shortfall };
+  if (override.connected) tile.connected = true;
+  if (override.pollution) tile.pollution = override.pollution;
+  if (override.isPolluted) tile.isPolluted = true;
+  if (override.riverPollution) tile.riverPollution = override.riverPollution;
+  if (override.crime) tile.crime = override.crime;
+  if (override.crimeDecayTicks) tile.crimeDecayTicks = override.crimeDecayTicks;
+  if (override.onFire) tile.onFire = true;
+  if (override.fireDamage) tile.fireDamage = override.fireDamage;
+  if (override.fireRepair != null) tile.fireRepair = override.fireRepair;
+  if (override.forestFireInjury != null) tile.forestFireInjury = override.forestFireInjury;
+  if (override.oreDiscovered) {
+    tile.oreDiscovered = true;
+    tile.discoveredOre = override.discoveredOre ?? null;
+  }
+  if (override.surveyingBy) {
+    tile.surveyingBy = override.surveyingBy;
+    tile.surveyProgress = override.surveyProgress || 0;
+    tile.surveyRequired = override.surveyRequired || 0;
+  }
+}
+
+function collectTileOverrides(grid) {
+  const base = new Grid(grid.width, grid.height, grid.seed, grid.biome, grid.generationVersion, grid.biomeGenerationVersion ?? 1, grid.coast ?? []);
+  const overrides = [];
+  for (let y = 0; y < grid.height; y++) {
+    for (let x = 0; x < grid.width; x++) {
+      const override = collectTileOverride(grid.tiles[y][x], base.tiles[y][x]);
+      if (override) overrides.push(override);
+    }
+  }
+  return overrides;
+}
+
+function validateSimulation(simulation) {
+  if (!simulation || typeof simulation !== 'object') throw new Error('Invalid save simulation data');
+  assertNumber(simulation.tickCount, 'simulation.tickCount', { integer: true, min: 0 });
+  if (![0, 1, 2, 5].includes(simulation.speed)) throw new Error('Invalid simulation speed');
+  assertNumber(simulation.taxRate, 'simulation.taxRate', { min: 0 });
+  assertNumber(simulation.pensionBudget, 'simulation.pensionBudget', { min: 0 });
+  const roadBudget = simulation.roadMaintenanceBudget ?? ROAD_MAINTENANCE_CONFIG.DEFAULT_BUDGET;
+  assertNumber(roadBudget, 'simulation.roadMaintenanceBudget', { min: 0 });
+  if (roadBudget > 100) throw new Error('Invalid save field: simulation.roadMaintenanceBudget');
+  if (!simulation.stockpile || REQUIRED_STOCKPILE_KEYS.some((key) => typeof simulation.stockpile[key] !== 'number' || !Number.isFinite(simulation.stockpile[key]))) {
+    throw new Error('Invalid save stockpile');
+  }
+}
+
+function validateFinance(finance) {
+  if (finance == null) return;
+  if (!finance || typeof finance !== 'object' || !Array.isArray(finance.loans)) throw new Error('Invalid save finance data');
+  assertNumber(finance.nextLoanId, 'finance.nextLoanId', { integer: true, min: 1 });
+  if (typeof finance.gameOver !== 'boolean' || typeof finance.hasEverHadPopulation !== 'boolean') {
+    throw new Error('Invalid save finance state');
+  }
+  if (finance.bankrupt != null && typeof finance.bankrupt !== 'boolean') {
+    throw new Error('Invalid save bankruptcy flag');
+  }
+  const ids = new Set();
+  for (const loan of finance.loans) {
+    if (!loan || typeof loan !== 'object') throw new Error('Invalid saved loan');
+    assertNumber(loan.id, 'finance.loan.id', { integer: true, min: 1 });
+    if (ids.has(loan.id) || !LOAN_CONFIG.PRINCIPAL_OPTIONS.includes(loan.principal)) throw new Error('Invalid saved loan identity or principal');
+    ids.add(loan.id);
+    assertNumber(loan.balance, 'finance.loan.balance', { min: 0 });
+    assertNumber(loan.interestRate, 'finance.loan.interestRate', { min: LOAN_CONFIG.MIN_INTEREST_RATE });
+    if (loan.interestRate > LOAN_CONFIG.MAX_TOTAL_INTEREST_RATE) throw new Error('Invalid saved loan interest rate');
+    assertNumber(loan.perTickRate, 'finance.loan.perTickRate', { min: 0 });
+    assertNumber(loan.scheduledPayment, 'finance.loan.scheduledPayment', { min: 0 });
+    assertNumber(loan.ticksRemaining, 'finance.loan.ticksRemaining', { integer: true, min: 0 });
+    assertNumber(loan.missedPayments, 'finance.loan.missedPayments', { integer: true, min: 0 });
+    if (loan.ticksRemaining > LOAN_CONFIG.TERM_TICKS) throw new Error('Invalid saved loan term');
+  }
+  if (ids.size > 0 && finance.nextLoanId <= Math.max(...ids)) throw new Error('Invalid next loan ID');
+}
+
+function restoredFinance(finance) {
+  return finance && typeof finance === 'object'
+    ? {
+      nextLoanId: finance.nextLoanId,
+      loans: clone(finance.loans),
+      gameOver: finance.gameOver,
+      hasEverHadPopulation: finance.hasEverHadPopulation,
+      ...(finance.bankrupt ? { bankrupt: true } : {}),
+    }
+    : { nextLoanId: 1, loans: [], gameOver: false, hasEverHadPopulation: false };
+}
+
+function validateCamera(camera) {
+  if (!camera || typeof camera !== 'object') throw new Error('Invalid save camera');
+  assertNumber(camera.x, 'camera.x');
+  assertNumber(camera.y, 'camera.y');
+  assertNumber(camera.zoom, 'camera.zoom', { min: 0 });
+}
+
+function validateProducers(producers, width, height) {
+  if (!Array.isArray(producers)) throw new Error('Invalid save producer data');
+  const producerIds = new Set();
+  for (const producer of producers) {
+    if (!producer || typeof producer !== 'object' || typeof producer.type !== 'string' || !Object.values(PRODUCER_TYPE).includes(producer.type)) {
+      throw new Error(`Invalid producer type: ${producer?.type}`);
+    }
+    assertNumber(producer.id, 'producer.id', { integer: true, min: 1 });
+    assertNumber(producer.x, 'producer.x', { integer: true, min: 0 });
+    assertNumber(producer.y, 'producer.y', { integer: true, min: 0 });
+    if (producer.tier != null) assertNumber(producer.tier, 'producer.tier', { integer: true, min: 1, max: 3 });
+    if (producer.x >= width || producer.y >= height || producerIds.has(producer.id)) {
+      throw new Error('Invalid producer position or duplicate id');
+    }
+    producerIds.add(producer.id);
+  }
+}
+
+function restoredSimulation(simulation) {
+  return {
+    tickCount: simulation.tickCount,
+    isPaused: true,
+    speed: 0,
+    taxRate: simulation.taxRate,
+    pensionBudget: simulation.pensionBudget,
+    roadMaintenanceBudget: simulation.roadMaintenanceBudget ?? ROAD_MAINTENANCE_CONFIG.DEFAULT_BUDGET,
+    stockpile: clone(simulation.stockpile),
+    capacity: clone(simulation.capacity || { ore: 0, bar: 0, goods: 0, oil: 0, fuel: 0 }),
+    stats: clone(simulation.stats || {}),
+    weather: restoredWeather(simulation.weather),
+  };
+}
+
+const WEATHER_KEYS = ['windIntensity', 'cloudCover', 'temperature', 'weatherTargetCloud', 'weatherTicksRemaining', 'extremeWindTicks'];
+
+function restoredWeather(weather) {
+  if (!weather || typeof weather !== 'object') return null;
+  const restored = {};
+  for (const key of WEATHER_KEYS) {
+    if (typeof weather[key] === 'number' && Number.isFinite(weather[key])) restored[key] = weather[key];
+  }
+  return restored;
+}
+
+function restoredUi(ui) {
+  return {
+    activeTool: ui?.activeTool || 'pan',
+    overlayMode: ui?.overlayMode || 'normal',
+    autoSwitchToPan: Boolean(ui?.autoSwitchToPan),
+  };
+}
+
+function finishGridRestore(grid, producers, nextProducerId) {
+  grid.producers = [];
+  grid.nextProducerId = nextProducerId;
+  for (const saved of producers) {
+    const producer = clone(saved);
+    producer.tier = Math.min(3, Math.max(1, Math.round(Number(producer.tier) || 1)));
+    const tile = grid.getTile(producer.x, producer.y);
+    if (!tile || tile.producer) throw new Error('Producer position collision');
+    tile.producer = producer;
+    grid.producers.push(producer);
+  }
+  grid.terrainVersion++;
+  grid.terrainChangedTiles = null;
+  grid.coverageVersion++;
+  grid.pollutionDirty = true;
+  grid.rebuildActiveTileSets();
+}
+
+export function serializeGame(app, { includeFinance = true } = {}) {
+  if (!app.simulation.isPaused) throw new Error('Pause the game before saving');
+  return {
+    saveVersion: SAVE_VERSION,
+    appVersion: APP_VERSION,
+    generationVersion: app.grid.generationVersion ?? GENERATION_VERSION,
+    savedAt: new Date().toISOString(),
+    map: {
+      width: app.grid.width,
+      height: app.grid.height,
+      seed: app.grid.seed,
+      biome: app.grid.biome ?? null,
+      biomeGenerationVersion: app.grid.biomeGenerationVersion ?? 1,
+      coast: Array.isArray(app.grid.coast) ? [...app.grid.coast] : [],
+      nextProducerId: app.grid.nextProducerId,
+    },
+    tiles: collectTileOverrides(app.grid),
+    producers: clone(app.grid.producers),
+    simulation: {
+      tickCount: app.simulation.tickCount,
+      isPaused: true,
+      speed: app.simulation.speed,
+      taxRate: app.simulation.taxRate,
+      pensionBudget: app.simulation.pensionBudget,
+      roadMaintenanceBudget: app.simulation.roadMaintenanceBudget,
+      stockpile: clone(app.simulation.resourceManager.stockpile),
+      capacity: clone(app.simulation.resourceManager.capacity),
+      stats: clone(app.simulation.stats),
+      weather: app.simulation.weatherManager ? {
+        windIntensity: app.simulation.weatherManager.windIntensity,
+        cloudCover: app.simulation.weatherManager.cloudCover,
+        temperature: app.simulation.weatherManager.temperature,
+        weatherTargetCloud: app.simulation.weatherManager.weatherTargetCloud,
+        weatherTicksRemaining: app.simulation.weatherManager.weatherTicksRemaining,
+        extremeWindTicks: app.simulation.weatherManager.extremeWindTicks,
+      } : null,
+    },
+    treasury: app.treasury,
+    ...(includeFinance ? {
+      finance: {
+        ...(app.loanManager?.snapshot?.() || { nextLoanId: 1, loans: [] }),
+        gameOver: Boolean(app.gameOver),
+        hasEverHadPopulation: Boolean(app.hasEverHadPopulation),
+        ...(app.gameOverReason === 'bankruptcy' ? { bankrupt: true } : {}),
+      },
+    } : {}),
+    camera: {
+      x: app.renderer.cameraX,
+      y: app.renderer.cameraY,
+      zoom: app.renderer.zoom,
+    },
+    ui: {
+      activeTool: app.activeTool,
+      overlayMode: app.renderer.overlayMode,
+      autoSwitchToPan: app.autoSwitchToPan,
+    },
+    ...(app.planet ? {
+      overworld: {
+        seed: app.worldSeed,
+        cellId: app.currentCellId ?? null,
+        homeSeed: app.planet.getCell?.(app.homeCellId)?.seed ?? app.grid.seed,
+        cellSeeds: Array.from(app.planet.cells?.values?.() ?? [])
+          .filter((cell) => !cell.ocean)
+          .map((cell) => [cell.id, cell.seed]),
+        visited: Array.from(app.cityStates || []).filter(([id]) => id !== app.currentCellId).map(([id, city]) => ({
+          cellId: id,
+          city: serializeGame({
+            grid: city.grid,
+            simulation: city.simulation,
+            treasury: app.treasury,
+            activeTool: city.activeTool,
+            autoSwitchToPan: app.autoSwitchToPan,
+            renderer: { cameraX: city.camera.x, cameraY: city.camera.y, zoom: city.camera.zoom, overlayMode: city.overlayMode },
+          }, { includeFinance: false }),
+        })),
+      },
+    } : {}),
+  };
+}
+
+export function serializeGameToJson(app) {
+  return JSON.stringify(serializeGame(app));
+}
+
+function deserializeV2(document) {
+  if (![1, GENERATION_VERSION].includes(document.generationVersion)) {
+    throw new Error(
+      `This save uses terrain generation version ${document.generationVersion}; the game now uses version ${GENERATION_VERSION}. The map cannot be rebuilt from this save.`,
+    );
+  }
+
+  const map = document.map;
+  if (!map || !Number.isInteger(map.width) || !Number.isInteger(map.height) || map.width < 1 || map.height < 1) {
+    throw new Error('Invalid save grid dimensions');
+  }
+  assertNumber(map.seed, 'map.seed', { integer: true });
+  const biomeGenerationVersion = map.biomeGenerationVersion ?? 1;
+  if (![1, 2, BIOME_GENERATION_VERSION].includes(biomeGenerationVersion)) {
+    throw new Error(`Unsupported biome generation version: ${biomeGenerationVersion}`);
+  }
+  assertNumber(map.nextProducerId, 'map.nextProducerId', { integer: true, min: 1 });
+  assertNumber(document.treasury, 'treasury');
+  validateSimulation(document.simulation);
+  validateFinance(document.finance);
+  validateCamera(document.camera);
+  if (!Array.isArray(document.tiles)) throw new Error('Invalid save tile data');
+  validateProducers(document.producers, map.width, map.height);
+  if (document.overworld) {
+    const { cellSeeds, visited } = document.overworld;
+    if (!Number.isInteger(document.overworld.seed) || (document.overworld.cellId !== null && typeof document.overworld.cellId !== 'string') ||
+      !Array.isArray(visited) || visited.some((entry) => typeof entry.cellId !== 'string' || !entry.city) ||
+      (cellSeeds != null && (!Array.isArray(cellSeeds) || cellSeeds.some((entry) => !Array.isArray(entry) || entry.length !== 2 || typeof entry[0] !== 'string' || !Number.isInteger(entry[1]))))) {
+      throw new Error('Invalid overworld save data');
+    }
+  }
+
+  const grid = new Grid(map.width, map.height, map.seed, map.biome ?? null, document.generationVersion, biomeGenerationVersion, map.coast ?? []);
+  for (const override of document.tiles) {
+    if (!override || typeof override !== 'object') throw new Error('Invalid save tile override');
+    assertNumber(override.x, 'tile.x', { integer: true, min: 0 });
+    assertNumber(override.y, 'tile.y', { integer: true, min: 0 });
+    const tile = grid.getTile(override.x, override.y);
+    if (!tile) throw new Error('Save tile override is outside the map');
+    applyTileOverride(tile, override);
+  }
+  finishGridRestore(grid, document.producers, map.nextProducerId);
+
+  return {
+    grid,
+    simulation: restoredSimulation(document.simulation),
+    treasury: document.treasury,
+    finance: restoredFinance(document.finance),
+    camera: { ...document.camera },
+    ui: restoredUi(document.ui),
+    overworld: document.overworld || null,
+  };
+}
+
+export function deserializeGame(document) {
+  assertLoadableSave(document);
+  return deserializeV2(document);
+}
+
+/**
+ * The gate every load passes before any other work. Prototype stage: a save is only
+ * accepted by the exact build that wrote it, so schema changes never have to keep
+ * backwards compatibility. Bumping `APP_VERSION` intentionally retires older saves.
+ */
+export function assertLoadableSave(document) {
+  if (!document || typeof document !== 'object') throw new Error('Save must be a JSON object');
+  if (document.saveVersion !== SAVE_VERSION) {
+    throw new Error(
+      `This save uses format version ${document.saveVersion ?? 'unknown'}; this build expects ${SAVE_VERSION}. Older saves are not supported — start a new game.`,
+    );
+  }
+  if (document.appVersion !== APP_VERSION) {
+    throw new Error(
+      `This save was written by version ${document.appVersion ?? 'unknown'}; this build is ${APP_VERSION}. Saves are not compatible across versions — start a new game.`,
+    );
+  }
+}
+
+export function deserializeGameFromJson(json) {
+  let document;
+  try {
+    document = JSON.parse(json);
+  } catch {
+    throw new Error('Save file is not valid JSON');
+  }
+  return deserializeGame(document);
+}
+
+export function createEmptySaveForTests() {
+  return {
+    saveVersion: SAVE_VERSION,
+    generationVersion: GENERATION_VERSION,
+    map: { width: MAP_WIDTH, height: MAP_HEIGHT, seed: TERRAIN_GENERATION_CONFIG.DEFAULT_RANDOM_SEED, biome: null, coast: [], nextProducerId: 1 },
+    tiles: [],
+    producers: [],
+  };
+}

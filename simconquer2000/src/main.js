@@ -1,0 +1,2060 @@
+import { Grid, producerTypeForTool } from './engine/Grid.js';
+import { Simulation } from './engine/Simulation.js';
+import { Renderer } from './engine/Renderer.js';
+import { UtilityManager } from './engine/UtilityManager.js';
+import { ServiceManager } from './engine/ServiceManager.js';
+import { getProducerConnectionStatus, getTileUtilityStatus, formatProducerCapacity, formatSiloStorage, formatDerrickOutput, getTileFoodFlow, isNuclearFuelStarved } from './engine/InspectorStatus.js';
+import {
+  applyHudSnapshot,
+  buildHudSnapshot,
+  buildInspectorSignature,
+  changedHudFields,
+  createUiTimingBucket,
+  formatMoney,
+  getHudCadenceMs,
+  recordUiTiming,
+  shouldRefreshUi,
+  treasuryFlowSnapshot,
+  uiTimingAverages,
+} from './engine/UiRefresh.js';
+import { deserializeGame, deserializeGameFromJson, serializeGameToJson } from './engine/SaveGame.js';
+import { ALL_EVENLY, DEFAULT_INDUSTRIAL_RECIPE, INDUSTRIAL_RECIPE_IDS, RECIPES, SMELTER_RECIPE_IDS } from './recipes.js';
+import { AudioManager } from './engine/AudioManager.js';
+import { LoanManager, loanTerms, shouldEndGame, isInsolvent } from './engine/LoanManager.js';
+import { advanceWorldEconomy } from './engine/WorldFinance.js';
+import { TutorialManager } from './engine/TutorialManager.js';
+import { HOTKEY_ACTION, resolveHotkey } from './engine/Hotkeys.js';
+import { APP_VERSION, ZONE, TERRAIN, PRODUCER_TYPE, PRODUCER_CONFIG, SERVICE_CONFIG, COSTS, TILE_SIZE, STARTING_TREASURY, RESIDENTIAL_CAPACITY, JOBS_PROVIDED, FOREST_POLLUTION_ABSORPTION, FOREST_DESIRABILITY_RADIUS, CRIME_CONFIG, MEDICAL_CONFIG, POWER_PRODUCER_TYPES, POLLUTION_CONFIG, COAL_CONFIG, BATTERY_CONFIG, RESOURCE_CONFIG, UTILITY_OPERATING_COST, DESALINATION_OPERATING_COST, DESALINATION_CONFIG, COAST_CONFIG, SURVEY_COST_PER_TICK, TICKS_PER_HOUR, DENSITY, RENDERER_CONFIG, TERRAIN_GENERATION_CONFIG, MAP_SEED_STORAGE_KEY, EDUCATION_CONFIG, LOAN_CONFIG, splitDemographics, getZoneUpgradeCost, isZoneAtCapacity, PRODUCER_TIER_MAX, isTieredService, isTieredProducer, getProducerTier, getServiceTierStat, getServiceUpgradeCost, getPowerUpgradeCost, getProducerUpgradeCost, getBatteryStorageForTier, getWindPeakForTier, getSolarPeakForTier, getWaterCapacityForTier, getSewageCapacityForTier } from './config.js';
+
+const nowMs = typeof performance !== 'undefined' ? () => performance.now() : () => Date.now();
+
+/** Options markup for a recipe dropdown, using the labels from the central recipe table. */
+function recipeOptions(ids) {
+  return ids
+    .map((id) => `<option value="${id}">${id === ALL_EVENLY ? 'All Evenly' : RECIPES[id].label}</option>`)
+    .join('');
+}
+
+/** Human-readable terrain names for the inspector. */
+const TERRAIN_LABELS = {
+  [TERRAIN.FLAT]: 'Bare Ground',
+  [TERRAIN.SAND]: 'Beach Sand',
+  [TERRAIN.SALT_WATER]: 'Salt Water',
+  [TERRAIN.WATER]: 'Fresh Water',
+  [TERRAIN.ICE]: 'Ice',
+  [TERRAIN.MOUNTAIN]: 'Rock',
+  [TERRAIN.FOREST]: 'Forest',
+};
+
+function formatTerrainName(terrain) {
+  return TERRAIN_LABELS[terrain] || terrain;
+}
+
+class GameApp {
+  constructor() {
+    this.canvas = document.getElementById('game-canvas');
+    const urlSeed = parseInt(new URLSearchParams(window.location.search).get('seed'), 10);
+    const homeSeed = parseInt(localStorage.getItem('simconquer_home_seed'), 10);
+    this.grid = new Grid(undefined, undefined, urlSeed > 0 ? urlSeed : homeSeed > 0 ? homeSeed : null);
+    localStorage.setItem('simconquer_home_seed', this.grid.seed);
+    this.worldSeed = parseInt(localStorage.getItem('simconquer_world_seed'), 10) || this.grid.seed;
+    localStorage.setItem('simconquer_world_seed', this.worldSeed);
+    this.homeSeed = this.grid.seed;
+    this.currentCellId = null;
+    this.selectedCellId = null;
+    this.cityStates = new Map();
+    this.overworldSeedOverrides = new Map();
+    this.planet = null;
+    this.overworldView = null;
+    this.terrainPreviewCache = new Map();
+    this.simulation = new Simulation(this.grid);
+    this.renderer = new Renderer(this.canvas, this.grid);
+    const versionEl = document.getElementById('app-version');
+    if (versionEl) versionEl.textContent = `v${APP_VERSION}`;
+    const overworldVersionEl = document.getElementById('overworld-version');
+    if (overworldVersionEl) overworldVersionEl.textContent = `v${APP_VERSION}`;
+    const stylesheet = document.querySelector('link[rel="stylesheet"]');
+    if (stylesheet) {
+      const href = new URL(stylesheet.href, window.location.href);
+      href.searchParams.set('v', APP_VERSION);
+      stylesheet.href = href.toString();
+    }
+
+    this.treasury = STARTING_TREASURY;
+    this.loanManager = new LoanManager();
+    this.gameOver = false;
+    this.gameOverReason = null;
+    // Set while the shared treasury is below zero: the game pauses until the player either
+    // borrows enough to get back above zero or declares bankruptcy.
+    this.insolvent = false;
+    this.hasEverHadPopulation = false;
+    // The app boots with no world loaded: the main menu is the entry point, and the
+    // city chrome stays hidden on a blank background until New Game or Load World.
+    this.worldActive = false;
+    this.activeTool = 'pan';
+    this.autoSwitchToPan = false;
+    this.dismissedAlerts = new Set();
+    this.isMouseDown = false;
+    this.isRightMouseDown = false;
+    this.rightHasDragged = false;
+    this.rightDownStartX = 0;
+    this.rightDownStartY = 0;
+    this.mouseDownStartX = 0;
+    this.mouseDownStartY = 0;
+    this.mouseHasDragged = false;
+    this.lastMouseX = 0;
+    this.lastMouseY = 0;
+    this.lastTouchX = 0;
+    this.lastTouchY = 0;
+    this.touchStartX = 0;
+    this.touchStartY = 0;
+    this.touchMoved = false;
+
+    this.simInterval = null;
+    // Space resumes the speed the player was last running at instead of always 1x.
+    this.lastSpeed = 1;
+    this._hudSnapshot = null;
+    this._hudAppliedAt = null;
+    this._pendingHud = false;
+    this._inspectorSignature = '';
+    this._inspectorTile = null;
+    this._inspectorAppliedAt = null;
+    this._pendingInspectorTile = null;
+    this.hudTiming = createUiTimingBucket();
+    this.inspectorTiming = createUiTimingBucket();
+    this.enableUiTiming = typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('debugTiming');
+    if (this.enableUiTiming) {
+      this.simulation.enableTiming = true;
+      this.renderer.enableTiming = true;
+    }
+
+    this.initCanvasSize();
+    this.bindUIEvents();
+    this.bindCanvasEvents();
+
+    this.audioManager = new AudioManager();
+    this.initAudioUI();
+    this.tutorialManager = new TutorialManager(this);
+    this.syncWorldOptionsAvailability();
+
+    this.setSpeed(0);
+    this.startRenderLoop();
+    this.setIdleState(true);
+    this.showMainMenu();
+  }
+
+  initCanvasSize() {
+    const resize = () => this.resizeCanvas();
+    window.addEventListener('resize', resize);
+    resize();
+  }
+
+  /**
+   * Matches the drawing buffer to the viewport. A zero-size parent (for example while
+   * the title screen hides #app) is ignored so the previous buffer is kept, and the
+   * canvas is only resized when the size actually changed (resizing clears it).
+   */
+  resizeCanvas() {
+    const parent = this.canvas?.parentElement;
+    if (!parent) return;
+    const width = parent.clientWidth;
+    const height = parent.clientHeight;
+    if (width <= 0 || height <= 0) return;
+    if (this.canvas.width !== width || this.canvas.height !== height) {
+      this.canvas.width = width;
+      this.canvas.height = height;
+    }
+  }
+
+  showMapLoading(label = 'Loading map…') {
+    const overlay = document.getElementById('map-loading');
+    if (!overlay) return;
+    const text = document.getElementById('map-loading-label');
+    if (text) text.textContent = label;
+    overlay.hidden = false;
+  }
+
+  hideMapLoading() {
+    const overlay = document.getElementById('map-loading');
+    if (overlay) overlay.hidden = true;
+  }
+
+  /**
+   * Repaints the city canvas once the DOM has settled. Entering a city from the globe
+   * or resizing while the world map covered the canvas can otherwise leave the first
+   * frame stale until the next animation tick.
+   */
+  refreshCityCanvas() {
+    this.resizeCanvas();
+    this.renderer.render(this.simulation);
+  }
+
+  bindUIEvents() {
+    // Refreshing or closing the tab discards the in-memory session. Browsers always show
+    // their own generic "leave site?" dialog and ignore custom text, so this only decides
+    // whether that dialog appears. Skip it on the title screen and after game over (the
+    // Restart button is an intentional reload).
+    window.addEventListener('beforeunload', (event) => {
+      if (!this.worldActive || this.gameOver) return undefined;
+      event.preventDefault();
+      event.returnValue = '';
+      return '';
+    });
+
+    this.initHeaderTooltips();
+    const autoPanToggle = document.getElementById('auto-pan-toggle');
+    if (autoPanToggle) {
+      this.autoSwitchToPan = this.isMobileLayout() && autoPanToggle.checked;
+      autoPanToggle.addEventListener('change', () => {
+        this.autoSwitchToPan = this.isMobileLayout() && autoPanToggle.checked;
+      });
+    }
+
+    const toolDrawer = document.querySelector('.tool-drawer');
+    const utilityHud = document.querySelector('.utility-hud');
+    document.getElementById('btn-toggle-tools')?.addEventListener('click', () => {
+      toolDrawer?.classList.toggle('mobile-open');
+      utilityHud?.classList.remove('mobile-open');
+    });
+    document.getElementById('btn-toggle-hud')?.addEventListener('click', () => {
+      utilityHud?.classList.toggle('mobile-open');
+      toolDrawer?.classList.remove('mobile-open');
+    });
+    document.getElementById('btn-overworld')?.addEventListener('click', () => this.openOverworld());
+    document.getElementById('btn-main-menu')?.addEventListener('click', () => this.showMainMenu());
+    document.getElementById('btn-main-close')?.addEventListener('click', () => this.hideMainMenu());
+    document.getElementById('btn-main-start-tutorial')?.addEventListener('click', () => {
+      this.hideMainMenu();
+      this.tutorialManager?.restart();
+    });
+    document.getElementById('btn-main-new-game')?.addEventListener('click', () => this.newGame());
+
+    document.querySelectorAll('.tool-btn').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        this.setActiveTool(btn.dataset.tool);
+      });
+    });
+
+    document.querySelectorAll('.overlay-btn').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        document.querySelectorAll('.overlay-btn').forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        this.renderer.setOverlayMode(btn.dataset.mode);
+      });
+    });
+
+    document.querySelectorAll('[data-hud-tab]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('[data-hud-tab]').forEach((tab) => tab.classList.toggle('active', tab === btn));
+        document.querySelectorAll('.utility-hud-tab').forEach((panel) => {
+          panel.classList.toggle('active', panel.dataset.hudPanel === btn.dataset.hudTab);
+        });
+      });
+    });
+
+    document.getElementById('loan-principal-select')?.addEventListener('change', () => this.updateFinancePanel());
+    document.getElementById('btn-take-loan')?.addEventListener('click', () => this.takeSelectedLoan());
+    this.initInsolvencyUI();
+
+    document.getElementById('btn-pause').addEventListener('click', () => this.setSpeed(0));
+    document.getElementById('btn-speed-1').addEventListener('click', () => this.setSpeed(1));
+    document.getElementById('btn-speed-2').addEventListener('click', () => this.setSpeed(2));
+    document.getElementById('btn-speed-5').addEventListener('click', () => this.setSpeed(5));
+    document.getElementById('btn-restart-game')?.addEventListener('click', () => window.location.reload());
+
+    // Space is the only global shortcut: pause and resume without hunting for the speed
+    // buttons. It stands down while the player is typing, over the menu or the globe, and at
+    // the title screen, where there is no simulation to run.
+    document.addEventListener('keydown', (event) => {
+      if (resolveHotkey(event) !== HOTKEY_ACTION.TOGGLE_PAUSE) return;
+      event.preventDefault();
+      this.togglePause();
+    });
+
+    document.querySelectorAll('[data-service-budget]').forEach((slider) => {
+      slider.addEventListener('input', (e) => {
+        const budget = parseInt(e.target.value, 10);
+        const type = e.target.dataset.serviceBudget;
+        this.grid.producers
+          .filter((producer) => producer.type === type)
+          .forEach((producer) => { producer.budget = budget; });
+        const value = document.getElementById(`${type}-budget-value`);
+        if (value) value.textContent = `${budget}%`;
+        this.simulation.computeStats({ preservePopulation: true });
+        this.updateHUD({ force: true });
+      });
+    });
+
+    const roadBudgetSlider = document.getElementById('road-maintenance-budget-slider');
+    if (roadBudgetSlider) {
+      roadBudgetSlider.addEventListener('input', (e) => {
+        this.simulation.roadMaintenanceBudget = parseInt(e.target.value, 10);
+        const value = document.getElementById('road-maintenance-budget-value');
+        if (value) value.textContent = `${this.simulation.roadMaintenanceBudget}%`;
+        this.simulation.computeStats({ preservePopulation: true });
+        this.updateHUD({ force: true });
+      });
+    }
+
+    const pensionSlider = document.getElementById('pension-budget-slider');
+    if (pensionSlider) {
+      pensionSlider.addEventListener('input', (e) => {
+        const budget = parseInt(e.target.value, 10);
+        this.simulation.pensionBudget = budget;
+        const value = document.getElementById('pension-budget-value');
+        if (value) value.textContent = `${budget}%`;
+        this.simulation.computeStats({ preservePopulation: true });
+        this.updateHUD({ force: true });
+      });
+    }
+
+    const taxSlider = document.getElementById('tax-slider');
+    if (taxSlider) {
+      taxSlider.addEventListener('input', (e) => {
+        const val = parseInt(e.target.value, 10);
+        this.simulation.taxRate = val;
+        document.getElementById('tax-rate-val').textContent = val;
+        this.simulation.computeStats({ preservePopulation: true });
+        this.updateHUD({ force: true });
+      });
+    }
+
+    const seedInput = document.getElementById('seed-input');
+    if (seedInput) {
+      seedInput.value = this.grid.seed;
+      const triggerSeedReset = () => {
+        const rawVal = seedInput.value;
+        let val = parseInt(rawVal, 10);
+        if (isNaN(val) || val <= 0) val = 12345;
+        this.resetMapWithSeed(val);
+      };
+      seedInput.addEventListener('change', triggerSeedReset);
+      seedInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') triggerSeedReset();
+      });
+    }
+
+    const resetBtn = document.getElementById('btn-reset-map');
+    if (resetBtn) {
+      resetBtn.addEventListener('click', () => {
+        if (!window.confirm('Reset the map? All unsaved progress will be lost.')) return;
+        const inputEl = document.getElementById('seed-input');
+        let val = parseInt(inputEl?.value, 10);
+        if (isNaN(val) || val <= 0) val = this.grid.seed;
+        this.resetMapWithSeed(val);
+      });
+    }
+
+    const regenBtn = document.getElementById('btn-regen-map');
+    if (regenBtn) {
+      regenBtn.addEventListener('click', () => {
+        if (!window.confirm('Generate a new random map? All unsaved progress will be lost.')) return;
+        const newSeed = Math.floor(Math.random() * TERRAIN_GENERATION_CONFIG.RANDOM_SEED_MAX) + TERRAIN_GENERATION_CONFIG.RANDOM_SEED_MIN;
+        this.resetMapWithSeed(newSeed);
+      });
+    }
+
+    document.getElementById('btn-main-save-world')?.addEventListener('click', () => this.saveGameToFile());
+    document.getElementById('btn-export-game')?.addEventListener('click', () => this.exportGameToFile());
+    document.getElementById('btn-main-load-world')?.addEventListener('click', () => document.getElementById('game-file-input')?.click());
+    document.getElementById('game-file-input')?.addEventListener('change', (e) => {
+      const file = e.target.files?.[0];
+      if (file) this.importGameFile(file);
+      e.target.value = '';
+    });
+
+    document.getElementById('btn-close-inspector')?.addEventListener('click', () => {
+      this.renderer.selectedTile = null;
+      document.getElementById('inspector-panel').classList.remove('visible');
+    });
+    document.getElementById('btn-upgrade-zone')?.addEventListener('click', () => this.upgradeSelectedZone());
+    document.getElementById('btn-upgrade-producer')?.addEventListener('click', () => this.upgradeSelectedProducer());
+
+    document.addEventListener('pointerdown', (e) => {
+      const canvas = document.getElementById('game-canvas');
+      const panel = document.getElementById('inspector-panel');
+      if (e.target !== canvas && !panel?.contains(e.target)) {
+        this.renderer.selectedTile = null;
+        panel?.classList.remove('visible');
+      }
+    });
+  }
+
+  showMainMenu() {
+    const menu = document.getElementById('main-menu');
+    if (menu) menu.style.display = 'flex';
+    this.updateAudioButtons?.();
+    this.updateMainMenuState();
+  }
+
+  hideMainMenu() {
+    const menu = document.getElementById('main-menu');
+    if (menu) menu.style.display = 'none';
+  }
+
+  /**
+   * Toggles the "no world loaded" boot state: a blank background with only the main
+   * menu on screen, so the game starts like a title screen instead of a live city.
+   */
+  setIdleState(idle) {
+    this.worldActive = !idle;
+    document.body.classList.toggle('app-idle', idle);
+    if (idle) {
+      this.hideMapLoading();
+      const overworld = document.getElementById('overworld-view');
+      if (overworld) overworld.hidden = true;
+      document.getElementById('game-over-modal')?.setAttribute('hidden', '');
+      document.getElementById('insolvency-modal')?.setAttribute('hidden', '');
+      const inspector = document.getElementById('inspector-panel');
+      inspector?.classList.remove('visible');
+    }
+    this.tutorialManager?.renderBanner();
+    this.updateMainMenuState();
+  }
+
+  updateMainMenuState() {
+    const saveButton = document.getElementById('btn-main-save-world');
+    if (saveButton) saveButton.disabled = !this.worldActive;
+    const closeButton = document.getElementById('btn-main-close');
+    if (closeButton) closeButton.disabled = !this.worldActive;
+    const warning = document.getElementById('main-menu-warning');
+    if (warning) warning.hidden = !this.worldActive;
+    this.tutorialManager?.syncTutorialButton();
+  }
+
+  /**
+   * True once the player has actually changed the world, so New Game can warn before
+   * throwing that work away. A freshly generated, untouched world reports false.
+   */
+  hasWorldProgress() {
+    if (this.currentCellId) return true;
+    if (this.treasury !== STARTING_TREASURY) return true;
+    if (this.loanManager?.outstandingBalance > 0) return true;
+    const cityHasWork = (grid) => Boolean(grid) && (
+      grid.activeRoadTiles.size > 0 ||
+      grid.producers.length > 0 ||
+      Array.from(grid.getActiveZonedTiles()).length > 0
+    );
+    if (cityHasWork(this.grid)) return true;
+    for (const city of this.cityStates.values()) {
+      if (cityHasWork(city.grid)) return true;
+    }
+    return false;
+  }
+
+  async newGame() {
+    if (this.hasWorldProgress() && !window.confirm('Start a new game? All progress in this world — your cities, treasury, and loans — will be lost.')) {
+      return;
+    }
+    this.hideMainMenu();
+    this.setSpeed(0);
+    const startTutorial = Boolean(this.tutorialManager?.isEnabled);
+    const { RANDOM_SEED_MIN, RANDOM_SEED_MAX } = TERRAIN_GENERATION_CONFIG;
+    const pickSeed = () => Math.floor(Math.random() * (RANDOM_SEED_MAX - RANDOM_SEED_MIN)) + RANDOM_SEED_MIN;
+    this.worldSeed = pickSeed();
+    this.homeSeed = pickSeed();
+    localStorage.setItem('simconquer_world_seed', this.worldSeed);
+    localStorage.setItem('simconquer_home_seed', this.homeSeed);
+    localStorage.setItem(MAP_SEED_STORAGE_KEY, this.homeSeed);
+
+    // A new world discards the whole visible session: cities, wallet, loans, and terminal state.
+    this.cityStates.clear();
+    this.terrainPreviewCache.clear();
+    this.overworldSeedOverrides.clear();
+    this.currentCellId = null;
+    this.selectedCellId = null;
+    this.treasury = STARTING_TREASURY;
+    this.loanManager = new LoanManager();
+    this.gameOver = false;
+    this.gameOverReason = null;
+    this.insolvent = false;
+    this.hasEverHadPopulation = false;
+    const gameOverModal = document.getElementById('game-over-modal');
+    if (gameOverModal) gameOverModal.hidden = true;
+    const insolvencyModal = document.getElementById('insolvency-modal');
+    if (insolvencyModal) insolvencyModal.hidden = true;
+
+    this.grid = new Grid(undefined, undefined, this.homeSeed);
+    this.simulation = new Simulation(this.grid);
+    this.renderer.grid = this.grid;
+    this.renderer.terrainChunks = [];
+    this.renderer.terrainChunksVersion = -1;
+    this.renderer.selectedTile = null;
+    this.renderer.hoverTile = null;
+    this.renderer.trafficManager.grid = this.grid;
+    this.renderer.trafficManager.cars = [];
+    this.renderer.trafficManager.lastCoverageVersion = -1;
+
+    if (this.tutorialManager) {
+      // The Guided Tutorial toggle decides whether the new world shows instructions.
+      this.tutorialManager.setTutorialEnabled(startTutorial);
+      this.tutorialManager.currentStep = 0;
+      localStorage.setItem('simconquer_tutorial_step', '0');
+      this.tutorialManager.renderBanner?.();
+    }
+
+    this.overworldView?.dispose();
+    this.overworldView = null;
+    this.planet = null;
+    this.setIdleState(false);
+    await this.openOverworld();
+    this.updateHUD({ force: true });
+  }
+
+  initAudioUI() {
+    const audioButtons = [
+      document.getElementById('btn-toggle-audio'),
+      document.getElementById('btn-overworld-audio'),
+      document.getElementById('btn-main-audio'),
+    ].filter(Boolean);
+
+    this.updateAudioButtons = () => {
+      const playing = this.audioManager.isEnabled && !this.audioManager.isMuted;
+      const icon = playing ? '🔊' : '🔇';
+      for (const button of audioButtons) {
+        button.textContent = button.id === 'btn-main-audio' ? `${icon} Audio: ${playing ? 'On' : 'Off'}` : icon;
+        button.classList.toggle('active', playing);
+        button.setAttribute('aria-pressed', String(playing));
+      }
+    };
+
+    for (const button of audioButtons) {
+      button.addEventListener('click', () => {
+        this.audioManager.toggleMute();
+        this.updateAudioButtons();
+      });
+    }
+    this.updateAudioButtons();
+  }
+
+  resetMapWithSeed(seed, cellId = this.selectedCellId) {
+    const cell = this.planet?.getCell(cellId);
+    if (!cell || cell.ocean) return;
+    const validSeed = parseInt(seed, 10) || cell.seed;
+    cell.seed = validSeed;
+    this.terrainPreviewCache.delete(cellId);
+    const isCurrentCity = cellId === this.currentCellId;
+    if (isCurrentCity) {
+      this.grid.randomizeGrid(validSeed);
+      if (cellId === this.homeCellId) {
+        this.homeSeed = validSeed;
+        localStorage.setItem('simconquer_home_seed', validSeed);
+      }
+      localStorage.setItem(MAP_SEED_STORAGE_KEY, validSeed);
+      const url = new URL(window.location.href);
+      url.searchParams.set('seed', validSeed);
+      window.history.replaceState({}, '', url.toString());
+      this.simulation.tickCount = 0;
+      this.simulation.computeStats();
+      this.renderer.selectedTile = null;
+      this.renderer.hoverTile = null;
+      this.updateHUD({ force: true });
+      this.renderer.render(this.simulation);
+    } else {
+      this.cityStates.delete(cellId);
+      if (cellId === this.homeCellId) {
+        this.homeSeed = validSeed;
+        localStorage.setItem('simconquer_home_seed', validSeed);
+      }
+    }
+    const seedInput = document.getElementById('seed-input');
+    if (seedInput) seedInput.value = validSeed;
+    this.overworldView?.select(cell);
+  }
+
+  syncWorldOptionsAvailability() {
+    const cell = this.planet?.getCell(this.selectedCellId);
+    const disabled = !cell || cell.ocean;
+    const seedInput = document.getElementById('seed-input');
+    if (seedInput) {
+      seedInput.disabled = disabled;
+      seedInput.value = disabled ? '' : cell.seed;
+    }
+    for (const id of ['seed-input', 'btn-reset-map', 'btn-regen-map']) {
+      const control = document.getElementById(id);
+      if (control) control.disabled = disabled;
+    }
+  }
+
+  captureCity() {
+    return {
+      grid: this.grid,
+      simulation: this.simulation,
+      camera: { x: this.renderer.cameraX, y: this.renderer.cameraY, zoom: this.renderer.zoom },
+      activeTool: this.activeTool,
+      overlayMode: this.renderer.overlayMode,
+    };
+  }
+
+  async openOverworld() {
+    if (this.gameOver) return;
+    if (this.overworldView?.isOpen) return;
+    const button = document.getElementById('btn-overworld');
+    button.disabled = true;
+    // The first open imports Three.js and builds the whole planet synchronously; give
+    // the player feedback instead of what looks like a frozen screen.
+    const buildingGlobe = !this.overworldView;
+    if (buildingGlobe) this.showMapLoading('Loading world map…');
+    this.setSpeed(0);
+    try {
+      if (!this.overworldView) {
+        const [{ OverworldMap }, { OverworldView }] = await Promise.all([
+          import('./engine/OverworldMap.js'), import('./engine/OverworldView.js'),
+        ]);
+        this.planet = new OverworldMap(this.worldSeed, this.homeSeed);
+        for (const [id, seed] of this.overworldSeedOverrides) {
+          const cell = this.planet.getCell(id);
+          if (cell && !cell.ocean) cell.seed = seed;
+        }
+        this.homeCellId = this.planet.homeCellId;
+        if (this.currentCellId) {
+          if (this.planet.getCell(this.currentCellId)?.ocean) this.currentCellId = this.homeCellId;
+          this.planet.getCell(this.currentCellId).seed = this.grid.seed;
+          this.planet.getCell(this.currentCellId).biome = this.grid.biome || 'mixed';
+          this.planet.refreshClimateProfiles();
+        }
+        this.overworldView = new OverworldView(document.getElementById('overworld-view'), this.planet, {
+          onEnter: (id) => this.enterOverworldCell(id),
+          onClose: () => this.refreshCityCanvas(),
+          onRegenerate: (seed) => this.regenerateOverworld(seed),
+          onSelect: (cell) => {
+            this.selectedCellId = cell?.id ?? null;
+            this.syncWorldOptionsAvailability();
+          },
+          isVisited: (id) => this.cityStates.has(id),
+          hasCity: (id) => (this.cityStates.get(id)?.grid.activeRoadTiles.size ?? 0) > 0,
+          getTerrainStats: (id) => this.getOverworldTerrainStats(id),
+        });
+      }
+      if (this.currentCellId) this.cityStates.set(this.currentCellId, this.captureCity());
+      for (const [id, city] of this.cityStates) {
+        const climate = this.planet.getCell(id)?.climate;
+        if (climate) city.simulation.weatherManager.setClimate(climate);
+      }
+      this.syncWorldOptionsAvailability();
+      this.overworldView.open(this.currentCellId);
+    } catch (error) {
+      console.error(error);
+      document.getElementById('overworld-view').hidden = true;
+      window.alert('Unable to open the world map. Check your connection to the map libraries.');
+    } finally {
+      button.disabled = false;
+      if (buildingGlobe) this.hideMapLoading();
+    }
+  }
+
+  getOverworldTerrainStats(id) {
+    const cell = this.planet?.getCell(id);
+    if (!cell || cell.ocean) return { water: 0, forest: 0, mountain: 0 };
+    const cityGrid = id === this.currentCellId ? this.grid : this.cityStates.get(id)?.grid;
+    if (cityGrid) return cityGrid.getTerrainPercentages();
+    if (!this.terrainPreviewCache.has(id)) {
+      const coast = this.planet?.getOceanFacingDirections(id) || [];
+      const previewGrid = new Grid(undefined, undefined, cell.seed, cell.biome, undefined, undefined, coast);
+      this.terrainPreviewCache.set(id, previewGrid.getTerrainPercentages());
+    }
+    return this.terrainPreviewCache.get(id);
+  }
+
+  async regenerateOverworld(seed) {
+    if (seed === this.worldSeed) return;
+    if (!window.confirm('Generate a new planet? Your current city will move to its new home hex. Other visited cities will be removed.')) return;
+    this.worldSeed = seed;
+    this.homeSeed = this.grid.seed;
+    localStorage.setItem('simconquer_world_seed', seed);
+    localStorage.setItem('simconquer_home_seed', this.homeSeed);
+    this.cityStates.clear();
+    this.terrainPreviewCache.clear();
+    this.overworldSeedOverrides.clear();
+    if (this.currentCellId) {
+      const { OverworldMap } = await import('./engine/OverworldMap.js');
+      this.currentCellId = new OverworldMap(seed, this.homeSeed).homeCellId;
+    }
+    this.overworldView.dispose();
+    this.overworldView = null;
+    this.planet = null;
+    await this.openOverworld();
+  }
+
+  enterOverworldCell(id) {
+    if (this.gameOver) return;
+    const cell = this.planet?.getCell(id);
+    if (!cell || cell.ocean) return;
+    // A hex that has never been visited needs a full terrain/ore generation plus one
+    // simulation tick. That work is synchronous, so paint the loading overlay first and
+    // move the generation to the next task; otherwise a slow device looks frozen.
+    const needsGeneration = id !== this.currentCellId && !this.cityStates.has(id);
+    if (!needsGeneration) {
+      this.enterOverworldCellNow(id);
+      return;
+    }
+    if (this.pendingMapCellId === id) return;
+    this.pendingMapCellId = id;
+    this.showMapLoading('Generating map…');
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        try {
+          this.enterOverworldCellNow(id);
+        } finally {
+          this.pendingMapCellId = null;
+          // Keep the overlay up until the freshly drawn city has been composited.
+          requestAnimationFrame(() => this.hideMapLoading());
+        }
+      }, 0);
+    });
+  }
+
+  enterOverworldCellNow(id) {
+    const cell = this.planet?.getCell(id);
+    if (!cell || cell.ocean) return;
+    if (id !== this.currentCellId) {
+      if (this.currentCellId) this.cityStates.set(this.currentCellId, this.captureCity());
+      const saved = this.cityStates.get(id);
+      const city = saved || (() => {
+        const coast = this.planet?.getOceanFacingDirections(id) || [];
+        const grid = new Grid(this.grid.width, this.grid.height, cell.seed, cell.biome, undefined, undefined, coast);
+        const simulation = new Simulation(grid, cell.climate);
+        simulation.isPaused = true;
+        return { grid, simulation, camera: { x: 0, y: 0, zoom: 1 }, activeTool: 'pan', overlayMode: 'normal' };
+      })();
+      city.simulation.weatherManager.setClimate(cell.climate);
+      this.currentCellId = id;
+      this.cityStates.set(id, city);
+      this.syncWorldOptionsAvailability();
+      this.grid = city.grid;
+      this.simulation = city.simulation;
+      this.renderer.grid = city.grid;
+      this.renderer.terrainChunks = [];
+      this.renderer.terrainChunksVersion = -1;
+      this.renderer.selectedTile = null;
+      this.renderer.hoverTile = null;
+      this.renderer.trafficManager.grid = city.grid;
+      this.renderer.trafficManager.cars = [];
+      this.renderer.trafficManager.lastCoverageVersion = -1;
+      this.renderer.setCamera(city.camera.x, city.camera.y, city.camera.zoom);
+      this.setActiveTool(city.activeTool);
+      this.renderer.setOverlayMode(city.overlayMode);
+      document.querySelectorAll('.overlay-btn').forEach((button) => button.classList.toggle('active', button.dataset.mode === city.overlayMode));
+      document.getElementById('seed-input').value = city.grid.seed;
+      this.setSpeed(0);
+      this.simulation.tick(false);
+      this.syncBudgetControls();
+      this.updateHUD({ force: true });
+    }
+    document.getElementById('overworld-options').open = false;
+    this.overworldView.currentId = id;
+    this.overworldView.close();
+  }
+
+  saveGameToFile() {
+    if (!this.simulation.isPaused) {
+      window.alert('Pause the game before saving.');
+      return;
+    }
+    this.exportGameToFile();
+  }
+
+  exportGameToFile() {
+    if (!this.simulation.isPaused) {
+      window.alert('Pause the game before exporting a save.');
+      return;
+    }
+    const blob = new Blob([serializeGameToJson(this)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    const seed = this.grid?.seed ?? '0';
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    const stamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+    link.download = `simconquer2000-save-${stamp}-seed-${seed}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async importGameFile(file) {
+    try {
+      const imported = deserializeGameFromJson(await file.text());
+      this.setSpeed(0);
+      this.overworldView?.dispose();
+      this.overworldView = null;
+      this.planet = null;
+      this.selectedCellId = null;
+      this.worldSeed = imported.overworld?.seed ?? imported.grid.seed;
+      this.overworldSeedOverrides = new Map(imported.overworld?.cellSeeds || []);
+      this.currentCellId = imported.overworld?.cellId ?? null;
+      this.homeSeed = imported.overworld?.homeSeed ?? imported.grid.seed;
+      localStorage.setItem('simconquer_world_seed', this.worldSeed);
+      localStorage.setItem('simconquer_home_seed', this.homeSeed);
+      this.cityStates = new Map();
+      this.terrainPreviewCache.clear();
+      for (const visited of imported.overworld?.visited || []) {
+        this.cityStates.set(visited.cellId, this.restoreImportedCity(deserializeGame(visited.city)));
+      }
+      const city = this.restoreImportedCity(imported);
+      this.grid = city.grid;
+      this.simulation = city.simulation;
+      this.treasury = imported.treasury;
+      this.loanManager = new LoanManager(imported.finance);
+      this.gameOver = Boolean(imported.finance?.gameOver);
+      this.gameOverReason = imported.finance?.bankrupt ? 'bankruptcy' : null;
+      this.hasEverHadPopulation = Boolean(imported.finance?.hasEverHadPopulation) ||
+        this.simulation.stats.population > 0 ||
+        Array.from(this.cityStates.values()).some((visitedCity) => visitedCity.simulation.stats.population > 0);
+      localStorage.setItem(MAP_SEED_STORAGE_KEY, this.grid.seed);
+      this.renderer.grid = this.grid;
+      this.renderer.terrainChunks = [];
+      this.renderer.terrainChunksVersion = -1;
+      this.renderer.trafficManager.grid = this.grid;
+      this.renderer.trafficManager.cars = [];
+      this.renderer.trafficManager.lastCoverageVersion = -1;
+      this.renderer.setCamera(imported.camera.x, imported.camera.y, imported.camera.zoom);
+      this.autoSwitchToPan = imported.ui.autoSwitchToPan;
+      this.setActiveTool(imported.ui.activeTool);
+      this.renderer.setOverlayMode(imported.ui.overlayMode);
+      document.querySelectorAll('.overlay-btn').forEach((button) => button.classList.toggle('active', button.dataset.mode === imported.ui.overlayMode));
+      this.syncBudgetControls();
+      this.updateHUD({ force: true });
+      this.renderer.render(this.simulation);
+      this.syncWorldOptionsAvailability();
+      // Loading a save is the other way out of the title screen.
+      this.setIdleState(false);
+      this.hideMainMenu();
+      if (this.gameOver) this.showGameOver();
+      else this.checkInsolvency();
+      if (imported.overworld) await this.openOverworld();
+    } catch (error) {
+      window.alert(`Unable to load save: ${error.message}`);
+    }
+  }
+
+  restoreImportedCity(imported) {
+    const simulation = new Simulation(imported.grid);
+    simulation.tickCount = imported.simulation.tickCount;
+    simulation.speed = 0;
+    simulation.isPaused = true;
+    simulation.taxRate = imported.simulation.taxRate;
+    simulation.pensionBudget = imported.simulation.pensionBudget;
+    simulation.roadMaintenanceBudget = imported.simulation.roadMaintenanceBudget ?? 100;
+    simulation.resourceManager.stockpile = imported.simulation.stockpile;
+    simulation.resourceManager.capacity = imported.simulation.capacity;
+    if (imported.simulation.weather) Object.assign(simulation.weatherManager, imported.simulation.weather);
+    simulation.stats = imported.simulation.stats;
+    simulation.tick(false);
+    return {
+      grid: imported.grid,
+      simulation,
+      camera: imported.camera,
+      activeTool: imported.ui.activeTool,
+      overlayMode: imported.ui.overlayMode,
+    };
+  }
+
+  syncBudgetControls() {
+    const taxSlider = document.getElementById('tax-slider');
+    const taxVal = document.getElementById('tax-rate-val');
+    if (taxSlider) taxSlider.value = this.simulation.taxRate;
+    if (taxVal) taxVal.textContent = this.simulation.taxRate;
+
+    const pensionSlider = document.getElementById('pension-budget-slider');
+    const pensionVal = document.getElementById('pension-budget-value');
+    if (pensionSlider) pensionSlider.value = this.simulation.pensionBudget;
+    if (pensionVal) pensionVal.textContent = `${this.simulation.pensionBudget}%`;
+
+    const roadBudgetSlider = document.getElementById('road-maintenance-budget-slider');
+    const roadBudgetValue = document.getElementById('road-maintenance-budget-value');
+    if (roadBudgetSlider) roadBudgetSlider.value = this.simulation.roadMaintenanceBudget;
+    if (roadBudgetValue) roadBudgetValue.textContent = `${this.simulation.roadMaintenanceBudget}%`;
+
+    document.querySelectorAll('[data-service-budget]').forEach((slider) => {
+      const type = slider.dataset.serviceBudget;
+      const producer = this.grid.producers.find((p) => p.type === type);
+      const budget = producer?.budget ?? 100;
+      slider.value = budget;
+      const valueEl = document.getElementById(`${type}-budget-value`);
+      if (valueEl) valueEl.textContent = `${budget}%`;
+    });
+  }
+
+  /** Space bar: pause when the city is running, otherwise resume at the last speed used. */
+  togglePause() {
+    if (!this.simulation) return false;
+    // The menu, the globe, the title screen, game over and insolvency all have their own rules
+    // about when time may run; `setSpeed` enforces them, so only the choice is made here.
+    if (document.getElementById('main-menu')?.style.display === 'flex') return false;
+    if (this.overworldView?.isOpen) return false;
+    if (this.simulation.isPaused || this.simulation.speed === 0) {
+      return this.setSpeed(this.lastSpeed || 1);
+    }
+    this.lastSpeed = this.simulation.speed;
+    return this.setSpeed(0);
+  }
+
+  setSpeed(speed) {
+    if (this.gameOver && speed !== 0) return false;
+    // Insolvency is a hard stop: the player must borrow or declare bankruptcy first.
+    if (this.insolvent && speed !== 0) return false;
+    if (!this.worldActive && speed !== 0) return false;
+    document.querySelectorAll('.speed-controls .btn-icon').forEach((b) => b.classList.remove('active'));
+    if (speed === 0) {
+      document.getElementById('btn-pause').classList.add('active');
+      this.simulation.isPaused = true;
+      this.simulation.speed = 0;
+      if (this.simInterval) clearInterval(this.simInterval);
+      this.simInterval = null;
+    } else {
+      const id = speed === 1 ? 'btn-speed-1' : speed === 2 ? 'btn-speed-2' : 'btn-speed-5';
+      document.getElementById(id).classList.add('active');
+      this.simulation.isPaused = false;
+      this.simulation.speed = speed;
+      this.lastSpeed = speed;
+      if (this.simInterval) clearInterval(this.simInterval);
+      this.simInterval = setInterval(() => this.simTick(), 4000 / speed);
+    }
+    return true;
+  }
+
+  simTick() {
+    if (this.simulation.isPaused) return;
+    if (this.getCombinedPopulation() > 0) this.hasEverHadPopulation = true;
+    const economy = advanceWorldEconomy(this.getWorldSimulations(), this.treasury, this.loanManager);
+    this.treasury = economy.treasury;
+    if (this.getWorldSimulations().some((simulation) => simulation.stats.population > 0)) this.hasEverHadPopulation = true;
+    this.checkDebtGameOver();
+    this.checkInsolvency();
+    this.audioManager?.updatePopulation(this.simulation.stats.population);
+    this.updateHUD();
+    if (this.renderer.selectedTile) {
+      this.updateInspector(this.renderer.selectedTile);
+    }
+  }
+
+  updateHUD({ force = false } = {}) {
+    this.updateFinancePanel();
+    this.tutorialManager?.update(this.grid, this.simulation.stats);
+    const started = this.enableUiTiming ? nowMs() : 0;
+    const snapshot = buildHudSnapshot(this.simulation, this.treasury);
+    // The treasury is shared by every visited city, so the hover totals the whole world
+    // instead of describing only the active city.
+    Object.assign(snapshot, treasuryFlowSnapshot(this.getTreasuryFlowSummary()));
+    const changed = changedHudFields(this._hudSnapshot, snapshot);
+    const cadenceMs = getHudCadenceMs(this.isMobileLayout());
+    const at = nowMs();
+    if (!shouldRefreshUi({ force, fieldCount: changed.length, now: at, lastAppliedAt: this._hudAppliedAt, cadenceMs })) {
+      this._pendingHud = changed.length > 0;
+      recordUiTiming(this.hudTiming, this.enableUiTiming ? nowMs() - started : 0, false);
+      return false;
+    }
+    applyHudSnapshot(snapshot, changed, document);
+    this.renderAlerts(snapshot['alerts-panel-data']);
+    this._hudSnapshot = snapshot;
+    this._hudAppliedAt = at;
+    this._pendingHud = false;
+    recordUiTiming(this.hudTiming, this.enableUiTiming ? nowMs() - started : 0, true);
+    return true;
+  }
+
+  getAverageCityHappiness() {
+    const happiness = [this.simulation.stats.happiness ?? 50];
+    for (const [cellId, city] of this.cityStates) {
+      if (cellId === this.currentCellId) continue;
+      happiness.push(city.simulation.stats.happiness ?? 50);
+    }
+    return happiness.reduce((sum, value) => sum + value, 0) / happiness.length;
+  }
+
+  // World-wide per-tick money flows for the treasury hover. Every visited city settles
+  // against the same wallet, so these totals add up all of them plus the loan schedule.
+  getTreasuryFlowSummary() {
+    const simulations = this.getWorldSimulations();
+    let income = 0;
+    let services = 0;
+    let roads = 0;
+    let utilities = 0;
+    let surveys = 0;
+    for (const simulation of simulations) {
+      const stats = simulation.stats || {};
+      income += stats.incomePerTick || 0;
+      services += stats.serviceExpenses || 0;
+      roads += stats.roadExpenses || 0;
+      utilities += stats.utilityExpenses || 0;
+      surveys += simulation.surveyExpenses || 0;
+    }
+    return {
+      income,
+      services,
+      roads,
+      utilities,
+      surveys,
+      loans: this.loanManager?.scheduledPayment || 0,
+      cityCount: simulations.length,
+    };
+  }
+
+  getWorldSimulations() {
+    const simulations = [];
+    for (const [cellId, city] of this.cityStates) {
+      if (cellId !== this.currentCellId) simulations.push(city.simulation);
+    }
+    simulations.push(this.simulation);
+    return simulations;
+  }
+
+  getCombinedPopulation() {
+    let population = this.simulation.stats.population || 0;
+    for (const [cellId, city] of this.cityStates) {
+      if (cellId === this.currentCellId) continue;
+      population += city.simulation.stats.population || 0;
+    }
+    return population;
+  }
+
+  takeSelectedLoan() {
+    if (this.gameOver) return false;
+    const principal = Number(document.getElementById('loan-principal-select')?.value);
+    const loan = this.loanManager.takeLoan(principal, this.getAverageCityHappiness());
+    if (!loan) return false;
+    this.treasury += principal;
+    this.updateHUD({ force: true });
+    // Borrowing from the finance panel is a valid way out of insolvency too.
+    this.checkInsolvency();
+    return true;
+  }
+
+  initInsolvencyUI() {
+    const select = document.getElementById('insolvency-loan-select');
+    if (select && select.options.length === 0) {
+      for (const principal of LOAN_CONFIG.PRINCIPAL_OPTIONS) {
+        const option = document.createElement('option');
+        option.value = String(principal);
+        option.textContent = formatMoney(principal);
+        select.appendChild(option);
+      }
+    }
+    select?.addEventListener('change', () => this.updateInsolvencyModal());
+    document.getElementById('btn-emergency-loan')?.addEventListener('click', () => this.takeEmergencyLoan());
+    document.getElementById('btn-declare-bankruptcy')?.addEventListener('click', () => this.declareBankruptcy());
+  }
+
+  // The forced-choice state: negative treasury pauses the world until the player borrows or
+  // gives up. Called after every economy tick, after loans, and after loading a save.
+  checkInsolvency() {
+    if (this.gameOver) return false;
+    if (!isInsolvent(this.treasury)) {
+      this.clearInsolvency();
+      return false;
+    }
+    this.insolvent = true;
+    this.setSpeed(0);
+    this.updateInsolvencyModal();
+    const modal = document.getElementById('insolvency-modal');
+    if (modal) modal.hidden = false;
+    return true;
+  }
+
+  clearInsolvency() {
+    this.insolvent = false;
+    const modal = document.getElementById('insolvency-modal');
+    if (modal) modal.hidden = true;
+  }
+
+  updateInsolvencyModal() {
+    const treasury = document.getElementById('insolvency-treasury');
+    if (treasury) treasury.textContent = formatMoney(this.treasury);
+    const loans = document.getElementById('insolvency-loans');
+    if (loans) loans.textContent = formatMoney(this.loanManager.outstandingBalance);
+    const due = document.getElementById('insolvency-due');
+    if (due) due.textContent = formatMoney(this.loanManager.scheduledPayment);
+
+    const select = document.getElementById('insolvency-loan-select');
+    if (!select) return;
+    const happiness = this.getAverageCityHappiness();
+    const activeLoans = this.loanManager.loans.length;
+    const terms = loanTerms(Number(select.value), happiness, activeLoans);
+    const rate = document.getElementById('insolvency-interest-rate');
+    if (rate) rate.textContent = `${(terms.interestRate * 100).toFixed(1)}%`;
+    const premium = document.getElementById('insolvency-risk-premium');
+    if (premium) premium.textContent = `+${(LOAN_CONFIG.RISK_PREMIUM_PER_LOAN * activeLoans * 100).toFixed(0)}%`;
+    const payment = document.getElementById('insolvency-estimated-payment');
+    if (payment) payment.textContent = formatMoney(terms.scheduledPayment);
+  }
+
+  takeEmergencyLoan() {
+    if (this.gameOver || !this.insolvent) return false;
+    const principal = Number(document.getElementById('insolvency-loan-select')?.value);
+    const loan = this.loanManager.takeLoan(principal, this.getAverageCityHappiness());
+    if (!loan) return false;
+    this.treasury += principal;
+    this.updateHUD({ force: true });
+    this.updateInsolvencyModal();
+    // A single loan may not cover a deep deficit; the modal stays until the treasury is
+    // back above zero, so the player can borrow again or give up.
+    this.checkInsolvency();
+    return true;
+  }
+
+  declareBankruptcy() {
+    if (this.gameOver) return false;
+    if (!window.confirm('Declare bankruptcy? This ends the run immediately.')) return false;
+    this.clearInsolvency();
+    this.gameOver = true;
+    this.gameOverReason = 'bankruptcy';
+    this.setSpeed(0);
+    this.showGameOver();
+    return true;
+  }
+
+  updateFinancePanel() {
+    const treasuryText = formatMoney(this.treasury);
+    const financeTreasury = document.getElementById('finance-treasury');
+    const overworldTreasury = document.getElementById('overworld-treasury');
+    if (financeTreasury) financeTreasury.textContent = treasuryText;
+    if (overworldTreasury) overworldTreasury.textContent = treasuryText;
+
+    const principalSelect = document.getElementById('loan-principal-select');
+    const rate = document.getElementById('loan-interest-rate');
+    const payment = document.getElementById('loan-estimated-payment');
+    const average = document.getElementById('loan-average-happiness');
+    const balance = document.getElementById('loan-outstanding-balance');
+    const due = document.getElementById('loan-next-payment');
+    const button = document.getElementById('btn-take-loan');
+    const list = document.getElementById('loan-list');
+    if (!principalSelect || !rate || !payment || !average || !balance || !due || !button || !list || !this.loanManager) return;
+
+    const happiness = this.getAverageCityHappiness();
+    const activeLoans = this.loanManager.loans.length;
+    const terms = loanTerms(Number(principalSelect.value), happiness, activeLoans);
+    average.textContent = `${happiness.toFixed(1)} / 100`;
+    rate.textContent = `${(terms.interestRate * 100).toFixed(1)}%`;
+    const riskPremium = document.getElementById('loan-risk-premium');
+    if (riskPremium) riskPremium.textContent = `+${(LOAN_CONFIG.RISK_PREMIUM_PER_LOAN * activeLoans * 100).toFixed(0)}%`;
+    payment.textContent = formatMoney(terms.scheduledPayment);
+    balance.textContent = formatMoney(this.loanManager.outstandingBalance);
+    due.textContent = formatMoney(this.loanManager.scheduledPayment);
+    button.disabled = this.gameOver;
+    list.replaceChildren();
+    for (const loan of this.loanManager.loans) {
+      const row = document.createElement('div');
+      row.className = 'storage-item';
+      const title = document.createElement('span');
+      title.textContent = `${formatMoney(loan.principal)} · ${(loan.interestRate * 100).toFixed(1)}%`;
+      const value = document.createElement('strong');
+      value.textContent = `${formatMoney(loan.balance)} · ${loan.ticksRemaining.toLocaleString()} ticks`;
+      row.append(title, value);
+      list.appendChild(row);
+    }
+  }
+
+  checkDebtGameOver() {
+    if (this.gameOver || !shouldEndGame(this.loanManager.outstandingBalance, this.getCombinedPopulation(), this.hasEverHadPopulation)) return false;
+    this.gameOver = true;
+    this.setSpeed(0);
+    this.showGameOver();
+    return true;
+  }
+
+  showGameOver() {
+    this.setSpeed(0);
+    this.clearInsolvency();
+    const bankrupt = this.gameOverReason === 'bankruptcy';
+    const title = document.getElementById('game-over-title');
+    if (title) title.textContent = bankrupt ? 'Bankrupt' : 'Game over, all your people left';
+    const message = document.getElementById('game-over-message');
+    if (message) {
+      message.textContent = bankrupt
+        ? 'The treasury ran out and you chose to declare bankruptcy instead of borrowing. The run is over.'
+        : 'With loans outstanding and nobody left living in your cities, the world has given up on you.';
+    }
+    const modal = document.getElementById('game-over-modal');
+    if (modal) modal.hidden = false;
+  }
+
+  renderAlerts(serializedAlerts) {
+    const panel = document.getElementById('alerts-panel');
+    if (!panel) return;
+    let alerts = [];
+    try {
+      alerts = JSON.parse(serializedAlerts || '[]');
+    } catch {
+      alerts = [];
+    }
+    const active = new Set(alerts.map((alert) => alert.id));
+    for (const dismissed of this.dismissedAlerts) {
+      if (!active.has(dismissed)) this.dismissedAlerts.delete(dismissed);
+    }
+    const visible = alerts.filter((alert) => !this.dismissedAlerts.has(alert.id));
+    panel.replaceChildren();
+    for (const alert of visible) {
+      const row = document.createElement('div');
+      row.className = 'alert-row';
+      if (alert.x != null && alert.y != null) {
+        row.classList.add('alert-actionable');
+        row.title = 'Jump to location';
+        row.addEventListener('click', () => this.jumpToAlert(alert));
+      }
+      const text = document.createElement('span');
+      text.textContent = alert.message;
+      const dismiss = document.createElement('button');
+      dismiss.type = 'button';
+      dismiss.className = 'alert-dismiss';
+      dismiss.textContent = '×';
+      dismiss.title = 'Dismiss alert';
+      dismiss.setAttribute('aria-label', `Dismiss ${alert.message}`);
+      dismiss.addEventListener('click', (event) => {
+        event.stopPropagation();
+        this.dismissedAlerts.add(alert.id);
+        this.renderAlerts(JSON.stringify(alerts));
+      });
+      row.append(text, dismiss);
+      panel.appendChild(row);
+    }
+    panel.style.display = visible.length > 0 ? 'block' : 'none';
+  }
+
+  jumpToAlert(alert) {
+    const tile = this.grid.getTile(alert.x, alert.y);
+    if (!tile) return;
+    const worldX = -this.grid.width * TILE_SIZE / 2 + (tile.x + 0.5) * TILE_SIZE;
+    const worldY = -this.grid.height * TILE_SIZE / 2 + (tile.y + 0.5) * TILE_SIZE;
+    this.renderer.setCamera(-worldX * this.renderer.zoom, -worldY * this.renderer.zoom);
+    this.renderer.selectedTile = tile;
+    document.getElementById('inspector-panel')?.classList.add('visible');
+    this.updateInspector(tile, { force: true });
+    this.renderer.render(this.simulation);
+  }
+
+  // Tooltips live on <body> because the scrolling, backdrop-filtered header clips anything below it.
+  initHeaderTooltips() {
+    const tips = [];
+    document.querySelectorAll('.stat-item.has-tooltip').forEach((item) => {
+      const tip = item.querySelector('.stat-tooltip');
+      if (!tip) return;
+      tips.push({ item, tip });
+      document.body.appendChild(tip);
+      const show = () => {
+        const rect = item.getBoundingClientRect();
+        const half = tip.offsetWidth / 2;
+        const x = Math.min(window.innerWidth - half - 8, Math.max(half + 8, rect.left + rect.width / 2));
+        tip.style.left = `${x}px`;
+        tip.style.top = `${rect.bottom + 8}px`;
+        tip.classList.add('visible');
+      };
+      const hide = () => tip.classList.remove('visible');
+      item.addEventListener('mouseenter', show);
+      item.addEventListener('mouseleave', hide);
+      item.addEventListener('focus', show);
+      item.addEventListener('blur', hide);
+      item.addEventListener('click', () => (tip.classList.contains('visible') ? hide() : show()));
+    });
+    const hideAll = () => tips.forEach(({ tip }) => tip.classList.remove('visible'));
+    document.querySelector('.header-bar')?.addEventListener('scroll', hideAll, { passive: true });
+    document.querySelector('.stats-counter')?.addEventListener('scroll', hideAll, { passive: true });
+    window.addEventListener('resize', hideAll);
+    document.addEventListener('pointerdown', (e) => {
+      if (!tips.some(({ item, tip }) => item.contains(e.target) || tip.contains(e.target))) hideAll();
+    });
+  }
+
+  setActiveTool(tool) {
+    // The Inspect tool was removed: the default Pan tool inspects on click. Saves written
+    // before the change record 'inspect', so fold it into Pan.
+    const resolvedTool = tool === 'inspect' ? 'pan' : tool;
+    document.querySelectorAll('.tool-btn').forEach((b) => b.classList.remove('active'));
+    const btn = document.querySelector(`.tool-btn[data-tool="${resolvedTool}"]`);
+    if (btn) btn.classList.add('active');
+    this.activeTool = resolvedTool;
+    const overlayMode = resolvedTool === 'survey' ? 'survey' : 'normal';
+    document.querySelectorAll('.overlay-btn').forEach((b) => b.classList.toggle('active', b.dataset.mode === overlayMode));
+    this.renderer.setOverlayMode(overlayMode);
+    this.renderer.placementTool = ['pan', 'bulldoze'].includes(this.activeTool) ? null : this.activeTool;
+    if (this.activeTool !== 'pan') {
+      document.getElementById('inspector-panel').classList.remove('visible');
+      this.renderer.selectedTile = null;
+    }
+    this.updateBuildInfoPanel(this.activeTool);
+    // On mobile, close the off-canvas tool drawer once a tool is picked so the map is visible again.
+    document.querySelector('.tool-drawer')?.classList.remove('mobile-open');
+  }
+
+  bindCanvasEvents() {
+    const REPEATABLE_DRAG_TOOLS = new Set([
+      'road', 'bridge', 'tunnel',
+      'zone_r', 'zone_c', 'zone_i', 'zone_a',
+      'bulldoze',
+    ]);
+
+    this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+    this.canvas.addEventListener('mousedown', (e) => {
+      if (e.button === 2) {
+        this.isRightMouseDown = true;
+        this.rightDownStartX = e.clientX;
+        this.rightDownStartY = e.clientY;
+        this.rightHasDragged = false;
+      } else if (e.button === 0) {
+        this.isMouseDown = true;
+        this.mouseDownStartX = e.clientX;
+        this.mouseDownStartY = e.clientY;
+        this.mouseHasDragged = false;
+        if (this.activeTool !== 'pan') {
+          this.handleCanvasClick(e);
+        }
+      }
+      this.lastMouseX = e.clientX;
+      this.lastMouseY = e.clientY;
+    });
+
+    window.addEventListener('mouseup', (e) => {
+      if (e.button === 2) {
+        this.isRightMouseDown = false;
+        // A right click that did not drag clears the current tool and tile selection.
+        if (!this.rightHasDragged) this.clearSelection();
+      }
+      if (e.button === 0) {
+        if (this.isMouseDown && this.activeTool === 'pan' && !this.mouseHasDragged) {
+          this.handleCanvasClick(e);
+        }
+        this.isMouseDown = false;
+      }
+    });
+
+    this.canvas.addEventListener('mousemove', (e) => {
+      if (this.isRightMouseDown || (this.isMouseDown && this.activeTool === 'pan')) {
+        const dx = e.clientX - this.lastMouseX;
+        const dy = e.clientY - this.lastMouseY;
+        this.renderer.setCamera(this.renderer.cameraX + dx, this.renderer.cameraY + dy);
+        if (this.isRightMouseDown) {
+          if (Math.hypot(e.clientX - this.rightDownStartX, e.clientY - this.rightDownStartY) > 5) {
+            this.rightHasDragged = true;
+          }
+        } else if (Math.hypot(e.clientX - this.mouseDownStartX, e.clientY - this.mouseDownStartY) > 5) {
+          this.mouseHasDragged = true;
+        }
+      } else {
+        const point = this.canvasPoint(e.clientX, e.clientY);
+        const tile = this.screenToTile(point.x, point.y);
+        this.renderer.hoverTile = tile;
+        if (this.isMouseDown && REPEATABLE_DRAG_TOOLS.has(this.activeTool)) {
+          this.handleCanvasClick(e);
+        }
+      }
+
+      this.lastMouseX = e.clientX;
+      this.lastMouseY = e.clientY;
+    });
+
+    this.canvas.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
+      this.zoomAt(e.clientX, e.clientY, this.renderer.zoom * zoomFactor);
+    });
+
+    // Touch support: single-finger drag always pans the camera (never builds),
+    // two-finger pinch zooms around the pinch midpoint, and a tap that didn't
+    // move performs the active tool's action.
+    const pinchState = (touches) => {
+      const [a, b] = [touches[0], touches[1]];
+      return {
+        dist: Math.hypot(b.clientX - a.clientX, b.clientY - a.clientY) || 1,
+        midX: (a.clientX + b.clientX) / 2,
+        midY: (a.clientY + b.clientY) / 2,
+      };
+    };
+
+    this.canvas.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      if (e.touches.length >= 2) {
+        this.pinch = { ...pinchState(e.touches), zoom: this.renderer.zoom };
+        this.touchMoved = true;
+        return;
+      }
+      const touch = e.touches[0];
+      this.touchStartX = touch.clientX;
+      this.touchStartY = touch.clientY;
+      this.lastTouchX = touch.clientX;
+      this.lastTouchY = touch.clientY;
+      this.touchMoved = false;
+    }, { passive: false });
+
+    this.canvas.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      if (e.touches.length >= 2 && this.pinch) {
+        const now = pinchState(e.touches);
+        this.renderer.setCamera(this.renderer.cameraX + now.midX - this.pinch.midX, this.renderer.cameraY + now.midY - this.pinch.midY);
+        this.zoomAt(now.midX, now.midY, this.pinch.zoom * (now.dist / this.pinch.dist));
+        this.pinch.midX = now.midX;
+        this.pinch.midY = now.midY;
+        return;
+      }
+      if (e.touches.length !== 1) return;
+      const touch = e.touches[0];
+      const dx = touch.clientX - this.lastTouchX;
+      const dy = touch.clientY - this.lastTouchY;
+      this.renderer.setCamera(this.renderer.cameraX + dx, this.renderer.cameraY + dy);
+
+      const totalDx = touch.clientX - this.touchStartX;
+      const totalDy = touch.clientY - this.touchStartY;
+      if (Math.hypot(totalDx, totalDy) > 8) {
+        this.touchMoved = true;
+      }
+
+      this.lastTouchX = touch.clientX;
+      this.lastTouchY = touch.clientY;
+    }, { passive: false });
+
+    this.canvas.addEventListener('touchend', (e) => {
+      e.preventDefault();
+      if (e.touches.length < 2) this.pinch = null;
+      if (e.touches.length === 1) {
+        // Continue panning with the remaining finger without a jump.
+        this.lastTouchX = e.touches[0].clientX;
+        this.lastTouchY = e.touches[0].clientY;
+        return;
+      }
+      if (!this.touchMoved && e.changedTouches.length === 1) {
+        const touch = e.changedTouches[0];
+        this.handleCanvasClick({ clientX: touch.clientX, clientY: touch.clientY });
+      }
+      this.touchMoved = false;
+    }, { passive: false });
+  }
+
+  canvasPoint(clientX, clientY) {
+    const rect = this.canvas.getBoundingClientRect();
+    return {
+      x: (clientX - rect.left) * this.canvas.width / rect.width,
+      y: (clientY - rect.top) * this.canvas.height / rect.height,
+    };
+  }
+
+  zoomAt(clientX, clientY, targetZoom) {
+    const { x: screenX, y: screenY } = this.canvasPoint(clientX, clientY);
+    const oldZoom = this.renderer.zoom;
+    const worldX = (screenX - this.canvas.width / 2 - this.renderer.cameraX) / oldZoom;
+    const worldY = (screenY - this.canvas.height / 2 - this.renderer.cameraY) / oldZoom;
+    const newZoom = Math.min(RENDERER_CONFIG.ZOOM_MAX, Math.max(RENDERER_CONFIG.ZOOM_MIN, targetZoom));
+    this.renderer.setCamera(
+      screenX - this.canvas.width / 2 - worldX * newZoom,
+      screenY - this.canvas.height / 2 - worldY * newZoom,
+      newZoom,
+    );
+  }
+
+  // Right click without dragging deselects everything: the current build tool, the selected
+  // tile, and the inspector, leaving the default Pan/inspect tool active.
+  clearSelection() {
+    this.renderer.selectedTile = null;
+    this.renderer.hoverTile = null;
+    document.getElementById('inspector-panel')?.classList.remove('visible');
+    document.getElementById('build-info-panel')?.classList.remove('visible');
+    this.setActiveTool('pan');
+  }
+
+  screenToTile(screenX, screenY) {
+    const mapPixelWidth = this.grid.width * TILE_SIZE;
+    const mapPixelHeight = this.grid.height * TILE_SIZE;
+    const startX = -mapPixelWidth / 2;
+    const startY = -mapPixelHeight / 2;
+
+    const worldX = (screenX - this.canvas.width / 2 - this.renderer.cameraX) / this.renderer.zoom - startX;
+    const worldY = (screenY - this.canvas.height / 2 - this.renderer.cameraY) / this.renderer.zoom - startY;
+
+    const tileX = Math.floor(worldX / TILE_SIZE);
+    const tileY = Math.floor(worldY / TILE_SIZE);
+
+    return this.grid.getTile(tileX, tileY);
+  }
+
+  handleCanvasClick(e) {
+    const point = this.canvasPoint(e.clientX, e.clientY);
+    const tile = this.screenToTile(point.x, point.y);
+
+    if (!tile) {
+      this.renderer.selectedTile = null;
+      document.getElementById('inspector-panel').classList.remove('visible');
+      return;
+    }
+
+    if (this.activeTool === 'pan') {
+      // Pan is the default tool: a click inspects whatever tile it lands on.
+      this.renderer.selectedTile = tile;
+      document.getElementById('inspector-panel').classList.add('visible');
+      this.updateInspector(tile, { force: true });
+      return;
+    }
+
+    this.renderer.selectedTile = null;
+    document.getElementById('inspector-panel').classList.remove('visible');
+
+    let success = false;
+    let cost = 0;
+
+    if (this.activeTool === 'road') {
+      cost = COSTS.ROAD;
+      if (this.treasury >= cost && this.grid.placeRoad(tile.x, tile.y)) {
+        success = true;
+      }
+    } else if (this.activeTool === 'bridge') {
+      cost = COSTS.BRIDGE;
+      if (this.treasury >= cost && this.grid.placeBridge(tile.x, tile.y)) {
+        success = true;
+      }
+    } else if (this.activeTool === 'tunnel') {
+      cost = COSTS.TUNNEL;
+      if (this.treasury >= cost && this.grid.placeTunnel(tile.x, tile.y)) {
+        success = true;
+      }
+    } else if (this.activeTool === 'zone_r') {
+      cost = COSTS.ZONE;
+      if (this.treasury >= cost && this.grid.placeZone(tile.x, tile.y, ZONE.RESIDENTIAL)) {
+        success = true;
+      }
+    } else if (this.activeTool === 'zone_c') {
+      cost = COSTS.ZONE;
+      if (this.treasury >= cost && this.grid.placeZone(tile.x, tile.y, ZONE.COMMERCIAL)) {
+        success = true;
+      }
+    } else if (this.activeTool === 'zone_i') {
+      cost = COSTS.INDUSTRIAL_ZONE;
+      if (this.treasury >= cost && this.grid.placeZone(tile.x, tile.y, ZONE.INDUSTRIAL)) {
+        success = true;
+      }
+    } else if (this.activeTool === 'zone_a') {
+      cost = COSTS.AGRICULTURAL_ZONE;
+      if (this.treasury >= cost && this.grid.placeZone(tile.x, tile.y, ZONE.AGRICULTURAL)) {
+        success = true;
+      }
+    } else if (this.activeTool === 'survey') {
+      if (this.grid.startSurvey(tile.x, tile.y)) {
+        success = true;
+      }
+    } else if (this.activeTool.startsWith('producer_')) {
+      const pType = producerTypeForTool(this.activeTool);
+      const config = PRODUCER_CONFIG[pType];
+      const buildCost = config?.cost;
+      if (config && this.treasury >= buildCost && this.grid.canBuildProducer(tile.x, tile.y, pType)) {
+        if (this.grid.placeProducer(tile.x, tile.y, pType, config.capacity)) {
+          cost = buildCost;
+          success = true;
+        }
+      }
+    } else if (this.activeTool === 'bulldoze') {
+      cost = COSTS.BULLDOZE;
+      if (this.treasury >= cost && this.grid.bulldoze(tile.x, tile.y)) {
+        success = true;
+      }
+    }
+
+    if (success) {
+      this.treasury -= cost;
+      this.simulation.tick(false);
+      this.updateHUD({ force: true });
+      if (this.renderer.selectedTile) {
+        this.updateInspector(this.renderer.selectedTile, { force: true });
+      }
+      // Only single-placement buildings (producers) auto-revert to Pan; repeatable
+      // tools like roads/zones/bulldoze stay active so you can keep placing.
+      if (this.isMobileLayout() && this.autoSwitchToPan && this.activeTool.startsWith('producer_')) {
+        this.setActiveTool('pan');
+      }
+    }
+
+  }
+
+  isMobileLayout() {
+    return typeof window !== 'undefined' && window.matchMedia('(max-width: 820px) and (hover: none) and (pointer: coarse)').matches;
+  }
+
+  upgradeSelectedZone() {
+    const tile = this.renderer.selectedTile;
+    if (!this.grid.canUpgradeZone(tile)) return false;
+    const cost = getZoneUpgradeCost(tile.zone, tile.density);
+    if (cost <= 0 || this.treasury < cost || !this.grid.upgradeZone(tile)) return false;
+    this.treasury -= cost;
+    this.simulation.tick(false);
+    this.updateHUD({ force: true });
+    this.updateInspector(tile, { force: true });
+    return true;
+  }
+
+  upgradeSelectedProducer() {
+    const tile = this.renderer.selectedTile;
+    if (!this.grid.canUpgradeProducer(tile)) return false;
+    const producer = tile.producer;
+    const cost = getProducerUpgradeCost(producer.type, getProducerTier(producer));
+    if (cost <= 0 || this.treasury < cost || !this.grid.upgradeProducer(tile)) return false;
+    this.treasury -= cost;
+    this.simulation.tick(false);
+    this.updateHUD({ force: true });
+    this.updateInspector(tile, { force: true });
+    return true;
+  }
+
+  updateBuildInfoPanel(tool) {
+    const panel = document.getElementById('build-info-panel');
+    const title = document.getElementById('build-info-title');
+    const body = document.getElementById('build-info-body');
+    const row = (label, val) => `<div class="info-row"><span class="label">${label}:</span><span class="val">${val}</span></div>`;
+
+    if (tool.startsWith('producer_')) {
+      const pType = producerTypeForTool(tool);
+      const config = PRODUCER_CONFIG[pType];
+      if (!config) {
+        panel.classList.remove('visible');
+        return;
+      }
+
+      title.textContent = config.name;
+      const rows = [row('Cost', `$${config.cost.toLocaleString()}`)];
+      if (POWER_PRODUCER_TYPES.includes(pType) || pType === PRODUCER_TYPE.WATER_TOWER || pType === PRODUCER_TYPE.SEWAGE_PLANT) {
+        rows.push(row('Operating / Hour', `$${(UTILITY_OPERATING_COST * TICKS_PER_HOUR).toLocaleString()}`));
+      } else if (pType === PRODUCER_TYPE.DESALINATION_PLANT) {
+        rows.push(row('Operating / Hour', `$${(DESALINATION_OPERATING_COST * TICKS_PER_HOUR).toLocaleString()} (three pumps' worth)`));
+      } else if (pType === PRODUCER_TYPE.SURVEY_STATION) {
+        rows.push(row('Operating / Hour', `$0 idle / $${SURVEY_COST_PER_TICK * TICKS_PER_HOUR} surveying`));
+      } else if (SERVICE_CONFIG[pType]) {
+        const hourly = [DENSITY.LIGHT, DENSITY.MEDIUM, DENSITY.HIGH].map((density) => {
+          const staff = config.jobs[density];
+          return ServiceManager.getOperatingCost(pType, density, staff, staff) * TICKS_PER_HOUR;
+        });
+        rows.push(row('Operating / Hour (T1/T2/T3)', hourly.some(Boolean)
+          ? `${hourly.map((cost) => `$${cost.toLocaleString()}`).join(' / ')} (full staff & budget; actual varies)`
+          : '$0 (no direct running cost)'));
+      } else if (pType === PRODUCER_TYPE.REFINERY) {
+        rows.push(row('Operating / Hour', '$0 direct (uses oil)'));
+      }
+      if (config.requiresWaterAdjacent) rows.push(row('Requires', config.allowsSaltWater ? 'Adjacent to fresh or salt water' : 'Adjacent to fresh water'));
+      if (config.requiresSaltWaterAdjacent) rows.push(row('Requires', 'Adjacent to salt water (coastal beach)'));
+
+      if (config.utility === 'power') {
+        if (pType === PRODUCER_TYPE.WINDMILL) {
+          rows.push(row('Peak Output (T1/T2/T3)', `${getWindPeakForTier(1)} / ${getWindPeakForTier(2)} / ${getWindPeakForTier(3)} MW (scales with wind intensity)`));
+          rows.push(row('Upgrade Cost (T2/T3)', `$${getPowerUpgradeCost(pType, 1).toLocaleString()} / $${getPowerUpgradeCost(pType, 2).toLocaleString()}`));
+          rows.push(row('Requires', 'Adjacent (incl. diagonals) to Battery Storage to transmit power'));
+        } else if (pType === PRODUCER_TYPE.SOLAR_PANEL) {
+          rows.push(row('Peak Output (T1/T2/T3)', `${getSolarPeakForTier(1)} / ${getSolarPeakForTier(2)} / ${getSolarPeakForTier(3)} (day only, peaks at noon, reduced by cloud cover)`));
+          rows.push(row('Upgrade Cost (T2/T3)', `$${getPowerUpgradeCost(pType, 1).toLocaleString()} / $${getPowerUpgradeCost(pType, 2).toLocaleString()}`));
+          rows.push(row('Requires', 'Adjacent (incl. diagonals) to Battery Storage to transmit power'));
+        } else if (pType === PRODUCER_TYPE.BATTERY) {
+          rows.push(row('Storage (T1/T2/T3)', `${getBatteryStorageForTier(1)} / ${getBatteryStorageForTier(2)} / ${getBatteryStorageForTier(3)}`));
+          rows.push(row('Discharge (T1/T2/T3)', `${getBatteryStorageForTier(1) / BATTERY_CONFIG.DISCHARGE_DIVISOR} / ${getBatteryStorageForTier(2) / BATTERY_CONFIG.DISCHARGE_DIVISOR} / ${getBatteryStorageForTier(3) / BATTERY_CONFIG.DISCHARGE_DIVISOR} per tick`));
+          rows.push(row('Upgrade Cost (T2/T3)', `$${getPowerUpgradeCost(pType, 1).toLocaleString()} / $${getPowerUpgradeCost(pType, 2).toLocaleString()}`));
+        } else {
+          rows.push(row('Power Output', `${config.capacity}`));
+        }
+        if (pType === PRODUCER_TYPE.NUCLEAR_PLANT) {
+          rows.push(row('Requires', 'Uranium (stored in Ore Warehouse)'));
+          rows.push(row('Uranium Use', `Up to ${RESOURCE_CONFIG.NUCLEAR_URANIUM_PER_TICK} / hour at full output; scales with power generated`));
+        }
+        if (pType === PRODUCER_TYPE.COAL_PLANT) {
+          rows.push(row('Pollution', `Emits ${COAL_CONFIG.EMISSION} within ${COAL_CONFIG.RADIUS} tiles`));
+        } else if (pType !== PRODUCER_TYPE.BATTERY) {
+          rows.push(row('Pollution', 'None'));
+        }
+      } else if (config.utility === 'water' || config.utility === 'sewage') {
+        if (pType === PRODUCER_TYPE.DESALINATION_PLANT) {
+          rows.push(row('Water Output', `${DESALINATION_CONFIG.CAPACITY} (about two fully upgraded pumps)`));
+          rows.push(row('Power Use', `0 idle up to ${DESALINATION_CONFIG.PEAK_POWER} at full output`));
+          rows.push(row('Supply Order', 'Serves only what water pumps cannot; never first'));
+          rows.push(row('Polluted Intake', 'Any adjacent polluted sea water contaminates the plant'));
+        } else {
+          const capacityForTier = pType === PRODUCER_TYPE.WATER_TOWER ? getWaterCapacityForTier : getSewageCapacityForTier;
+          rows.push(row('Capacity (T1/T2/T3)', `${capacityForTier(1)} / ${capacityForTier(2)} / ${capacityForTier(3)}`));
+          rows.push(row('Upgrade Cost (T2/T3)', `$${getPowerUpgradeCost(pType, 1).toLocaleString()} / $${getPowerUpgradeCost(pType, 2).toLocaleString()}`));
+        }
+      } else if (config.jobs) {
+        if (isTieredService(pType)) {
+          rows.push(row('Staff Cap (T1/T2/T3)', `${getServiceTierStat('maxStaff', 1)} / ${getServiceTierStat('maxStaff', 2)} / ${getServiceTierStat('maxStaff', 3)}`));
+          rows.push(row('Coverage Road/Side (T1/T2/T3)', `${getServiceTierStat('roadReach', 1)}/${getServiceTierStat('sideReach', 1)} · ${getServiceTierStat('roadReach', 2)}/${getServiceTierStat('sideReach', 2)} · ${getServiceTierStat('roadReach', 3)}/${getServiceTierStat('sideReach', 3)} (+1 per extra staff)`));
+          rows.push(row('Vehicles (T1/T2/T3)', `${getServiceTierStat('vehicles', 1)} / ${getServiceTierStat('vehicles', 2)} / ${getServiceTierStat('vehicles', 3)}`));
+          rows.push(row('Upgrade Cost (T2/T3)', `$${getServiceUpgradeCost(pType, 1).toLocaleString()} / $${getServiceUpgradeCost(pType, 2).toLocaleString()}`));
+          if (pType === PRODUCER_TYPE.POLICE_STATION) {
+            rows.push(row('Cells (T1/T2/T3)', `${getServiceTierStat('cells', 1)} / ${getServiceTierStat('cells', 2)} / ${getServiceTierStat('cells', 3)}`));
+          }
+        } else {
+          rows.push(row('Jobs (Light/Medium/High)', `${config.jobs.light} / ${config.jobs.medium} / ${config.jobs.high}`));
+          if (config.radius) rows.push(row('Coverage Radius (L/M/H)', `${config.radius.light} / ${config.radius.medium} / ${config.radius.high}`));
+        }
+        if (pType === PRODUCER_TYPE.HOSPITAL) {
+          const cap = (staff) => staff * MEDICAL_CONFIG.HOSPITAL_PATIENT_CAPACITY_PER_JOB;
+          rows.push(row('Patient Capacity (T1/T2/T3)', `${cap(getServiceTierStat('maxStaff', 1))} / ${cap(getServiceTierStat('maxStaff', 2))} / ${cap(getServiceTierStat('maxStaff', 3))}`));
+        } else if (pType === PRODUCER_TYPE.SCHOOL || pType === PRODUCER_TYPE.UNIVERSITY) {
+          const seats = (jobs) => jobs * EDUCATION_CONFIG.STUDENT_CAPACITY_PER_JOB;
+          rows.push(row('Student Seats (L/M/H)', `${seats(config.jobs.light)} / ${seats(config.jobs.medium)} / ${seats(config.jobs.high)} at full staff`));
+          rows.push(pType === PRODUCER_TYPE.SCHOOL
+            ? row('Tax Bonus', `Up to +${EDUCATION_CONFIG.MAX_SCHOOL_TAX_BONUS * 100}% city tax when seats cover 15% of population`)
+            : row('Tax Bonus', `Up to +${EDUCATION_CONFIG.MAX_UNI_TAX_BONUS * 100}% city tax when seats cover 5% of population (stacks with schools)`));
+        } else if (pType === PRODUCER_TYPE.OIL_DERRICK) {
+          rows.push(row('Output', 'Extracts up to 100 oil per tick'));
+        } else if (pType === PRODUCER_TYPE.REFINERY) {
+          rows.push(row('Processing', 'Converts up to 100 oil into 50 fuel per tick'));
+        }
+      } else if (config.surveyDuration) {
+        rows.push(row('Survey Duration (Flat/Mountain)', `${config.surveyDuration.standard} / ${config.surveyDuration.mountain} ticks`));
+      }
+
+      body.innerHTML = rows.join('');
+      panel.classList.add('visible');
+    } else if (tool === 'bridge' || tool === 'tunnel' || tool === 'road') {
+      const cost = tool === 'bridge' ? COSTS.BRIDGE : tool === 'tunnel' ? COSTS.TUNNEL : COSTS.ROAD;
+      title.textContent = tool === 'bridge' ? 'Bridge' : tool === 'tunnel' ? 'Tunnel' : 'Road';
+      const rows = [row('Cost', `$${cost.toLocaleString()}`)];
+      if (tool === 'bridge') {
+        rows.push(row('Crosses', 'Fresh water, frozen water, and the sea'));
+        rows.push(row('Max Span', `${COAST_CONFIG.BRIDGE_MAX_TILES} tiles of open water; wider crossings need another route`));
+      } else if (tool === 'tunnel') {
+        rows.push(row('Requires', 'Mountain tile'));
+      }
+      body.innerHTML = rows.join('');
+      panel.classList.add('visible');
+    } else if (tool === 'zone_r' || tool === 'zone_c' || tool === 'zone_i' || tool === 'zone_a') {
+      const zoneType = tool === 'zone_r' ? ZONE.RESIDENTIAL
+        : tool === 'zone_c' ? ZONE.COMMERCIAL
+        : tool === 'zone_a' ? ZONE.AGRICULTURAL
+        : ZONE.INDUSTRIAL;
+      const cost = tool === 'zone_i' || tool === 'zone_a' ? (tool === 'zone_a' ? COSTS.AGRICULTURAL_ZONE : COSTS.INDUSTRIAL_ZONE) : COSTS.ZONE;
+      title.textContent = tool === 'zone_r' ? 'Residential Zone'
+        : tool === 'zone_c' ? 'Commercial Zone'
+        : tool === 'zone_a' ? 'Agricultural Zone'
+        : 'Industrial Zone';
+
+      const rows = [row('Cost', `$${cost.toLocaleString()}`)];
+      if (zoneType === ZONE.RESIDENTIAL) {
+        rows.push(row('Population (Light/Medium/High)', `${RESIDENTIAL_CAPACITY[DENSITY.LIGHT]} / ${RESIDENTIAL_CAPACITY[DENSITY.MEDIUM]} / ${RESIDENTIAL_CAPACITY[DENSITY.HIGH]}`));
+      } else {
+        const jobs = JOBS_PROVIDED[zoneType];
+        rows.push(row('Jobs (Light/Medium/High)', `${jobs[DENSITY.LIGHT]} / ${jobs[DENSITY.MEDIUM]} / ${jobs[DENSITY.HIGH]}`));
+      }
+      if (zoneType === ZONE.INDUSTRIAL) {
+        rows.push(row('Pollution (Light/Medium/High)', `${POLLUTION_CONFIG.INDUSTRIAL_EMISSION.light} / ${POLLUTION_CONFIG.INDUSTRIAL_EMISSION.medium} / ${POLLUTION_CONFIG.INDUSTRIAL_EMISSION.high}`));
+        rows.push(row('Pollution Radius (L/M/H)', `${POLLUTION_CONFIG.INDUSTRIAL_RADIUS.light} / ${POLLUTION_CONFIG.INDUSTRIAL_RADIUS.medium} / ${POLLUTION_CONFIG.INDUSTRIAL_RADIUS.high}`));
+      }
+      if (zoneType === ZONE.AGRICULTURAL) {
+        rows.push(row('Food yield (L/M/H)', '4 / 20 / 80 at full jobs'));
+        rows.push(row('Fuel use', '4 per tick at full occupancy'));
+      }
+      if (zoneType === ZONE.COMMERCIAL) {
+        rows.push(row('Consumer goods', 'City goods supply doubles commercial tax'));
+        rows.push(row('Fuel use', '2 per tick at full occupancy'));
+      }
+      if (zoneType === ZONE.RESIDENTIAL) {
+        rows.push(row('Fuel use', '1 per tick at full occupancy'));
+      }
+      if (zoneType === ZONE.INDUSTRIAL) {
+        rows.push(row('Fuel use', '4 per tick at full occupancy'));
+      }
+
+      body.innerHTML = rows.join('');
+      panel.classList.add('visible');
+    } else {
+      panel.classList.remove('visible');
+    }
+  }
+
+  updateInspector(tile, { force = false } = {}) {
+    if (!tile) return false;
+    const started = this.enableUiTiming ? nowMs() : 0;
+    const signature = buildInspectorSignature(this.grid, tile, this.simulation.resourceManager, this.treasury);
+    const differentTile = this._inspectorTile !== tile;
+    const changed = signature !== this._inspectorSignature;
+    const cadenceMs = getHudCadenceMs(this.isMobileLayout());
+    const at = nowMs();
+    if (!shouldRefreshUi({
+      force: force || differentTile,
+      fieldCount: changed ? 1 : 0,
+      now: at,
+      lastAppliedAt: this._inspectorAppliedAt,
+      cadenceMs,
+    })) {
+      this._pendingInspectorTile = changed ? tile : null;
+      recordUiTiming(this.inspectorTiming, this.enableUiTiming ? nowMs() - started : 0, false);
+      return false;
+    }
+
+    document.getElementById('inspect-coord').textContent = `(${tile.x}, ${tile.y})`;
+    document.getElementById('inspect-terrain').textContent = formatTerrainName(tile.terrain);
+
+    const effectRow = document.getElementById('terrain-effect-row');
+    const effectVal = document.getElementById('inspect-terrain-effect');
+    if (tile.terrain === TERRAIN.FOREST) {
+      effectRow.style.display = '';
+      effectVal.textContent = `-${FOREST_POLLUTION_ABSORPTION} Pollution Absorption / +1 Nearby Residential Growth`;
+    } else {
+      effectRow.style.display = 'none';
+    }
+    document.getElementById('inspect-road').textContent = tile.hasBridge ? 'Bridge' : tile.hasRoad ? 'Yes' : 'No';
+    document.getElementById('inspect-zone').textContent = tile.zone;
+    document.getElementById('inspect-density').textContent = tile.zone !== ZONE.NONE ? tile.density : 'N/A';
+
+    const capacityRow = document.getElementById('zone-capacity-row');
+    const capacityStatus = document.getElementById('zone-capacity-status');
+    const upgradeButton = document.getElementById('btn-upgrade-zone');
+    const atCapacity = !tile.destroyed && isZoneAtCapacity(tile);
+    const upgradeCost = getZoneUpgradeCost(tile.zone, tile.density);
+    const canUpgrade = this.grid.canUpgradeZone(tile);
+    if (capacityRow && capacityStatus && upgradeButton) {
+      // The "full" marker stays informational; the upgrade is always purchasable.
+      capacityRow.hidden = !canUpgrade && !atCapacity;
+      upgradeButton.hidden = !canUpgrade;
+      upgradeButton.disabled = !canUpgrade || this.treasury < upgradeCost;
+      upgradeButton.textContent = `Upgrade ($${upgradeCost.toLocaleString()})`;
+      capacityStatus.textContent = tile.density === DENSITY.HIGH
+        ? 'Maximum tier'
+        : atCapacity
+          ? (this.treasury < upgradeCost ? 'Full · insufficient funds' : 'Full capacity')
+          : 'Upgrade available';
+    }
+
+    const popJobsEl = document.getElementById('inspect-pop-jobs');
+    const recipeRow = document.getElementById('industrial-recipe-row');
+    const recipeSelect = document.getElementById('industrial-recipe-select');
+    const producerRecipeRow = document.getElementById('producer-recipe-row');
+    const producerRecipeSelect = document.getElementById('producer-recipe-select');
+    const storageRow = document.getElementById('storage-type-row');
+    const storageSelect = document.getElementById('storage-type-select');
+    const demographicsRow = document.getElementById('demographics-row');
+    const demographicsVal = document.getElementById('inspect-demographics');
+    if (popJobsEl) {
+      if (tile.zone === ZONE.RESIDENTIAL) {
+        const cur = (tile.population || 0).toLocaleString();
+        const max = (tile.maxPopulation || RESIDENTIAL_CAPACITY[tile.density] || 0).toLocaleString();
+        popJobsEl.textContent = `${cur} / ${max} residents`;
+        const demo = splitDemographics(tile.population || 0);
+        if (demographicsRow && demographicsVal) {
+          demographicsRow.style.display = '';
+          demographicsVal.textContent = `${demo.workforce} / ${demo.schoolAge} / ${demo.retirees}`;
+        }
+      } else if (tile.zone === ZONE.COMMERCIAL || tile.zone === ZONE.INDUSTRIAL || tile.zone === ZONE.AGRICULTURAL) {
+        if (demographicsRow) demographicsRow.style.display = 'none';
+        const filled = (tile.filledJobs || 0).toLocaleString();
+        const total = (tile.totalJobs || JOBS_PROVIDED[tile.zone]?.[tile.density] || 0).toLocaleString();
+        popJobsEl.textContent = `${filled} / ${total} jobs filled`;
+      } else if (tile.producer && PRODUCER_CONFIG[tile.producer.type]?.jobs) {
+        if (demographicsRow) demographicsRow.style.display = 'none';
+        const filled = (tile.producer.filledJobs || 0).toLocaleString();
+        const total = (tile.producer.totalJobs || 0).toLocaleString();
+        popJobsEl.textContent = `${filled} / ${total} jobs filled`;
+      } else {
+        if (demographicsRow) demographicsRow.style.display = 'none';
+        popJobsEl.textContent = 'N/A';
+      }
+    }
+    const foodRow = document.getElementById('food-row');
+    const foodFlow = getTileFoodFlow(tile);
+    if (foodRow) {
+      foodRow.style.display = foodFlow ? '' : 'none';
+      document.getElementById('inspect-food').textContent = foodFlow || 'N/A';
+    }
+    if (recipeRow && recipeSelect) {
+      if (tile.zone === ZONE.INDUSTRIAL) {
+        recipeRow.style.display = '';
+        recipeSelect.innerHTML = recipeOptions(INDUSTRIAL_RECIPE_IDS);
+        recipeSelect.value = RECIPES[tile.recipe] ? tile.recipe : DEFAULT_INDUSTRIAL_RECIPE;
+        recipeSelect.onchange = () => { tile.recipe = recipeSelect.value; };
+      } else {
+        recipeRow.style.display = 'none';
+      }
+    }
+    if (producerRecipeRow && producerRecipeSelect) {
+      const isSmelter = tile.producer?.type === PRODUCER_TYPE.SMELTER;
+      // Only a smelter runs recipes; every other producer hides the row.
+      if (isSmelter) {
+        producerRecipeRow.style.display = '';
+        producerRecipeSelect.innerHTML = recipeOptions([ALL_EVENLY, ...SMELTER_RECIPE_IDS]);
+        const selected = tile.producer.recipe || ALL_EVENLY;
+        producerRecipeSelect.value = selected === ALL_EVENLY || RECIPES[selected] ? selected : ALL_EVENLY;
+        producerRecipeSelect.onchange = () => { tile.producer.recipe = producerRecipeSelect.value; };
+      } else {
+        producerRecipeRow.style.display = 'none';
+      }
+    }
+    if (storageRow && storageSelect) {
+      const storageTypes = tile.producer && PRODUCER_CONFIG[tile.producer.type]?.storageTypes;
+      if (storageTypes) {
+        storageRow.style.display = '';
+        storageSelect.innerHTML = storageTypes.map((type) => `<option value="${type}">${type.toUpperCase()}</option>`).join('');
+        storageSelect.value = tile.producer.storageType || storageTypes[0];
+        storageSelect.onchange = () => { tile.producer.storageType = storageSelect.value; };
+      } else {
+        storageRow.style.display = 'none';
+      }
+    }
+
+    document.getElementById('inspect-growth').textContent = tile.zone !== ZONE.NONE ? Number(tile.growthScore || 0).toFixed(2) : 'N/A';
+    document.getElementById('inspect-pollution').textContent = tile.pollution;
+
+    const crime = tile.crime || 0;
+    const crimeLevel = crime <= 0 ? 'Safe' : crime < CRIME_CONFIG.CRIME_PENALTY_THRESHOLD ? 'Moderate' : 'High Crime';
+    document.getElementById('inspect-crime').textContent = crimeLevel;
+    const crimeTaxPenalty = Math.min(CRIME_CONFIG.MAX_TAX_LOSS_RATIO, crime * CRIME_CONFIG.TAX_LOSS_PER_CRIME_POINT);
+    document.getElementById('inspect-crime-tax-loss').textContent = `-${Math.round(crimeTaxPenalty * 100)}%`;
+    const repairPct = Math.round((tile.fireRepair ?? 1) * 100);
+    document.getElementById('inspect-fire').textContent = tile.onFire
+      ? `Yes (Damage: ${Math.min(100, Math.round(tile.fireDamage || 0))}%)`
+      : repairPct < 100
+        ? `Repairing (${repairPct}% use)`
+        : 'No';
+    const oreEl = document.getElementById('inspect-ore');
+    if (oreEl) {
+      if (tile.oreDiscovered) {
+        oreEl.textContent = tile.discoveredOre ? tile.discoveredOre.replace('_', ' ') : 'No deposit';
+      } else if (tile.surveyingBy) {
+        oreEl.textContent = `Surveying ${tile.surveyProgress} / ${tile.surveyRequired} ticks`;
+      } else {
+        oreEl.textContent = 'Not surveyed';
+      }
+    }
+
+    const connectionStatus = tile.producer
+      ? getProducerConnectionStatus(this.grid, tile.producer)
+      : null;
+    const isBatteryDependent = connectionStatus?.isBatteryDependent;
+    const isConnected = connectionStatus ? connectionStatus.isConnected : this.grid.isRoadAdjacent(tile.x, tile.y);
+    document.getElementById('inspect-connected').textContent = isConnected ? 'Yes' : 'No';
+
+    document.getElementById('inspect-power').textContent = getTileUtilityStatus(this.grid, tile, 'power');
+    document.getElementById('inspect-water').textContent = getTileUtilityStatus(this.grid, tile, 'water');
+    document.getElementById('inspect-sewage').textContent = getTileUtilityStatus(this.grid, tile, 'sewage');
+
+    const prodPanel = document.getElementById('producer-details');
+    if (tile.producer) {
+      prodPanel.style.display = 'block';
+      const config = PRODUCER_CONFIG[tile.producer.type];
+      const prodHasRoad = this.grid.isRoadAdjacent(tile.producer.x, tile.producer.y);
+      const isBatteryDependent = tile.producer.type === PRODUCER_TYPE.WINDMILL || tile.producer.type === PRODUCER_TYPE.SOLAR_PANEL;
+      const roadStatusStr = isBatteryDependent
+        ? connectionStatus.message ? ` (${connectionStatus.message})` : ''
+        : prodHasRoad ? '' : ' ⚠️ (Needs Road!)';
+      const utilityStatusStr = !isBatteryDependent && Object.values(tile.producer.utilityShortfall || {}).some(Boolean) && !tile.producer.operational
+        ? ' ⚠️ (Needs Utilities!)'
+        : '';
+      const fuelStatusStr = isNuclearFuelStarved(tile.producer)
+        ? ' ⚠️ (No Uranium!)'
+        : '';
+      const contaminatedStr = tile.producer.contaminated ? ' ☣️ Contaminated!' : '';
+      document.getElementById('inspect-producer-type').textContent = (config ? config.name : tile.producer.type) + roadStatusStr + utilityStatusStr + fuelStatusStr + contaminatedStr;
+
+      const capLabel = document.getElementById('inspect-producer-cap-label');
+      const capVal = document.getElementById('inspect-producer-cap');
+      if (isBatteryDependent && !tile.producer.hasBatteryConnection) {
+        capLabel.textContent = 'Load / Capacity:';
+        capVal.textContent = '⚠️ Offline (Must be adjacent to Battery Storage)';
+      } else if (tile.producer.type === PRODUCER_TYPE.BATTERY) {
+        capLabel.textContent = 'Load / Capacity:';
+        capVal.textContent = formatProducerCapacity(tile.producer, this.grid);
+      } else if (tile.producer.type === PRODUCER_TYPE.SILO) {
+        capLabel.textContent = 'Stored / Capacity:';
+        const resources = this.simulation.resourceManager;
+        capVal.textContent = formatSiloStorage(tile.producer, resources.stockpile, resources.capacity);
+      } else if (tile.producer.type === PRODUCER_TYPE.OIL_DERRICK) {
+        capLabel.textContent = 'Output:';
+        const resources = this.simulation.resourceManager;
+        capVal.textContent = formatDerrickOutput(tile.producer, resources.stockpile, resources.capacity);
+      } else if (tile.producer.type === PRODUCER_TYPE.HOSPITAL) {
+        const staff = tile.producer.filledJobs || 0;
+        const patientCap = staff * MEDICAL_CONFIG.HOSPITAL_PATIENT_CAPACITY_PER_JOB;
+        capLabel.textContent = 'Patients (treated / beds):';
+        capVal.textContent = `${tile.producer.patients || 0} / ${patientCap} (${staff} staffed)`;
+      } else if (config?.utility === 'power' || config?.utility === 'water' || config?.utility === 'sewage') {
+        capLabel.textContent = 'Load / Capacity:';
+        capVal.textContent = formatProducerCapacity(tile.producer, this.grid);
+      } else if (tile.producer.type === PRODUCER_TYPE.SCHOOL || tile.producer.type === PRODUCER_TYPE.UNIVERSITY) {
+        const staff = tile.producer.filledJobs || 0;
+        capLabel.textContent = 'Staff / Seats:';
+        capVal.textContent = `${staff} / ${tile.producer.totalJobs || 0} staff — ${(staff * EDUCATION_CONFIG.STUDENT_CAPACITY_PER_JOB).toLocaleString()} seats`;
+      } else if (config?.jobs) {
+        capLabel.textContent = 'Staff:';
+        capVal.textContent = `${(tile.producer.filledJobs || 0).toLocaleString()} / ${(tile.producer.totalJobs || 0).toLocaleString()}`;
+      } else {
+        capLabel.textContent = 'Load / Capacity:';
+        capVal.textContent = 'N/A';
+      }
+    } else {
+      prodPanel.style.display = 'none';
+    }
+
+    const producerTierRow = document.getElementById('producer-tier-row');
+    const producerVehiclesRow = document.getElementById('producer-vehicles-row');
+    const producerCellsRow = document.getElementById('producer-cells-row');
+    const producerUpgradeRow = document.getElementById('producer-upgrade-row');
+    const producerUpgradeStatus = document.getElementById('producer-upgrade-status');
+    const producerUpgradeButton = document.getElementById('btn-upgrade-producer');
+    if (tile.producer) {
+      const type = tile.producer.type;
+      const tier = getProducerTier(tile.producer);
+      const tiered = isTieredProducer(type);
+      if (producerTierRow) producerTierRow.hidden = !tiered;
+      const tierValue = document.getElementById('inspect-producer-tier');
+      if (tierValue) tierValue.textContent = `${tier} / ${PRODUCER_TIER_MAX}`;
+
+      const isService = isTieredService(type);
+      const vehicles = isService ? getServiceTierStat('vehicles', tier) : 0;
+      const vehicleLabel = type === PRODUCER_TYPE.FIRE_STATION ? 'fire truck'
+        : type === PRODUCER_TYPE.POLICE_STATION ? 'police car'
+        : 'ambulance';
+      if (producerVehiclesRow) producerVehiclesRow.hidden = !isService;
+      const vehiclesValue = document.getElementById('inspect-producer-vehicles');
+      if (vehiclesValue && isService) {
+        vehiclesValue.textContent = `${vehicles} ${vehicleLabel}${vehicles === 1 ? '' : 's'}`;
+      }
+
+      if (producerCellsRow) producerCellsRow.hidden = type !== PRODUCER_TYPE.POLICE_STATION;
+      const cellsValue = document.getElementById('inspect-producer-cells');
+      if (cellsValue && type === PRODUCER_TYPE.POLICE_STATION) {
+        const cells = getServiceTierStat('cells', tier);
+        cellsValue.textContent = `${tile.producer.prisoners || 0} / ${cells} occupied`;
+      }
+
+      if (producerUpgradeRow && producerUpgradeStatus && producerUpgradeButton) {
+        const upgradeCost = isService ? getServiceUpgradeCost(type, tier) : getPowerUpgradeCost(type, tier);
+        const canUpgradeProducer = this.grid.canUpgradeProducer(tile);
+        producerUpgradeRow.hidden = !tiered;
+        producerUpgradeButton.hidden = !canUpgradeProducer;
+        producerUpgradeButton.disabled = !canUpgradeProducer || this.treasury < upgradeCost;
+        producerUpgradeButton.textContent = `Upgrade ($${upgradeCost.toLocaleString()})`;
+        producerUpgradeStatus.textContent = !canUpgradeProducer
+          ? 'Maximum tier'
+          : this.treasury < upgradeCost ? 'Insufficient funds' : 'Upgrade available';
+      }
+    } else {
+      if (producerTierRow) producerTierRow.hidden = true;
+      if (producerVehiclesRow) producerVehiclesRow.hidden = true;
+      if (producerCellsRow) producerCellsRow.hidden = true;
+      if (producerUpgradeRow) producerUpgradeRow.hidden = true;
+    }
+
+    this._inspectorTile = tile;
+    this._inspectorSignature = signature;
+    this._inspectorAppliedAt = at;
+    this._pendingInspectorTile = null;
+    recordUiTiming(this.inspectorTiming, this.enableUiTiming ? nowMs() - started : 0, true);
+    return true;
+  }
+
+  logUiTimingIfNeeded() {
+    if (!this.enableUiTiming) return;
+    const frames = this.renderer.renderFrameCount;
+    if (frames === 0 || frames % 120 !== 0) return;
+    console.log('[debugTiming]', {
+      sim: this.simulation.getStageTimings().averages,
+      render: this.renderer.getRenderTimings(),
+      hud: uiTimingAverages(this.hudTiming),
+      inspector: uiTimingAverages(this.inspectorTiming),
+    });
+  }
+
+  startRenderLoop() {
+    const loop = () => {
+      if (this.worldActive && !this.overworldView?.isOpen) this.renderer.render(this.simulation);
+      if (this.worldActive && this._pendingHud) this.updateHUD();
+      if (this._pendingInspectorTile) this.updateInspector(this._pendingInspectorTile);
+      this.logUiTimingIfNeeded();
+      requestAnimationFrame(loop);
+    };
+    requestAnimationFrame(loop);
+  }
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+  window.app = new GameApp();
+});

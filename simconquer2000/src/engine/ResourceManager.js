@@ -1,0 +1,399 @@
+import {
+  CRIME_CONFIG,
+  DEMOGRAPHICS_CONFIG,
+  FUEL_CONFIG,
+  HAPPINESS_CONFIG,
+  LABOR_TAX_GROWTH_CONFIG,
+  PRODUCER_CONFIG,
+  PRODUCER_TYPE,
+  RESOURCE_CONFIG,
+  RESOURCE_JOB_CATEGORIES,
+  ZONE,
+  temperatureHappinessPenalty,
+} from '../config.js';
+import {
+  DEFAULT_INDUSTRIAL_RECIPE,
+  RECIPES,
+  SMELTER_RECIPE_IDS,
+  STATION,
+  hasInputs,
+  runRecipe,
+} from '../recipes.js';
+import { UtilityManager } from './UtilityManager.js';
+
+export function happinessDemandModifier(happiness) {
+  const score = Number.isFinite(happiness) ? happiness : HAPPINESS_CONFIG.BASE_SCORE;
+  return (score - HAPPINESS_CONFIG.BASE_SCORE) * HAPPINESS_CONFIG.GROWTH_DELTA_PER_POINT;
+}
+
+const EMPTY_STOCKPILE = {
+  food: 0,
+  coal: 0,
+  oil: 0,
+  uraniumOre: 0,
+  fuel: 0,
+  ironOre: 0,
+  bauxiteOre: 0,
+  copperOre: 0,
+  titaniumOre: 0,
+  sand: 0,
+  ironBar: 0,
+  bauxiteBar: 0,
+  copperBar: 0,
+  steel: 0,
+  glass: 0,
+  polysilicon: 0,
+  consumerGoods: 0,
+  computerChips: 0,
+  arms: 0,
+  tanks: 0,
+};
+
+export class ResourceManager {
+  constructor() {
+    this.stockpile = { ...EMPTY_STOCKPILE };
+    this.capacity = { ore: 0, bar: 0, goods: 0 };
+    this.foodShortfallTicks = 0;
+  }
+
+  prepareTick(grid) {
+    const coalCapacity = PRODUCER_CONFIG[PRODUCER_TYPE.COAL_PLANT].capacity;
+    for (const producer of grid.producers) {
+      if (producer.type === PRODUCER_TYPE.COAL_PLANT && !producer.destroyed) {
+        producer.capacity = coalCapacity;
+      } else if (producer.type === PRODUCER_TYPE.NUCLEAR_PLANT && !producer.destroyed) {
+        producer.capacity = (this.stockpile.uraniumOre || 0) > 0
+          ? PRODUCER_CONFIG[PRODUCER_TYPE.NUCLEAR_PLANT].capacity
+          : 0;
+      }
+    }
+  }
+
+  update(grid, stats, temperature = null) {
+    this.capacity = this.getWarehouseCapacity(grid);
+    this.updateProducerJobs(grid, stats.employmentRate || 0);
+    this.extractFromMines(grid);
+    this.consumeUraniumForPower(grid);
+    this.smelt(grid);
+    this.refineOil(grid);
+    const foodBefore = this.stockpile.food;
+    this.produceFactories(grid);
+    const foodProduced = Math.max(0, this.stockpile.food - foodBefore);
+    this.consumeCoalForPower(grid);
+    const foodResult = this.consumeFood(grid);
+    const goodsResult = this.consumeConsumerGoods(stats.population || 0);
+    const fuelResult = this.consumeFuel(grid);
+    stats.happiness = this.calculateHappiness(grid, stats, goodsResult.goodsRatio, foodResult.shortfall > 0, temperature);
+    stats.happinessGrowthModifier = happinessDemandModifier(stats.happiness);
+    stats.foodShortfall = foodResult.shortfall;
+    stats.foodDemand = foodResult.demand;
+    stats.foodConsumed = foodResult.consumed;
+    stats.foodProduced = foodProduced;
+    stats.foodShortfallTicks = this.foodShortfallTicks;
+    stats.goodsRatio = goodsResult.goodsRatio;
+    stats.fuelDemand = fuelResult.demand;
+    stats.fuelConsumed = fuelResult.consumed;
+    stats.fuelShortfall = fuelResult.shortfall;
+    this.clampToCapacity();
+  }
+
+  getWarehouseCapacity(grid) {
+    const capacity = { ore: 0, bar: 0, goods: 0, oil: 0, fuel: 0 };
+    for (const producer of grid.producers) {
+      if (!producer.operational) continue;
+      if (producer.type === PRODUCER_TYPE.WAREHOUSE_ORE) capacity.ore += RESOURCE_CONFIG.WAREHOUSE_CAPACITY_PER_TILE;
+      if (producer.type === PRODUCER_TYPE.WAREHOUSE_BAR) capacity.bar += RESOURCE_CONFIG.WAREHOUSE_CAPACITY_PER_TILE;
+      if (producer.type === PRODUCER_TYPE.WAREHOUSE_GOODS) capacity.goods += RESOURCE_CONFIG.WAREHOUSE_CAPACITY_PER_TILE;
+      if (producer.type === PRODUCER_TYPE.SILO) capacity[producer.storageType || 'oil'] += RESOURCE_CONFIG.SILO_CAPACITY;
+    }
+    return capacity;
+  }
+
+  updateProducerJobs(grid, employmentRate) {
+    for (const producer of grid.producers) {
+      const config = PRODUCER_CONFIG[producer.type];
+      if (!config?.jobs) continue;
+      if (!RESOURCE_JOB_CATEGORIES.includes(config.category)) continue;
+      const maxJobs = config.jobs.light;
+      producer.totalJobs = maxJobs;
+      producer.filledJobs = Math.round(maxJobs * Math.max(LABOR_TAX_GROWTH_CONFIG.MIN_SERVICE_EMPLOYMENT_RATE, employmentRate));
+    }
+  }
+
+  extractFromMines(grid) {
+    const outputs = {
+      [PRODUCER_TYPE.MINE_IRON]: 'ironOre',
+      [PRODUCER_TYPE.MINE_BAUXITE]: 'bauxiteOre',
+      [PRODUCER_TYPE.MINE_COAL]: 'coal',
+      [PRODUCER_TYPE.OIL_DERRICK]: 'oil',
+      [PRODUCER_TYPE.MINE_URANIUM]: 'uraniumOre',
+      [PRODUCER_TYPE.MINE_COPPER]: 'copperOre',
+      [PRODUCER_TYPE.MINE_TITANIUM]: 'titaniumOre',
+      [PRODUCER_TYPE.QUARRY_SAND]: 'sand',
+    };
+    for (const producer of grid.producers) {
+      const output = outputs[producer.type];
+      if (!output || !producer.operational || producer.destroyed) continue;
+      let amount;
+      if (producer.type === PRODUCER_TYPE.OIL_DERRICK) {
+        const jobs = producer.totalJobs || PRODUCER_CONFIG[PRODUCER_TYPE.OIL_DERRICK].jobs.light;
+        const fill = jobs > 0 ? Math.min(1, (producer.filledJobs || 0) / jobs) : 0;
+        amount = RESOURCE_CONFIG.OIL_DERRICK_OUTPUT_PER_TICK * fill;
+      } else {
+        amount = (producer.filledJobs || 0) * RESOURCE_CONFIG.MINE_EXTRACTION_PER_JOB;
+      }
+      this.stockpile[output] += amount;
+    }
+  }
+
+  smelt(grid) {
+    for (const producer of grid.producers) {
+      if (producer.type !== PRODUCER_TYPE.SMELTER || !producer.operational) continue;
+      const totalJobs = producer.filledJobs || 0;
+      if (totalJobs <= 0) continue;
+
+      // A smelter either runs one chosen recipe at full crew, or - the default - shares
+      // its crew evenly across every recipe it currently has inputs for. Only recipes
+      // belonging to the smelter are honoured, so a stray industrial id falls back.
+      const chosen = RECIPES[producer.recipe]?.station === STATION.SMELTER ? RECIPES[producer.recipe] : null;
+      if (chosen) {
+        runRecipe(chosen, totalJobs, this.stockpile);
+        continue;
+      }
+
+      const active = SMELTER_RECIPE_IDS.filter((id) => hasInputs(RECIPES[id], this.stockpile));
+      if (active.length === 0) continue;
+      const jobsPerRecipe = totalJobs / active.length;
+      for (const id of active) runRecipe(RECIPES[id], jobsPerRecipe, this.stockpile);
+    }
+  }
+
+  produceFactories(grid) {
+    for (const tile of grid.getActiveZonedTiles()) {
+      if (tile.zone === ZONE.AGRICULTURAL && !tile.destroyed && !tile.onFire) {
+        const yieldAtFull = DEMOGRAPHICS_CONFIG.AGRICULTURAL_FOOD_YIELD[tile.density] || 0;
+        const jobCapacity = tile.totalJobs || 0;
+        const fillRatio = jobCapacity > 0 ? Math.min(1, (tile.filledJobs || 0) / jobCapacity) : 0;
+        this.stockpile.food += fillRatio * yieldAtFull;
+        continue;
+      }
+      if (tile.zone !== ZONE.INDUSTRIAL || tile.destroyed || tile.onFire) continue;
+      const recipe = RECIPES[tile.recipe] || RECIPES[DEFAULT_INDUSTRIAL_RECIPE];
+      runRecipe(recipe, tile.filledJobs || 0, this.stockpile);
+    }
+  }
+
+  refineOil(grid) {
+    for (const producer of grid.producers) {
+      if (producer.type !== PRODUCER_TYPE.REFINERY || !producer.operational) continue;
+      const oil = Math.min(RESOURCE_CONFIG.REFINERY_OIL_PER_TICK, this.stockpile.oil);
+      if (oil <= 0) continue;
+      this.stockpile.oil -= oil;
+      this.stockpile.fuel += oil * RESOURCE_CONFIG.REFINERY_FUEL_PER_OIL;
+    }
+  }
+
+  consumeCoalForPower(grid) {
+    for (const producer of grid.producers) {
+      if (producer.type !== PRODUCER_TYPE.COAL_PLANT) continue;
+      const fuel = (producer.usedCapacity || 0) * RESOURCE_CONFIG.COAL_PLANT_FUEL_PER_MW;
+      if (fuel > this.stockpile.coal) {
+        this.stockpile.coal = 0;
+        producer.capacity = 0;
+        producer.operational = false;
+      } else {
+        this.stockpile.coal -= fuel;
+      }
+    }
+  }
+
+  consumeUraniumForPower(grid) {
+    for (const producer of grid.producers) {
+      if (producer.type !== PRODUCER_TYPE.NUCLEAR_PLANT || producer.destroyed) continue;
+      if ((this.stockpile.uraniumOre || 0) <= 0) {
+        producer.capacity = 0;
+        producer.operational = false;
+        producer.fuelShortfall = true;
+        continue;
+      }
+      const maxOutput = PRODUCER_CONFIG[PRODUCER_TYPE.NUCLEAR_PLANT].capacity;
+      const drawRatio = maxOutput > 0 ? Math.min(1, Math.max(0, (producer.usedCapacity || 0) / maxOutput)) : 0;
+      const demand = RESOURCE_CONFIG.NUCLEAR_URANIUM_PER_TICK * drawRatio;
+      if (demand > this.stockpile.uraniumOre) {
+        this.stockpile.uraniumOre = 0;
+        producer.capacity = 0;
+        producer.operational = false;
+        producer.fuelShortfall = true;
+      } else {
+        this.stockpile.uraniumOre -= demand;
+        producer.fuelShortfall = false;
+      }
+    }
+  }
+
+  // Demand is the sum of each residential tile's own population.
+  consumeFood(grid) {
+    const residential = [];
+    let demand = 0;
+    for (const tile of grid.getActiveZonedTiles()) {
+      if (tile.zone !== ZONE.RESIDENTIAL || tile.destroyed) continue;
+      residential.push(tile);
+      demand += (tile.population || 0) * RESOURCE_CONFIG.FOOD_PER_RESIDENT;
+    }
+    const consumed = Math.min(this.stockpile.food, demand);
+    const shortfall = Math.max(0, demand - consumed);
+    this.stockpile.food -= consumed;
+    this.foodShortfallTicks = shortfall > 0 ? this.foodShortfallTicks + 1 : 0;
+    for (const tile of residential) {
+      tile.populationLoss = shortfall > 0
+        ? Math.ceil((tile.population || 0) * HAPPINESS_CONFIG.UNFED_OUTFLOW_PERCENT)
+        : 0;
+    }
+    return { demand, consumed, shortfall };
+  }
+
+  consumeConsumerGoods(population) {
+    const demand = population * RESOURCE_CONFIG.CONSUMER_GOODS_PER_RESIDENT;
+    const consumed = Math.min(this.stockpile.consumerGoods, demand);
+    this.stockpile.consumerGoods -= consumed;
+    const goodsRatio = demand > 0 ? consumed / demand : 0;
+    return { demand, consumed, goodsRatio };
+  }
+
+  consumeFuel(grid) {
+    let demand = 0;
+    for (const tile of grid.getActiveZonedTiles()) {
+      if (tile.destroyed || tile.zone === ZONE.NONE) continue;
+      const perTile = FUEL_CONFIG.PER_TILE[tile.zone] || 0;
+      demand += perTile * UtilityManager.getTileOccupancyRatio(tile);
+    }
+    const consumed = Math.min(this.stockpile.fuel, demand);
+    this.stockpile.fuel -= consumed;
+    const shortfall = Math.max(0, demand - consumed);
+    return { demand, consumed, shortfall };
+  }
+
+  getCrimePenalty(grid) {
+    return Array.from(grid.getActiveZonedTiles()).reduce((sum, tile) => sum + (tile.crime || 0), 0) * HAPPINESS_CONFIG.CRIME_POINT_PENALTY;
+  }
+
+  // Population-weighted share of residents living beside clean vs polluted water.
+  getWaterfrontShares(grid, residentialTiles) {
+    let total = 0;
+    let clean = 0;
+    let polluted = 0;
+    for (const tile of residentialTiles) {
+      const pop = tile.population || 0;
+      if (pop <= 0) continue;
+      total += pop;
+      const status = grid.getWaterfrontStatus?.(tile.x, tile.y);
+      if (status === 'clean') clean += pop;
+      else if (status === 'polluted') polluted += pop;
+    }
+    return total > 0 ? { cleanShare: clean / total, pollutedShare: polluted / total } : { cleanShare: 0, pollutedShare: 0 };
+  }
+
+  calculateHappiness(grid, stats, goodsRatio, hasFoodShortfall, temperature = null) {
+    const taxRate = stats.taxRate ?? 0;
+    const taxDelta = taxRate <= HAPPINESS_CONFIG.TAX_NEUTRAL_RATE
+      ? (HAPPINESS_CONFIG.TAX_NEUTRAL_RATE - taxRate) * HAPPINESS_CONFIG.LOW_TAX_BONUS_PER_POINT
+      : -(taxRate - HAPPINESS_CONFIG.TAX_NEUTRAL_RATE) * HAPPINESS_CONFIG.TAX_PENALTY_PER_POINT;
+    const employmentBonus = Math.min(1, Math.max(0, stats.employmentRate || 0)) * HAPPINESS_CONFIG.EMPLOYMENT_MAX_BONUS;
+    const residentialTiles = Array.from(grid.getActiveZonedTiles()).filter((tile) => tile.zone === ZONE.RESIDENTIAL && !tile.destroyed);
+    const servicedResidential = residentialTiles.filter((tile) => (
+      !tile.shortfall.power && !tile.shortfall.water && !tile.shortfall.sewage
+    )).length;
+    // Normalised civic-service coverage: average fraction of known service types present per tile (0–1).
+    const CIVIC_SERVICES = ['police', 'fire', 'hospital', 'school', 'library', 'cityHall'];
+    const avgServiceRatio = residentialTiles.length > 0
+      ? residentialTiles.reduce((sum, tile) => {
+          const covered = CIVIC_SERVICES.filter((s) => tile.services?.[s]).length;
+          return sum + covered / CIVIC_SERVICES.length;
+        }, 0) / residentialTiles.length
+      : 0;
+    const utilityScore = residentialTiles.length > 0
+      ? (servicedResidential / residentialTiles.length) * HAPPINESS_CONFIG.UTILITY_SERVICE_BONUS
+      : 0;
+    const utilityPenalty = residentialTiles.length > servicedResidential
+      ? HAPPINESS_CONFIG.UTILITY_SHORTFALL_PENALTY
+      : 0;
+    const averagePollution = residentialTiles.length > 0
+      ? residentialTiles.reduce((sum, tile) => sum + (tile.pollution || 0), 0) / residentialTiles.length
+      : 0;
+    const crimePenalty = residentialTiles.reduce((sum, tile) => sum + (tile.crime || 0), 0) * HAPPINESS_CONFIG.CRIME_PENALTY_PER_POINT;
+    const medicalPenalty = (stats.untreatedPatients || 0) * HAPPINESS_CONFIG.UNTREATED_PATIENT_PENALTY;
+    const firePenalty = (stats.fireInjuries || 0) * HAPPINESS_CONFIG.FIRE_INJURY_PENALTY;
+    const { cleanShare, pollutedShare } = this.getWaterfrontShares(grid, residentialTiles);
+    const waterfrontDelta = cleanShare * HAPPINESS_CONFIG.CLEAN_WATERFRONT_MAX_BONUS -
+      pollutedShare * HAPPINESS_CONFIG.POLLUTED_WATERFRONT_MAX_PENALTY;
+    // Hot and cold weather is a small, capped ding: past the cap it is simply cold.
+    const temperaturePenalty = temperatureHappinessPenalty(temperature);
+    // When every police cell is full the offender is released, costing a brief mood hit.
+    const catchAndReleasePenalty = (stats.catchAndReleasePenaltyTicks || 0) > 0
+      ? CRIME_CONFIG.CATCH_AND_RELEASE_HAPPINESS_PENALTY
+      : 0;
+    return Math.min(
+      HAPPINESS_CONFIG.MAX_SCORE,
+      Math.max(
+        HAPPINESS_CONFIG.MIN_SCORE,
+        HAPPINESS_CONFIG.BASE_SCORE + taxDelta + employmentBonus + utilityScore + waterfrontDelta +
+          avgServiceRatio * HAPPINESS_CONFIG.SERVICE_MAX_BONUS +
+          goodsRatio * HAPPINESS_CONFIG.CONSUMER_GOODS_MAX_BONUS -
+          averagePollution * HAPPINESS_CONFIG.POLLUTION_PENALTY_PER_POINT -
+          crimePenalty - medicalPenalty - firePenalty - utilityPenalty - temperaturePenalty - catchAndReleasePenalty -
+          (hasFoodShortfall ? HAPPINESS_CONFIG.FOOD_SHORTFALL_PENALTY : 0) -
+          (this.foodShortfallTicks >= HAPPINESS_CONFIG.FAMINE_TICKS ? HAPPINESS_CONFIG.FAMINE_PENALTY : 0),
+      ),
+    );
+  }
+
+  clampToCapacity() {
+    const limits = {
+      ironOre: this.capacity.ore,
+      bauxiteOre: this.capacity.ore,
+      coal: this.capacity.ore,
+      uraniumOre: this.capacity.ore,
+      copperOre: this.capacity.ore,
+      titaniumOre: this.capacity.ore,
+      sand: this.capacity.ore,
+      oil: this.capacity.oil,
+      fuel: this.capacity.fuel,
+      ironBar: this.capacity.bar,
+      bauxiteBar: this.capacity.bar,
+      copperBar: this.capacity.bar,
+      steel: this.capacity.bar,
+      glass: this.capacity.bar,
+      polysilicon: this.capacity.bar,
+    };
+    for (const [key, limit] of Object.entries(limits)) this.stockpile[key] = Math.min(this.stockpile[key], limit);
+
+    // Computer chips are an industrial-zone product, so they share goods storage with
+    // food, consumer goods, arms and tanks.
+    const goodsKeys = ['food', 'consumerGoods', 'computerChips', 'arms', 'tanks'];
+    const goodsLimit = this.capacity.goods || 0;
+    const goodsTotal = goodsKeys.reduce((sum, key) => sum + (this.stockpile[key] || 0), 0);
+    if (goodsTotal <= goodsLimit) return;
+    if (goodsLimit <= 0) {
+      for (const key of goodsKeys) this.stockpile[key] = 0;
+      return;
+    }
+    const scale = goodsLimit / goodsTotal;
+    // Largest-remainder split: floors each share, then hands leftover units to the biggest fractions so an empty type never gains stock.
+    const shares = goodsKeys.map((key) => {
+      const exact = (this.stockpile[key] || 0) * scale;
+      return { key, whole: Math.floor(exact), frac: exact - Math.floor(exact) };
+    });
+    let leftover = Math.floor(goodsLimit) - shares.reduce((sum, s) => sum + s.whole, 0);
+    for (const share of [...shares].sort((a, b) => b.frac - a.frac)) {
+      if (leftover <= 0) break;
+      if (share.frac <= 0) continue;
+      share.whole += 1;
+      leftover -= 1;
+    }
+    for (const { key, whole } of shares) this.stockpile[key] = whole;
+  }
+
+  snapshot() {
+    return { stockpile: { ...this.stockpile }, capacity: { ...this.capacity } };
+  }
+}

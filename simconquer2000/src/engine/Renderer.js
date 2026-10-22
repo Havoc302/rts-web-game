@@ -1,0 +1,1411 @@
+import { TERRAIN, ZONE, DENSITY, PRODUCER_TYPE, PRODUCER_CONFIG, TILE_SIZE, ORE_CONFIG, NIGHT_TINT_ALPHA, RENDERER_CONFIG, POLLUTION_CONFIG, BIOME_TYPES, ICE_CONFIG, isZoneAtCapacity, isTieredProducer, getProducerTier } from '../config.js';
+import { UtilityManager } from './UtilityManager.js';
+import { TrafficManager } from './TrafficManager.js';
+import { WeatherOverlay } from './WeatherOverlay.js';
+
+// Ground palettes for bare (FLAT) city tiles. The default is soil; desert cities render
+// sand instead so their terrain reads as dunes rather than farmland. Tundra is a hybrid:
+// bare brown-grey soil with organic sheets of frost laid over roughly a third of it.
+const GROUND_PALETTE = {
+  default: { baseAlt: '#5b4636', base: '#463326', speckleAlt: '#6b5440', speckle: '#533d2d' },
+  [BIOME_TYPES.DESERT]: { baseAlt: '#dcc48f', base: '#cfb47c', speckleAlt: '#e8d6a8', speckle: '#bfa368' },
+  [BIOME_TYPES.TUNDRA]: { baseAlt: '#6d6454', base: '#5e5749', speckleAlt: '#7c7361', speckle: '#6b6353' },
+  // Permanent Arctic ice is bluer and glassier than tundra snow so the ice sheets read as ice.
+  [BIOME_TYPES.ARCTIC]: { baseAlt: '#c9e6f5', base: '#b6dbef', speckleAlt: '#ffffff', speckle: '#8fc2dc' },
+};
+
+// Frost sheets on bare tundra ground. Decorative only: these tiles stay ordinary FLAT ground.
+const TUNDRA_FROST_PALETTE = { baseAlt: '#cfd7dc', base: '#c3ccd2', speckleAlt: '#e9eff3', speckle: '#b3bec6' };
+
+function hashGround(seed, x, y) {
+  let h = Math.imul((seed | 0) ^ Math.imul(x | 0, 0x27d4eb2d), 0x9e3779b1) >>> 0;
+  h = Math.imul(h ^ (y | 0), 0x85ebca6b) >>> 0;
+  h ^= h >>> 15;
+  h = Math.imul(h, 0xc2b2ae35) >>> 0;
+  h ^= h >>> 13;
+  return (h >>> 0) / 4294967296;
+}
+
+const smoothstep = (t) => t * t * (3 - 2 * t);
+
+// Value noise over a coarse lattice, so frost arrives in organic sheets a few tiles across
+// rather than as per-tile speckle. Deterministic for a given seed and tile, which keeps the
+// cached terrain chunks stable across frames and reloads.
+export function tundraFrostCover(seed, x, y, scale = ICE_CONFIG.GROUND_PATCH_SCALE) {
+  const fx = x / scale;
+  const fy = y / scale;
+  const x0 = Math.floor(fx);
+  const y0 = Math.floor(fy);
+  const tx = smoothstep(fx - x0);
+  const ty = smoothstep(fy - y0);
+  const top = hashGround(seed, x0, y0) + (hashGround(seed, x0 + 1, y0) - hashGround(seed, x0, y0)) * tx;
+  const bottom = hashGround(seed, x0, y0 + 1) +
+    (hashGround(seed, x0 + 1, y0 + 1) - hashGround(seed, x0, y0 + 1)) * tx;
+  return top + (bottom - top) * ty;
+}
+
+export function tundraGroundIsFrost(seed, x, y) {
+  return tundraFrostCover(seed, x, y) >= 1 - ICE_CONFIG.GROUND_PATCH_CHANCE;
+}
+
+export class Renderer {
+  constructor(canvas, grid) {
+    this.canvas = canvas;
+    this.ctx = canvas.getContext('2d');
+    this.grid = grid;
+
+    this.cameraX = 40;
+    this.cameraY = 40;
+    this.zoom = RENDERER_CONFIG.DEFAULT_ZOOM;
+
+    this.overlayMode = 'normal';
+    this.selectedTile = null;
+    this.hoverTile = null;
+    this.placementTool = null;
+
+    this.animTime = 0;
+    this.lastRenderTime = 0;
+    this.terrainChunks = [];
+    this.terrainChunksVersion = -1;
+    this.enableTiming = false;
+    this.lastRenderMs = 0;
+    this.accumulatedRenderMs = 0;
+    this.renderFrameCount = 0;
+    this.lastTerrainRebuild = { kind: 'none', chunksRebuilt: 0 };
+    this.lastOverlayDraws = 0;
+    this.trafficManager = new TrafficManager({ grid: this.grid });
+    this.weatherOverlay = new WeatherOverlay();
+  }
+
+  setCamera(x, y, zoom = this.zoom) {
+    this.cameraX = x;
+    this.cameraY = y;
+    this.zoom = Math.min(RENDERER_CONFIG.ZOOM_MAX, Math.max(RENDERER_CONFIG.ZOOM_MIN, zoom));
+  }
+
+  setOverlayMode(mode) {
+    this.overlayMode = mode;
+  }
+
+  getRenderTimings() {
+    return {
+      lastMs: this.lastRenderMs,
+      averageMs: this.renderFrameCount > 0 ? this.accumulatedRenderMs / this.renderFrameCount : 0,
+      frameCount: this.renderFrameCount,
+      lastTerrainRebuild: this.lastTerrainRebuild,
+      lastOverlayDraws: this.lastOverlayDraws,
+    };
+  }
+
+  resetRenderTimings() {
+    this.lastRenderMs = 0;
+    this.accumulatedRenderMs = 0;
+    this.renderFrameCount = 0;
+  }
+
+  render(simulation) {
+    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    if (this.zoom < RENDERER_CONFIG.LOW_DETAIL_THRESHOLD && this.lastRenderTime > 0 && now - this.lastRenderTime < 33) return;
+    const elapsed = this.lastRenderTime > 0 ? Math.min(RENDERER_CONFIG.DELTA_TIME_MAX, (now - this.lastRenderTime) / 1000) : 0;
+    this.lastRenderTime = now;
+    this.animTime += elapsed;
+    this.windIntensity = simulation?.weatherManager?.windIntensity ?? 0.5;
+    this.lastTerrainRebuild = { kind: 'none', chunksRebuilt: 0 };
+    this.lastOverlayDraws = 0;
+
+    if (simulation) {
+      this.trafficManager.updateDensity(simulation, this.grid);
+      this.trafficManager.update(elapsed, this.grid);
+    }
+
+    const ctx = this.ctx;
+    const width = this.canvas.width;
+    const height = this.canvas.height;
+
+    ctx.fillStyle = '#0f172a';
+    ctx.fillRect(0, 0, width, height);
+
+    ctx.save();
+    ctx.translate(width / 2 + this.cameraX, height / 2 + this.cameraY);
+    ctx.scale(this.zoom, this.zoom);
+
+    const mapPixelWidth = this.grid.width * TILE_SIZE;
+    const mapPixelHeight = this.grid.height * TILE_SIZE;
+    const startX = -mapPixelWidth / 2;
+    const startY = -mapPixelHeight / 2;
+    const lowDetail = this.zoom < RENDERER_CONFIG.LOW_DETAIL_THRESHOLD;
+
+    // Only visit tiles whose world-space bounds intersect the viewport.
+    const visibleLeft = (-width / 2 - this.cameraX) / this.zoom;
+    const visibleTop = (-height / 2 - this.cameraY) / this.zoom;
+    const visibleRight = (width / 2 - this.cameraX) / this.zoom;
+    const visibleBottom = (height / 2 - this.cameraY) / this.zoom;
+    const startTileX = Math.max(0, Math.floor((visibleLeft - startX) / TILE_SIZE) - 1);
+    const startTileY = Math.max(0, Math.floor((visibleTop - startY) / TILE_SIZE) - 1);
+    const endTileX = Math.min(this.grid.width - 1, Math.ceil((visibleRight - startX) / TILE_SIZE) + 1);
+    const endTileY = Math.min(this.grid.height - 1, Math.ceil((visibleBottom - startY) / TILE_SIZE) + 1);
+
+    const terrainCacheReady = !lowDetail && this.ensureVisibleTerrainChunks(startTileX, startTileY, endTileX, endTileY);
+    if (terrainCacheReady) {
+      this.blitVisibleTerrainChunks(ctx, startX, startY, startTileX, startTileY, endTileX, endTileY);
+    }
+
+    for (let y = startTileY; y <= endTileY; y++) {
+      for (let x = startTileX; x <= endTileX; x++) {
+        const tile = this.grid.tiles[y][x];
+        const px = startX + x * TILE_SIZE;
+        const py = startY + y * TILE_SIZE;
+
+        if (!terrainCacheReady) {
+          this.renderLowDetailTile(ctx, tile, px, py);
+          continue;
+        }
+
+        if (lowDetail) {
+          this.renderLowDetailTile(ctx, tile, px, py);
+          continue;
+        }
+
+        if (tile.terrain === TERRAIN.WATER) {
+          this.renderTerrainTile(ctx, tile, px, py);
+        }
+
+        if (tile.hasRoad && !tile.hasBridge) {
+          this.renderRoadTile(ctx, tile, px, py);
+        }
+        if (tile.hasBridge) this.renderBridgeTile(ctx, tile, px, py);
+        if (tile.hasRoad && tile.roadDamage > 0) this.renderDamageBar(ctx, px, py, tile.roadDamage, '#f59e0b');
+
+        if (tile.zone !== ZONE.NONE) {
+          this.renderZoneTile(ctx, tile, px, py);
+        }
+
+        if (tile.producer) {
+          this.renderProducerTile(ctx, tile, px, py);
+        }
+
+        if (this.overlayMode === 'survey' && (tile.oreDiscovered || tile.surveyingBy)) {
+          this.renderSurveyStatus(ctx, tile, px, py);
+        }
+
+        if (tile.onFire) {
+          this.renderFireTile(ctx, tile, px, py);
+        }
+
+        if (this.overlayMode !== 'normal') {
+          this.lastOverlayDraws += 1;
+          this.renderOverlay(ctx, tile, px, py);
+        }
+
+        if (tile.destroyed) {
+          this.renderDestroyedTile(ctx, px, py);
+        }
+
+        if (this.placementTool && !lowDetail && this.grid.canBuildTool(x, y, this.placementTool)) {
+          ctx.strokeStyle = 'rgba(74, 222, 128, 0.85)';
+          ctx.lineWidth = 2;
+          ctx.strokeRect(px + 1, py + 1, TILE_SIZE - 2, TILE_SIZE - 2);
+        }
+
+        this.renderShortfallIndicators(ctx, tile, px, py);
+
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.04)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(px, py, TILE_SIZE, TILE_SIZE);
+      }
+    }
+
+    this.trafficManager.draw(
+      ctx,
+      TILE_SIZE,
+      { x: -startX, y: -startY },
+      { left: visibleLeft, top: visibleTop, right: visibleRight, bottom: visibleBottom }
+    );
+
+    if (this.hoverTile) {
+      const hx = startX + this.hoverTile.x * TILE_SIZE;
+      const hy = startY + this.hoverTile.y * TILE_SIZE;
+      const invalid = this.placementTool && !this.grid.canBuildTool(this.hoverTile.x, this.hoverTile.y, this.placementTool);
+      ctx.strokeStyle = invalid ? '#ef4444' : '#38bdf8';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(hx + 1, hy + 1, TILE_SIZE - 2, TILE_SIZE - 2);
+    }
+
+    if (this.selectedTile) {
+      const sx = startX + this.selectedTile.x * TILE_SIZE;
+      const sy = startY + this.selectedTile.y * TILE_SIZE;
+      ctx.strokeStyle = '#f59e0b';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(sx, sy, TILE_SIZE, TILE_SIZE);
+    }
+
+    if (simulation && !simulation.isDaytime()) {
+      ctx.fillStyle = `rgba(2, 6, 23, ${NIGHT_TINT_ALPHA})`;
+      ctx.fillRect(visibleLeft, visibleTop, visibleRight - visibleLeft, visibleBottom - visibleTop);
+    }
+
+    if (this.weatherOverlay && simulation?.weatherManager) {
+      const view = { left: visibleLeft, top: visibleTop, right: visibleRight, bottom: visibleBottom };
+      this.weatherOverlay.drawClouds(ctx, startX, startY, mapPixelWidth, mapPixelHeight, view, simulation.weatherManager, elapsed);
+    }
+
+    ctx.restore();
+
+    if (this.weatherOverlay && simulation?.weatherManager && this.canvas) {
+      this.weatherOverlay.drawRain(ctx, this.canvas.width, this.canvas.height, simulation.weatherManager);
+    }
+
+    if (this.enableTiming) {
+      const ms = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - now;
+      this.lastRenderMs = ms;
+      this.accumulatedRenderMs += ms;
+      this.renderFrameCount += 1;
+    }
+  }
+
+  ensureVisibleTerrainChunks(startTileX, startTileY, endTileX, endTileY) {
+    const chunkTiles = RENDERER_CONFIG.TERRAIN_CHUNK_TILES;
+    if (this.terrainChunksVersion !== this.grid.terrainVersion) {
+      const changedTiles = this.grid.consumeTerrainChanges();
+      if (this.terrainChunks.length > 0 && changedTiles) {
+        const rebuilt = new Set();
+        for (const position of changedTiles) {
+          const x = position % this.grid.width;
+          const y = Math.floor(position / this.grid.width);
+          const chunk = this.terrainChunks[Math.floor(y / chunkTiles)]?.[Math.floor(x / chunkTiles)];
+          if (chunk && !rebuilt.has(chunk)) {
+            this.buildTerrainChunk(chunk);
+            rebuilt.add(chunk);
+          }
+        }
+        this.lastTerrainRebuild = { kind: 'incremental', chunksRebuilt: rebuilt.size };
+      } else {
+        this.terrainChunks = this.createTerrainChunks(chunkTiles);
+        this.lastTerrainRebuild = {
+          kind: 'full',
+          chunksRebuilt: this.terrainChunks.reduce((count, row) => count + row.length, 0),
+        };
+      }
+      this.terrainChunksVersion = this.grid.terrainVersion;
+    }
+
+    const c0x = Math.floor(startTileX / chunkTiles);
+    const c0y = Math.floor(startTileY / chunkTiles);
+    const c1x = Math.floor(endTileX / chunkTiles);
+    const c1y = Math.floor(endTileY / chunkTiles);
+    let budget = RENDERER_CONFIG.TERRAIN_BUILD_BUDGET;
+    let allReady = true;
+
+    for (let cy = c0y; cy <= c1y; cy++) {
+      for (let cx = c0x; cx <= c1x; cx++) {
+        const chunk = this.terrainChunks[cy]?.[cx];
+        if (!chunk) continue;
+        if (!chunk.ready) {
+          const total = chunk.tilesW * chunk.tilesH;
+          const toBuild = Math.min(budget, total - chunk.built);
+          for (let n = 0; n < toBuild; n++) {
+            const index = chunk.built + n;
+            const lx = index % chunk.tilesW;
+            const ly = Math.floor(index / chunk.tilesW);
+            const x = chunk.tileX + lx;
+            const y = chunk.tileY + ly;
+            const tile = this.grid.tiles[y][x];
+            this.renderTerrainTile(chunk.ctx, tile, lx * TILE_SIZE, ly * TILE_SIZE, false);
+            chunk.ctx.strokeStyle = 'rgba(255, 255, 255, 0.04)';
+            chunk.ctx.lineWidth = 1;
+            chunk.ctx.strokeRect(lx * TILE_SIZE, ly * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+          }
+          chunk.built += toBuild;
+          budget -= toBuild;
+          if (chunk.built >= total) chunk.ready = true;
+        }
+        if (!chunk.ready) allReady = false;
+        if (budget <= 0 && !allReady) return false;
+      }
+    }
+    return allReady;
+  }
+
+  createTerrainChunks(chunkTiles) {
+    const chunksX = Math.ceil(this.grid.width / chunkTiles);
+    const chunksY = Math.ceil(this.grid.height / chunkTiles);
+    const chunks = [];
+    for (let cy = 0; cy < chunksY; cy++) {
+      chunks[cy] = [];
+      for (let cx = 0; cx < chunksX; cx++) {
+        const tilesW = Math.min(chunkTiles, this.grid.width - cx * chunkTiles);
+        const tilesH = Math.min(chunkTiles, this.grid.height - cy * chunkTiles);
+        const canvas = document.createElement('canvas');
+        canvas.width = tilesW * TILE_SIZE;
+        canvas.height = tilesH * TILE_SIZE;
+        chunks[cy][cx] = {
+          canvas,
+          ctx: canvas.getContext('2d'),
+          tileX: cx * chunkTiles,
+          tileY: cy * chunkTiles,
+          tilesW,
+          tilesH,
+          built: 0,
+          ready: false,
+        };
+      }
+    }
+    return chunks;
+  }
+
+  buildTerrainChunk(chunk) {
+    chunk.ctx.clearRect(0, 0, chunk.canvas.width, chunk.canvas.height);
+    for (let y = 0; y < chunk.tilesH; y++) {
+      for (let x = 0; x < chunk.tilesW; x++) {
+        const tile = this.grid.tiles[chunk.tileY + y][chunk.tileX + x];
+        this.renderTerrainTile(chunk.ctx, tile, x * TILE_SIZE, y * TILE_SIZE, false);
+        chunk.ctx.strokeStyle = 'rgba(255, 255, 255, 0.04)';
+        chunk.ctx.lineWidth = 1;
+        chunk.ctx.strokeRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+      }
+    }
+    chunk.built = chunk.tilesW * chunk.tilesH;
+    chunk.ready = true;
+  }
+
+  blitVisibleTerrainChunks(ctx, startX, startY, startTileX, startTileY, endTileX, endTileY) {
+    const chunkTiles = RENDERER_CONFIG.TERRAIN_CHUNK_TILES;
+    const c0x = Math.floor(startTileX / chunkTiles);
+    const c0y = Math.floor(startTileY / chunkTiles);
+    const c1x = Math.floor(endTileX / chunkTiles);
+    const c1y = Math.floor(endTileY / chunkTiles);
+    for (let cy = c0y; cy <= c1y; cy++) {
+      for (let cx = c0x; cx <= c1x; cx++) {
+        const chunk = this.terrainChunks[cy]?.[cx];
+        if (!chunk?.ready) continue;
+        const visX0 = Math.max(startTileX, chunk.tileX);
+        const visY0 = Math.max(startTileY, chunk.tileY);
+        const visX1 = Math.min(endTileX, chunk.tileX + chunk.tilesW - 1);
+        const visY1 = Math.min(endTileY, chunk.tileY + chunk.tilesH - 1);
+        if (visX1 < visX0 || visY1 < visY0) continue;
+        const sx = (visX0 - chunk.tileX) * TILE_SIZE;
+        const sy = (visY0 - chunk.tileY) * TILE_SIZE;
+        const sw = (visX1 - visX0 + 1) * TILE_SIZE;
+        const sh = (visY1 - visY0 + 1) * TILE_SIZE;
+        ctx.drawImage(
+          chunk.canvas,
+          sx, sy, sw, sh,
+          startX + visX0 * TILE_SIZE,
+          startY + visY0 * TILE_SIZE,
+          sw, sh,
+        );
+      }
+    }
+  }
+
+  renderLowDetailTile(ctx, tile, px, py) {
+    if (tile.terrain === TERRAIN.WATER) {
+      ctx.fillStyle = tile.isPolluted ? '#3f6212' : '#0369a1';
+    } else if (tile.terrain === TERRAIN.SALT_WATER) {
+      ctx.fillStyle = '#0e3550';
+    } else if (tile.terrain === TERRAIN.SAND) {
+      ctx.fillStyle = '#dbc999';
+    } else if (tile.terrain === TERRAIN.ICE) {
+      ctx.fillStyle = '#cfe6f6';
+    } else if (tile.terrain === TERRAIN.FOREST) {
+      ctx.fillStyle = '#064e3b';
+    } else if (tile.terrain === TERRAIN.MOUNTAIN) {
+      ctx.fillStyle = '#334155';
+    } else {
+      const ground = GROUND_PALETTE[this.grid?.biome] || GROUND_PALETTE.default;
+      ctx.fillStyle = (tile.x + tile.y) % 2 === 0 ? ground.baseAlt : ground.base;
+    }
+    ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+
+    if (tile.zone !== ZONE.NONE) {
+      ctx.fillStyle = tile.zone === ZONE.RESIDENTIAL ? '#10b98188'
+        : tile.zone === ZONE.COMMERCIAL ? '#3b82f688'
+        : tile.zone === ZONE.AGRICULTURAL ? '#84cc1688'
+        : '#f59e0b88';
+      ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+      if (this.showsCapacityMarker(tile)) this.renderZoneCapacityMarker(ctx, px, py);
+    } else if (tile.hasRoad) {
+      ctx.fillStyle = '#475569';
+      ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+    } else if (tile.producer) {
+      ctx.fillStyle = '#f59e0b';
+      ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+    }
+
+    if (tile.hasRoad && tile.roadDamage > 0) this.renderDamageBar(ctx, px, py, tile.roadDamage, '#f59e0b');
+
+    if (tile.destroyed) {
+      this.renderDestroyedTile(ctx, px, py);
+    }
+  }
+
+  renderDestroyedTile(ctx, px, py) {
+    ctx.fillStyle = 'rgba(31, 41, 55, 0.88)';
+    ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+  }
+
+  renderTerrainTile(ctx, tile, px, py, animateWater = true) {
+    if (tile.terrain === TERRAIN.FLAT) {
+      const isAlt = (tile.x + tile.y) % 2 === 0;
+      const baseGround = GROUND_PALETTE[this.grid?.biome] || GROUND_PALETTE.default;
+      const frosty = this.grid?.biome === BIOME_TYPES.TUNDRA &&
+        tundraGroundIsFrost(this.grid.seed, tile.x, tile.y);
+      const ground = frosty ? TUNDRA_FROST_PALETTE : baseGround;
+      ctx.fillStyle = isAlt ? ground.baseAlt : ground.base;
+      ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+
+      ctx.fillStyle = isAlt ? ground.speckleAlt : ground.speckle;
+      ctx.fillRect(px + 4, py + 4, 3, 3);
+      ctx.fillRect(px + 18, py + 22, 2, 2);
+    } else if (tile.terrain === TERRAIN.ICE) {
+      // Frozen water: saturated blue-white, so ice reads apart from the neutral frost patches
+      // that sit on ordinary buildable ground.
+      const isAlt = (tile.x + tile.y) % 2 === 0;
+      ctx.fillStyle = isAlt ? '#a5d5f0' : '#94c7e6';
+      ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+
+      const jitter = (tile.x * 7 + tile.y * 13) % 5;
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.65)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(px + 3 + jitter, py + 5);
+      ctx.lineTo(px + 13, py + 13);
+      ctx.lineTo(px + 10 + jitter, py + 27);
+      ctx.stroke();
+
+      ctx.fillStyle = 'rgba(226, 244, 255, 0.75)';
+      ctx.fillRect(px + 21, py + 4, 3, 3);
+      ctx.fillRect(px + 5, py + 22, 2, 2);
+    } else if (tile.terrain === TERRAIN.SAND) {
+      // Beach: the only buildable coastal ground.
+      const isAlt = (tile.x + tile.y) % 2 === 0;
+      ctx.fillStyle = isAlt ? '#e6d7ac' : '#dbc999';
+      ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+
+      ctx.fillStyle = isAlt ? '#f2e7c4' : '#cbb884';
+      ctx.fillRect(px + 6, py + 8, 3, 3);
+      ctx.fillRect(px + 20, py + 20, 2, 2);
+      ctx.fillRect(px + 12, py + 25, 2, 2);
+    } else if (tile.terrain === TERRAIN.SALT_WATER) {
+      // Open sea: darker and deeper than a river, with slow swell lines instead of flow chevrons.
+      const isAlt = (tile.x + tile.y) % 2 === 0;
+      ctx.fillStyle = isAlt ? '#123f5c' : '#0e3550';
+      ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+
+      const swell = (tile.x * 5 + tile.y * 3) % 12;
+      ctx.strokeStyle = 'rgba(96, 165, 200, 0.35)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(px + 3, py + 9 + swell * 0.6);
+      ctx.quadraticCurveTo(px + 16, py + 5 + swell * 0.6, px + 29, py + 10 + swell * 0.6);
+      ctx.stroke();
+    } else if (tile.terrain === TERRAIN.MOUNTAIN) {
+      ctx.fillStyle = '#334155';
+      ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+
+      ctx.fillStyle = '#475569';
+      ctx.beginPath();
+      ctx.moveTo(px + 16, py + 4);
+      ctx.lineTo(px + 28, py + 28);
+      ctx.lineTo(px + 4, py + 28);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.fillStyle = '#94a3b8';
+      ctx.beginPath();
+      ctx.moveTo(px + 16, py + 4);
+      ctx.lineTo(px + 20, py + 12);
+      ctx.lineTo(px + 12, py + 12);
+      ctx.closePath();
+      ctx.fill();
+    } else if (tile.terrain === TERRAIN.FOREST) {
+      const isAlt = (tile.x + tile.y) % 2 === 0;
+      ctx.fillStyle = isAlt ? '#064e3b' : '#022c22';
+      ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+
+      ctx.fillStyle = '#059669';
+      ctx.beginPath();
+      ctx.arc(px + 10, py + 12, 6, 0, Math.PI * 2);
+      ctx.arc(px + 22, py + 10, 7, 0, Math.PI * 2);
+      ctx.arc(px + 16, py + 20, 8, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = '#10b981';
+      ctx.beginPath();
+      ctx.arc(px + 10, py + 12, 4, 0, Math.PI * 2);
+      ctx.arc(px + 22, py + 10, 5, 0, Math.PI * 2);
+      ctx.arc(px + 16, py + 20, 5, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (tile.terrain === TERRAIN.WATER) {
+      const isPollutedWater = tile.isPolluted === true;
+      const dir = tile.riverFlowDir || { x: 0, y: 1 };
+      const flowPos = tile.x * dir.x + tile.y * dir.y;
+      const wave = animateWater ? Math.sin(this.animTime * 3 - flowPos * 1.5) * 0.1 : 0;
+      
+      if (isPollutedWater) {
+        const pollutionLevel = Math.min(1, (tile.riverPollution || 0) / POLLUTION_CONFIG.RIVER_POLLUTION_LEVEL_MAX_DISPLAY);
+        ctx.fillStyle = pollutionLevel > POLLUTION_CONFIG.POLLUTION_DISPLAY_THRESHOLD
+          ? (wave > 0 ? '#4d7c0f' : '#3f6212')
+          : (wave > 0 ? '#65a30d' : '#4d7c0f');
+      } else {
+        ctx.fillStyle = wave > 0 ? '#0284c7' : '#0369a1';
+      }
+      ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+
+      // Directional flow animation using tile.riverFlowDir
+      const cx = px + TILE_SIZE / 2;
+      const cy = py + TILE_SIZE / 2;
+
+      const flowSpeed = 20;
+      const spatialOffset = Math.abs(tile.x * 13 + tile.y * 17);
+      const phase = animateWater
+        ? ((this.animTime * flowSpeed + spatialOffset) % TILE_SIZE + TILE_SIZE) % TILE_SIZE
+        : spatialOffset % TILE_SIZE;
+      const posOffset = phase - TILE_SIZE / 2;
+
+      const ax = cx + dir.x * posOffset;
+      const ay = cy + dir.y * posOffset;
+
+      // Draw chevron pointing in flow direction
+      const perpX = -dir.y;
+      const perpY = dir.x;
+
+      ctx.strokeStyle = isPollutedWater ? 'rgba(163, 230, 53, 0.5)' : 'rgba(255, 255, 255, 0.35)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(ax - dir.x * 3 + perpX * 5, ay - dir.y * 3 + perpY * 5);
+      ctx.lineTo(ax + dir.x * 4, ay + dir.y * 4);
+      ctx.lineTo(ax - dir.x * 3 - perpX * 5, ay - dir.y * 3 - perpY * 5);
+      ctx.stroke();
+    }
+  }
+
+  renderBridgeTile(ctx, tile, px, py) {
+    const n = this.grid.getTile(tile.x, tile.y - 1)?.hasRoad;
+    const e = this.grid.getTile(tile.x + 1, tile.y)?.hasRoad;
+    const s = this.grid.getTile(tile.x, tile.y + 1)?.hasRoad;
+    const w = this.grid.getTile(tile.x - 1, tile.y)?.hasRoad;
+
+    // Structural base (concrete/steel frame)
+    ctx.fillStyle = '#1e293b';
+    ctx.fillRect(px + 6, py + 6, 20, 20);
+    if (n) ctx.fillRect(px + 6, py, 20, 6);
+    if (e) ctx.fillRect(px + 26, py + 6, 6, 20);
+    if (s) ctx.fillRect(px + 6, py + 26, 20, 6);
+    if (w) ctx.fillRect(px, py + 6, 6, 20);
+
+    // Asphalt deck
+    ctx.fillStyle = '#475569';
+    ctx.fillRect(px + 8, py + 8, 16, 16);
+    if (n) ctx.fillRect(px + 8, py, 16, 8);
+    if (e) ctx.fillRect(px + 24, py + 8, 8, 16);
+    if (s) ctx.fillRect(px + 8, py + 24, 16, 8);
+    if (w) ctx.fillRect(px, py + 8, 8, 16);
+
+    // Guardrails / Metal caps
+    ctx.fillStyle = '#cbd5e1';
+    if ((n || s) && !e && !w) {
+      // N-S Vertical Bridge Railings
+      ctx.fillRect(px + 5, py, 3, TILE_SIZE);
+      ctx.fillRect(px + 24, py, 3, TILE_SIZE);
+    } else if ((e || w) && !n && !s) {
+      // E-W Horizontal Bridge Railings
+      ctx.fillRect(px, py + 5, TILE_SIZE, 3);
+      ctx.fillRect(px, py + 24, TILE_SIZE, 3);
+    } else {
+      // Corner/Junction Railing Pillars
+      if (!n) ctx.fillRect(px + 5, py + 5, 22, 3);
+      if (!s) ctx.fillRect(px + 5, py + 24, 22, 3);
+      if (!w) ctx.fillRect(px + 5, py + 5, 3, 22);
+      if (!e) ctx.fillRect(px + 24, py + 5, 3, 22);
+    }
+
+    // Yellow centerline
+    ctx.fillStyle = '#fef08a';
+    if ((n || s) && !e && !w) {
+      ctx.fillRect(px + 15, py + 3, 2, 6);
+      ctx.fillRect(px + 15, py + 23, 2, 6);
+    } else if ((e || w) && !n && !s) {
+      ctx.fillRect(px + 3, py + 15, 6, 2);
+      ctx.fillRect(px + 23, py + 15, 6, 2);
+    } else {
+      ctx.fillRect(px + 15, py + 15, 2, 2);
+    }
+  }
+
+  renderRoadTile(ctx, tile, px, py) {
+    if (tile.hasTunnel) {
+      ctx.fillStyle = '#1e293b';
+      ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+      ctx.fillStyle = '#64748b';
+      ctx.fillRect(px + 4, py + 8, TILE_SIZE - 8, TILE_SIZE - 8);
+      ctx.fillStyle = '#0f172a';
+      ctx.beginPath();
+      ctx.arc(px + TILE_SIZE / 2, py + TILE_SIZE / 2, 7, Math.PI, 0);
+      ctx.fill();
+      return;
+    }
+    const n = this.grid.getTile(tile.x, tile.y - 1)?.hasRoad;
+    const e = this.grid.getTile(tile.x + 1, tile.y)?.hasRoad;
+    const s = this.grid.getTile(tile.x, tile.y + 1)?.hasRoad;
+    const w = this.grid.getTile(tile.x - 1, tile.y)?.hasRoad;
+
+    ctx.fillStyle = '#475569';
+    ctx.fillRect(px + 8, py + 8, 16, 16);
+
+    if (n) ctx.fillRect(px + 8, py, 16, 8);
+    if (e) ctx.fillRect(px + 24, py + 8, 8, 16);
+    if (s) ctx.fillRect(px + 8, py + 24, 16, 8);
+    if (w) ctx.fillRect(px, py + 8, 8, 16);
+
+    ctx.fillStyle = '#fef08a';
+    if ((n || s) && !e && !w) {
+      ctx.fillRect(px + 15, py + 3, 2, 6);
+      ctx.fillRect(px + 15, py + 23, 2, 6);
+    } else if ((e || w) && !n && !s) {
+      ctx.fillRect(px + 3, py + 15, 6, 2);
+      ctx.fillRect(px + 23, py + 15, 6, 2);
+    } else {
+      ctx.fillRect(px + 15, py + 15, 2, 2);
+    }
+  }
+
+  renderZoneTile(ctx, tile, px, py) {
+    let baseColor = '#10b981';
+    if (tile.zone === ZONE.RESIDENTIAL) baseColor = '#10b981';
+    else if (tile.zone === ZONE.COMMERCIAL) baseColor = '#3b82f6';
+    else if (tile.zone === ZONE.INDUSTRIAL) baseColor = '#f59e0b';
+    else if (tile.zone === ZONE.AGRICULTURAL) baseColor = '#84cc16';
+
+    ctx.fillStyle = baseColor + '33';
+    ctx.fillRect(px + 2, py + 2, TILE_SIZE - 4, TILE_SIZE - 4);
+    ctx.strokeStyle = baseColor + '88';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(px + 2, py + 2, TILE_SIZE - 4, TILE_SIZE - 4);
+
+    if (tile.zone === ZONE.RESIDENTIAL) {
+      this.renderResidentialArt(ctx, tile.density, px, py);
+    } else if (tile.zone === ZONE.COMMERCIAL) {
+      this.renderCommercialArt(ctx, tile.density, px, py);
+    } else if (tile.zone === ZONE.INDUSTRIAL) {
+      this.renderIndustrialArt(ctx, tile.density, px, py);
+    } else if (tile.zone === ZONE.AGRICULTURAL) {
+      this.renderAgriculturalArt(ctx, tile.density, px, py);
+    }
+    if (this.showsCapacityMarker(tile)) this.renderZoneCapacityMarker(ctx, px, py);
+  }
+
+  // The corner tick advertises that the block can still be upgraded, so a high-density zone
+  // already at its maximum tier must not show it even when it is full.
+  showsCapacityMarker(tile) {
+    return Boolean(tile) && !tile.destroyed && tile.density !== DENSITY.HIGH && isZoneAtCapacity(tile);
+  }
+
+  renderZoneCapacityMarker(ctx, px, py) {
+    const x = px + TILE_SIZE - 13;
+    const y = py + 1;
+    ctx.fillStyle = '#0f172a';
+    ctx.fillRect(x, y, 12, 12);
+    ctx.fillStyle = '#fde047';
+    ctx.fillRect(x + 1, y + 1, 10, 10);
+    ctx.strokeStyle = '#422006';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(x + 3, y + 6);
+    ctx.lineTo(x + 5, y + 8);
+    ctx.lineTo(x + 9, y + 3);
+    ctx.stroke();
+  }
+
+  renderResidentialArt(ctx, density, px, py) {
+    if (density === DENSITY.LIGHT) {
+      ctx.fillStyle = '#34d399';
+      ctx.fillRect(px + 5, py + 6, 9, 8);
+      ctx.fillRect(px + 18, py + 16, 9, 8);
+
+      ctx.fillStyle = '#059669';
+      ctx.beginPath();
+      ctx.moveTo(px + 4, py + 6);
+      ctx.lineTo(px + 9.5, py + 2);
+      ctx.lineTo(px + 15, py + 6);
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.moveTo(px + 17, py + 16);
+      ctx.lineTo(px + 22.5, py + 12);
+      ctx.lineTo(px + 28, py + 16);
+      ctx.fill();
+    } else if (density === DENSITY.MEDIUM) {
+      ctx.fillStyle = '#059669';
+      ctx.fillRect(px + 4, py + 4, 11, 24);
+      ctx.fillRect(px + 17, py + 8, 11, 20);
+
+      ctx.fillStyle = '#fef08a';
+      ctx.fillRect(px + 6, py + 7, 3, 4);
+      ctx.fillRect(px + 11, py + 7, 3, 4);
+      ctx.fillRect(px + 6, py + 14, 3, 4);
+      ctx.fillRect(px + 11, py + 14, 3, 4);
+      ctx.fillRect(px + 19, py + 12, 3, 4);
+      ctx.fillRect(px + 24, py + 12, 3, 4);
+    } else {
+      ctx.fillStyle = '#047857';
+      ctx.fillRect(px + 4, py + 2, 24, 28);
+      ctx.fillStyle = '#065f46';
+      ctx.fillRect(px + 8, py + 4, 16, 24);
+
+      ctx.fillStyle = '#6ee7b7';
+      for (let r = 0; r < 4; r++) {
+        for (let c = 0; c < 3; c++) {
+          ctx.fillRect(px + 10 + c * 5, py + 6 + r * 5, 3, 3);
+        }
+      }
+    }
+  }
+
+  renderCommercialArt(ctx, density, px, py) {
+    if (density === DENSITY.LIGHT) {
+      ctx.fillStyle = '#60a5fa';
+      ctx.fillRect(px + 5, py + 8, 22, 18);
+      ctx.fillStyle = '#ef4444';
+      ctx.fillRect(px + 4, py + 6, 24, 4);
+      ctx.fillStyle = '#93c5fd';
+      ctx.fillRect(px + 8, py + 12, 6, 8);
+      ctx.fillRect(px + 18, py + 12, 6, 8);
+      ctx.fillStyle = '#fef3c7';
+      ctx.fillRect(px + 6, py + 22, 20, 3);
+    } else if (density === DENSITY.MEDIUM) {
+      ctx.fillStyle = '#2563eb';
+      ctx.fillRect(px + 4, py + 4, 24, 24);
+      ctx.fillStyle = '#1d4ed8';
+      ctx.fillRect(px + 8, py + 2, 16, 4);
+
+      ctx.fillStyle = '#93c5fd';
+      ctx.fillRect(px + 7, py + 8, 18, 5);
+      ctx.fillRect(px + 7, py + 16, 18, 5);
+      ctx.fillStyle = '#fbbf24';
+      ctx.fillRect(px + 5, py + 24, 20, 2);
+    } else {
+      ctx.fillStyle = '#1e40af';
+      ctx.fillRect(px + 6, py + 2, 20, 28);
+      ctx.fillStyle = '#3b82f6';
+      ctx.fillRect(px + 9, py + 4, 14, 24);
+
+      ctx.fillStyle = '#bfdbfe';
+      ctx.fillRect(px + 11, py + 6, 10, 20);
+      ctx.fillStyle = '#1e3a8a';
+      ctx.fillRect(px + 15, py + 6, 2, 20);
+      ctx.fillStyle = '#fbbf24';
+      ctx.fillRect(px + 10, py + 24, 12, 3);
+    }
+  }
+
+  renderIndustrialArt(ctx, density, px, py) {
+    const wind = this.windIntensity ?? 0.5;
+    const drift = (this.animTime * (3 + wind * 8)) % 18;
+    const drawSmoke = (stackX, stackY, size = 3) => {
+      ctx.fillStyle = 'rgba(203, 213, 225, 0.62)';
+      for (let i = 0; i < 3; i++) {
+        const progress = (drift + i * 6) % 18;
+        const puffX = px + stackX + (wind - 0.5) * progress * 2;
+        const puffY = py + stackY - progress * 0.35;
+        ctx.beginPath();
+        ctx.arc(puffX, puffY, size + i * 0.7, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    };
+    if (density === DENSITY.LIGHT) {
+      ctx.fillStyle = '#fbbf24';
+      ctx.fillRect(px + 4, py + 10, 16, 16);
+      ctx.fillStyle = '#78350f';
+      ctx.fillRect(px + 22, py + 6, 5, 20);
+      ctx.fillStyle = '#94a3b8';
+      ctx.fillRect(px + 21, py + 2, 7, 4);
+      drawSmoke(24, 2, 2.5);
+    } else if (density === DENSITY.MEDIUM) {
+      ctx.fillStyle = '#d97706';
+      ctx.fillRect(px + 4, py + 6, 24, 20);
+      ctx.fillStyle = '#78350f';
+      ctx.beginPath();
+      ctx.moveTo(px + 4, py + 6);
+      ctx.lineTo(px + 10, py + 2);
+      ctx.lineTo(px + 16, py + 6);
+      ctx.lineTo(px + 22, py + 2);
+      ctx.lineTo(px + 28, py + 6);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = '#78350f';
+      ctx.fillRect(px + 21, py + 7, 5, 12);
+      drawSmoke(23, 7, 2.5);
+    } else {
+      ctx.fillStyle = '#b45309';
+      ctx.fillRect(px + 2, py + 4, 28, 24);
+      ctx.fillStyle = '#78350f';
+      ctx.fillRect(px + 5, py + 8, 8, 16);
+      ctx.fillRect(px + 19, py + 8, 8, 16);
+
+      drawSmoke(9, 4, 3);
+      drawSmoke(23, 4, 3);
+    }
+  }
+
+  renderAgriculturalArt(ctx, density, px, py) {
+    const scale = density === DENSITY.HIGH ? 1.12 : density === DENSITY.MEDIUM ? 1.0 : 0.62;
+    const cx = px + TILE_SIZE / 2;
+    const cy = py + TILE_SIZE / 2;
+    const stemBottom = cy + 10;
+    const groundY = py + TILE_SIZE - 3;
+    ctx.save();
+    ctx.translate(cx, groundY);
+    ctx.scale(scale, scale);
+    ctx.translate(-cx, -stemBottom);
+
+    ctx.fillStyle = '#4d7c0f';
+    ctx.fillRect(cx - 1.5, cy - 2, 3, 12);
+
+    ctx.fillStyle = '#65a30d';
+    ctx.beginPath();
+    ctx.ellipse(cx - 6, cy - 1, 6, 3.5, -0.6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(cx + 6, cy - 1, 6, 3.5, 0.6, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#84cc16';
+    ctx.beginPath();
+    ctx.ellipse(cx - 4, cy - 7, 4.5, 3, -0.35, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(cx + 4, cy - 7, 4.5, 3, 0.35, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#a3e635';
+    ctx.beginPath();
+    ctx.ellipse(cx, cy - 11, 4, 4.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  renderProducerTile(ctx, tile, px, py) {
+    const prod = tile.producer;
+    // Tiered buildings start as a small structure and grow to fill the tile at tier 3,
+    // matching how zone art grows with density.
+    const tiered = isTieredProducer(prod.type);
+    const serviceScale = tiered
+      ? [0.72, 0.86, 1][getProducerTier(prod) - 1]
+      : (prod.density === DENSITY.HIGH ? 1.18 : prod.density === DENSITY.MEDIUM ? 1.08 : 1);
+    ctx.save();
+    ctx.translate(px + TILE_SIZE / 2, py + TILE_SIZE / 2);
+    ctx.scale(serviceScale, serviceScale);
+    ctx.translate(-(px + TILE_SIZE / 2), -(py + TILE_SIZE / 2));
+    if (prod.type === PRODUCER_TYPE.POWER_PLANT) {
+      ctx.fillStyle = '#d97706';
+      ctx.fillRect(px + 2, py + 2, 28, 28);
+      ctx.fillStyle = '#f59e0b';
+      ctx.fillRect(px + 6, py + 6, 20, 20);
+
+      ctx.fillStyle = '#1e293b';
+      ctx.beginPath();
+      ctx.arc(px + 16, py + 16, 6, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = '#fef08a';
+      ctx.beginPath();
+      ctx.moveTo(px + 16, py + 12);
+      ctx.lineTo(px + 14, py + 17);
+      ctx.lineTo(px + 17, py + 17);
+      ctx.lineTo(px + 15, py + 21);
+      ctx.lineTo(px + 18, py + 15);
+      ctx.lineTo(px + 15, py + 15);
+      ctx.closePath();
+      ctx.fill();
+    } else if (prod.type === PRODUCER_TYPE.WINDMILL) {
+      ctx.fillStyle = '#475569';
+      ctx.fillRect(px + 2, py + 2, 28, 28);
+
+      ctx.fillStyle = '#e2e8f0';
+      ctx.fillRect(px + 15, py + 14, 2, 16);
+
+      const spin = this.animTime * 4;
+      ctx.strokeStyle = '#f1f5f9';
+      ctx.lineWidth = 2;
+      for (let i = 0; i < 3; i++) {
+        const angle = spin + (i * Math.PI * 2) / 3;
+        ctx.beginPath();
+        ctx.moveTo(px + 16, py + 12);
+        ctx.lineTo(px + 16 + Math.cos(angle) * 9, py + 12 + Math.sin(angle) * 9);
+        ctx.stroke();
+      }
+    } else if (prod.type === PRODUCER_TYPE.SOLAR_PANEL) {
+      ctx.fillStyle = '#1e293b';
+      ctx.fillRect(px + 2, py + 2, 28, 28);
+      ctx.fillStyle = '#1d4ed8';
+      ctx.fillRect(px + 5, py + 5, 22, 22);
+      ctx.fillStyle = '#60a5fa';
+      for (let r = 0; r < 3; r++) {
+        for (let c = 0; c < 3; c++) {
+          ctx.fillRect(px + 7 + c * 7, py + 7 + r * 7, 5, 5);
+        }
+      }
+    } else if (prod.type === PRODUCER_TYPE.BATTERY) {
+      ctx.fillStyle = '#166534';
+      ctx.fillRect(px + 2, py + 2, 28, 28);
+      ctx.fillStyle = '#22c55e';
+      ctx.fillRect(px + 8, py + 6, 16, 20);
+      ctx.fillRect(px + 13, py + 3, 6, 4);
+
+      const pct = prod.maxStorage > 0 ? (prod.storedEnergy || 0) / prod.maxStorage : 0;
+      ctx.fillStyle = '#bbf7d0';
+      const fillHeight = Math.round(16 * pct);
+      ctx.fillRect(px + 10, py + 24 - fillHeight, 12, fillHeight);
+    } else if (prod.type === PRODUCER_TYPE.COAL_PLANT) {
+      ctx.fillStyle = '#292524';
+      ctx.fillRect(px + 2, py + 2, 28, 28);
+      ctx.fillStyle = '#57534e';
+      ctx.fillRect(px + 21, py + 4, 6, 22);
+      ctx.fillRect(px + 6, py + 12, 6, 14);
+
+      const smokeOffset = (Math.sin(this.animTime * 2) * 3) | 0;
+      ctx.fillStyle = 'rgba(120, 113, 108, 0.8)';
+      ctx.beginPath();
+      ctx.arc(px + 24 + smokeOffset, py + 3, 4, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (prod.type === PRODUCER_TYPE.NUCLEAR_PLANT) {
+      ctx.fillStyle = '#3f6212';
+      ctx.fillRect(px + 2, py + 2, 28, 28);
+      ctx.fillStyle = '#84cc16';
+      ctx.beginPath();
+      ctx.arc(px + 12, py + 20, 8, Math.PI, 0);
+      ctx.arc(px + 22, py + 20, 8, Math.PI, 0);
+      ctx.fill();
+
+      const puff = 1 + Math.sin(this.animTime * 1.5) * 0.2;
+      ctx.fillStyle = 'rgba(236, 253, 245, 0.85)';
+      ctx.beginPath();
+      ctx.arc(px + 12, py + 8, 5 * puff, 0, Math.PI * 2);
+      ctx.arc(px + 22, py + 8, 5 * puff, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = '#1a2e05';
+      ctx.font = 'bold 12px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('☢', px + 17, py + 24);
+    } else if (prod.type === PRODUCER_TYPE.WATER_TOWER) {
+      ctx.fillStyle = '#0284c7';
+      ctx.fillRect(px + 2, py + 2, 28, 28);
+      ctx.fillStyle = '#38bdf8';
+      ctx.beginPath();
+      ctx.arc(px + 16, py + 16, 10, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#e0f2fe';
+      ctx.beginPath();
+      ctx.arc(px + 14, py + 14, 4, 0, Math.PI * 2);
+      ctx.fill();
+
+      if (prod.contaminated) {
+        ctx.fillStyle = '#ef4444';
+        ctx.beginPath();
+        ctx.arc(px + 24, py + 8, 7, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 9px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('☣', px + 24, py + 8);
+      }
+    } else if (prod.type === PRODUCER_TYPE.SEWAGE_PLANT) {
+      ctx.fillStyle = '#7e22ce';
+      ctx.fillRect(px + 2, py + 2, 28, 28);
+      ctx.fillStyle = '#a855f7';
+      ctx.fillRect(px + 6, py + 6, 9, 9);
+      ctx.fillRect(px + 17, py + 6, 9, 9);
+      ctx.fillRect(px + 6, py + 17, 9, 9);
+      ctx.fillRect(px + 17, py + 17, 9, 9);
+    } else if (prod.type === PRODUCER_TYPE.DESALINATION_PLANT) {
+      ctx.fillStyle = '#0c4a6e';
+      ctx.fillRect(px + 2, py + 2, 28, 28);
+      ctx.fillStyle = '#0ea5e9';
+      ctx.fillRect(px + 5, py + 5, 22, 12);
+      // Distillation stacks.
+      ctx.fillStyle = '#e0f2fe';
+      ctx.fillRect(px + 8, py + 19, 4, 9);
+      ctx.fillRect(px + 14, py + 19, 4, 9);
+      ctx.fillRect(px + 20, py + 19, 4, 9);
+    } else if (prod.type === PRODUCER_TYPE.POLICE_STATION) {
+      ctx.fillStyle = '#1e3a8a';
+      ctx.fillRect(px + 2, py + 2, 28, 28);
+      ctx.fillStyle = '#3b82f6';
+      ctx.fillRect(px + 6, py + 6, 20, 20);
+
+      const isRed = Math.floor(this.animTime * 6) % 2 === 0;
+      ctx.fillStyle = isRed ? '#ef4444' : '#38bdf8';
+      ctx.fillRect(px + 13, py + 11, 6, 4);
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 9px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('POL', px + 16, py + 20);
+    } else if (prod.type === PRODUCER_TYPE.FIRE_STATION) {
+      ctx.fillStyle = '#991b1b';
+      ctx.fillRect(px + 2, py + 2, 28, 28);
+      ctx.fillStyle = '#ef4444';
+      ctx.fillRect(px + 5, py + 5, 22, 22);
+
+      ctx.fillStyle = '#fef08a';
+      ctx.fillRect(px + 8, py + 18, 6, 9);
+      ctx.fillRect(px + 18, py + 18, 6, 9);
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 9px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('FIRE', px + 16, py + 11);
+    } else if (prod.type === PRODUCER_TYPE.HOSPITAL) {
+      ctx.fillStyle = '#065f46';
+      ctx.fillRect(px + 2, py + 2, 28, 28);
+      ctx.fillStyle = '#ecfdf5';
+      ctx.fillRect(px + 5, py + 5, 22, 22);
+
+      ctx.fillStyle = '#ef4444';
+      ctx.fillRect(px + 14, py + 9, 4, 14);
+      ctx.fillRect(px + 9, py + 14, 14, 4);
+    } else if (prod.type === PRODUCER_TYPE.SCHOOL) {
+      ctx.fillStyle = '#9a3412';
+      ctx.fillRect(px + 2, py + 2, 28, 28);
+      ctx.fillStyle = '#f59e0b';
+      ctx.fillRect(px + 6, py + 6, 20, 20);
+
+      ctx.fillStyle = '#78350f';
+      ctx.fillRect(px + 13, py + 3, 6, 8);
+      ctx.fillStyle = '#fef08a';
+      ctx.fillRect(px + 15, py + 5, 2, 2);
+    } else if (prod.type === PRODUCER_TYPE.UNIVERSITY) {
+      ctx.fillStyle = '#0c4a6e';
+      ctx.fillRect(px + 2, py + 2, 28, 28);
+      ctx.fillStyle = '#e0f2fe';
+      ctx.beginPath();
+      ctx.moveTo(px + 5, py + 12);
+      ctx.lineTo(px + 16, py + 5);
+      ctx.lineTo(px + 27, py + 12);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillRect(px + 5, py + 25, 22, 3);
+      for (const cx of [7, 12, 18, 23]) ctx.fillRect(px + cx, py + 13, 2, 12);
+    } else if (prod.type === PRODUCER_TYPE.LIBRARY) {
+      ctx.fillStyle = '#4c1d95';
+      ctx.fillRect(px + 2, py + 2, 28, 28);
+      ctx.fillStyle = '#8b5cf6';
+      ctx.fillRect(px + 5, py + 5, 22, 22);
+
+      ctx.fillStyle = '#ddd6fe';
+      ctx.fillRect(px + 8, py + 9, 3, 14);
+      ctx.fillRect(px + 14, py + 9, 3, 14);
+      ctx.fillRect(px + 20, py + 9, 3, 14);
+    } else if (prod.type === PRODUCER_TYPE.CITY_HALL) {
+      ctx.fillStyle = '#854d0e';
+      ctx.fillRect(px + 2, py + 2, 28, 28);
+      ctx.fillStyle = '#eab308';
+      ctx.fillRect(px + 4, py + 4, 24, 24);
+
+      ctx.fillStyle = '#fef08a';
+      ctx.beginPath();
+      ctx.arc(px + 16, py + 14, 7, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = '#38bdf8';
+      ctx.fillRect(px + 15, py + 2, 2, 8);
+      ctx.fillStyle = '#ef4444';
+      ctx.fillRect(px + 17, py + 2, 4, 3);
+    } else if (prod.type === PRODUCER_TYPE.REFINERY) {
+      ctx.fillStyle = '#7c2d12';
+      ctx.fillRect(px + 2, py + 2, 28, 28);
+      ctx.fillStyle = '#ea580c';
+      ctx.fillRect(px + 5, py + 14, 22, 14);
+      ctx.fillStyle = '#9a3412';
+      ctx.fillRect(px + 7, py + 4, 5, 18);
+      ctx.fillRect(px + 20, py + 6, 5, 16);
+      ctx.fillStyle = '#fed7aa';
+      ctx.fillRect(px + 8, py + 18, 16, 6);
+    } else if (prod.type === PRODUCER_TYPE.SURVEY_STATION) {
+      ctx.fillStyle = '#0f766e';
+      ctx.fillRect(px + 2, py + 2, 28, 28);
+      ctx.fillStyle = '#14b8a6';
+      ctx.fillRect(px + 6, py + 15, 20, 11);
+      ctx.fillStyle = '#ccfbf1';
+      ctx.fillRect(px + 14, py + 6, 4, 14);
+      ctx.beginPath();
+      ctx.arc(px + 16, py + 6, 5, Math.PI, 0);
+      ctx.strokeStyle = '#ccfbf1';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    } else if (prod.type === PRODUCER_TYPE.WAREHOUSE_ORE || prod.type === PRODUCER_TYPE.WAREHOUSE_BAR || prod.type === PRODUCER_TYPE.WAREHOUSE_GOODS) {
+      ctx.fillStyle = PRODUCER_CONFIG[prod.type].color;
+      ctx.fillRect(px + 2, py + 7, 28, 21);
+      ctx.fillStyle = '#cbd5e1';
+      ctx.beginPath();
+      ctx.moveTo(px + 2, py + 7);
+      ctx.lineTo(px + 16, py + 2);
+      ctx.lineTo(px + 30, py + 7);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = '#64748b';
+      ctx.fillRect(px + 5, py + 11, 22, 2);
+      ctx.fillRect(px + 5, py + 16, 22, 2);
+      ctx.fillStyle = '#1e293b';
+      ctx.fillRect(px + 7, py + 20, 18, 8);
+      ctx.fillStyle = '#94a3b8';
+      ctx.fillRect(px + 9, py + 21, 6, 7);
+      ctx.fillRect(px + 17, py + 21, 6, 7);
+    } else if (prod.type === PRODUCER_TYPE.SILO) {
+      ctx.fillStyle = '#3f3f46';
+      ctx.fillRect(px + 2, py + 2, 28, 28);
+      // Twin cylindrical silos with domed tops and hoop bands.
+      for (const [cx, top, w] of [[11, 9, 9], [22, 12, 7]]) {
+        ctx.fillStyle = '#d4d4d8';
+        ctx.fillRect(px + cx - w / 2, py + top, w, 28 - top);
+        ctx.beginPath();
+        ctx.arc(px + cx, py + top, w / 2, Math.PI, 0);
+        ctx.fill();
+        ctx.fillStyle = '#a1a1aa';
+        for (let band = top + 4; band < 28; band += 5) ctx.fillRect(px + cx - w / 2, py + band, w, 1);
+      }
+      ctx.fillStyle = prod.storageType === 'fuel' ? '#f97316' : '#a16207';
+      ctx.fillRect(px + 7, py + 24, 8, 3);
+    } else {
+      ctx.fillStyle = PRODUCER_CONFIG[prod.type]?.color || '#64748b';
+      ctx.fillRect(px + 2, py + 2, 28, 28);
+      ctx.fillStyle = '#f8fafc';
+      ctx.font = 'bold 8px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText((PRODUCER_CONFIG[prod.type]?.name || prod.type).slice(0, 5).toUpperCase(), px + 16, py + 16);
+    }
+
+    ctx.restore();
+
+    const isBatteryDependent = prod.type === PRODUCER_TYPE.WINDMILL || prod.type === PRODUCER_TYPE.SOLAR_PANEL;
+    const gridConnected = isBatteryDependent
+      ? UtilityManager.contributesPowerToGrid(this.grid, prod)
+      : this.grid.isRoadAdjacent(tile.x, tile.y);
+    if (!gridConnected) {
+      ctx.fillStyle = '#ef4444';
+      ctx.fillRect(px + 2, py + 2, 10, 10);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 9px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('!', px + 7, py + 7);
+    } else if (!prod.operational) {
+      ctx.fillStyle = '#f59e0b';
+      ctx.fillRect(px + 2, py + 2, 10, 10);
+      ctx.fillStyle = '#1c1917';
+      ctx.font = 'bold 8px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('U', px + 7, py + 7);
+    }
+  }
+
+  renderSurveyStatus(ctx, tile, px, py) {
+    if (tile.surveyingBy) {
+      const progress = tile.surveyRequired > 0 ? tile.surveyProgress / tile.surveyRequired : 0;
+      ctx.fillStyle = 'rgba(20, 184, 166, 0.85)';
+      ctx.fillRect(px + 3, py + 26, (TILE_SIZE - 6) * progress, 3);
+      return;
+    }
+
+    ctx.strokeStyle = '#ef4444';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(px + 25, py + 3);
+    ctx.lineTo(px + 29, py + 7);
+    ctx.moveTo(px + 29, py + 3);
+    ctx.lineTo(px + 25, py + 7);
+    ctx.stroke();
+  }
+
+  renderFireTile(ctx, tile, px, py) {
+    const flicker = 0.55 + 0.35 * Math.abs(Math.sin(this.animTime * 6 + (tile.x + tile.y)));
+    ctx.fillStyle = `rgba(249, 115, 22, ${0.5 + 0.2 * flicker})`;
+    ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+
+    // Pulsing smoke particles
+    const smokeCount = 3;
+    for (let i = 0; i < smokeCount; i++) {
+      const phase = this.animTime * 1.5 + i * 2.1 + (tile.x * 3 + tile.y * 7);
+      const riseFrac = (phase % 2) / 2;
+      const sx = px + TILE_SIZE / 2 + Math.sin(phase) * 6;
+      const sy = py + TILE_SIZE * (0.8 - riseFrac * 0.7);
+      const alpha = (1 - riseFrac) * 0.35;
+      ctx.fillStyle = `rgba(100, 116, 139, ${alpha})`;
+      ctx.beginPath();
+      ctx.arc(sx, sy, 3 + riseFrac * 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    if (tile.fireDamage > 0) {
+      this.renderDamageBar(ctx, px, py, tile.fireDamage, '#ef4444');
+    }
+  }
+
+  renderDamageBar(ctx, px, py, damage, color) {
+    const pct = Math.min(1, Math.max(0, damage / 100));
+    const barWidth = TILE_SIZE - 6;
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.7)';
+    ctx.fillRect(px + 3, py + TILE_SIZE - 6, barWidth, 3);
+    ctx.fillStyle = color;
+    ctx.fillRect(px + 3, py + TILE_SIZE - 6, barWidth * pct, 3);
+  }
+
+  renderShortfallIndicators(ctx, tile, px, py) {
+    if (tile.zone === ZONE.NONE) return;
+
+    if (tile.shortfall.sewage) {
+      ctx.fillStyle = 'rgba(168, 85, 247, 0.25)';
+      ctx.fillRect(px + 2, py + 2, TILE_SIZE - 4, TILE_SIZE - 4);
+    }
+
+    const isConnected = this.grid.isRoadAdjacent(tile.x, tile.y);
+    if (!isConnected) {
+      ctx.fillStyle = '#ef4444';
+      ctx.fillRect(px + 2, py + 2, 6, 6);
+      return;
+    }
+
+    let offset = 2;
+    const alpha = Math.sin(this.animTime * 4) > 0 ? 'ff' : '88';
+
+    if (tile.shortfall.power) {
+      ctx.fillStyle = '#f59e0b' + alpha;
+      ctx.beginPath();
+      ctx.arc(px + offset + 3, py + 4, 3, 0, Math.PI * 2);
+      ctx.fill();
+      offset += 8;
+    }
+
+    if (tile.shortfall.water) {
+      ctx.fillStyle = '#38bdf8' + alpha;
+      ctx.beginPath();
+      ctx.arc(px + offset + 3, py + 4, 3, 0, Math.PI * 2);
+      ctx.fill();
+      offset += 8;
+    }
+
+    if (tile.shortfall.sewage) {
+      ctx.fillStyle = '#a855f7' + alpha;
+      ctx.beginPath();
+      ctx.arc(px + offset + 3, py + 4, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  renderOverlay(ctx, tile, px, py) {
+    if (this.overlayMode === 'survey') {
+      this.renderSurveyOverlay(ctx, tile, px, py);
+      return;
+    }
+
+    if (this.overlayMode === 'pollution') {
+      if (tile.pollution > 0) {
+        const intensity = Math.min(1, tile.pollution / 15);
+        ctx.fillStyle = `rgba(180, 83, 9, ${0.15 + intensity * 0.55})`;
+        ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+
+        ctx.fillStyle = '#fef08a';
+        ctx.font = '10px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(`${tile.pollution}`, px + 16, py + 16);
+      }
+      return;
+    }
+
+    if (this.overlayMode === 'crime') {
+      if (tile.crime > 0) {
+        const intensity = Math.min(1, tile.crime / 10);
+        ctx.fillStyle = `rgba(225, 29, 72, ${0.15 + intensity * 0.55})`;
+        ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+
+        ctx.fillStyle = '#fecdd3';
+        ctx.font = '10px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(`${Number(tile.crime.toFixed(1))}`, px + 16, py + 16);
+      }
+      return;
+    }
+
+    let dist = Infinity;
+    let color = '#ffffff';
+
+    if (this.overlayMode === 'power') {
+      dist = tile.distanceToProducer.power;
+      color = '245, 158, 11';
+    } else if (this.overlayMode === 'water') {
+      dist = tile.distanceToProducer.water;
+      color = '56, 189, 248';
+    } else if (this.overlayMode === 'sewage') {
+      dist = tile.distanceToProducer.sewage;
+      color = '168, 85, 247';
+    } else if (this.overlayMode === 'police') {
+      dist = tile.serviceDistances?.police ?? Infinity;
+      color = '59, 130, 246';
+    } else if (this.overlayMode === 'fire') {
+      dist = tile.serviceDistances?.fire ?? Infinity;
+      color = '239, 68, 68';
+    } else if (this.overlayMode === 'hospital') {
+      dist = tile.serviceDistances?.hospital ?? Infinity;
+      color = '16, 185, 129';
+    } else if (this.overlayMode === 'school') {
+      dist = tile.serviceDistances?.school ?? Infinity;
+      color = '245, 158, 11';
+    } else if (this.overlayMode === 'library') {
+      dist = tile.serviceDistances?.library ?? Infinity;
+      color = '139, 92, 246';
+    } else if (this.overlayMode === 'city_hall') {
+      dist = tile.serviceDistances?.cityHall ?? Infinity;
+      color = '234, 179, 8';
+    }
+
+    if (dist < Infinity) {
+      const alpha = Math.max(0.15, 0.7 - dist * 0.05);
+      ctx.fillStyle = `rgba(${color}, ${alpha})`;
+      ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+
+      if (tile.hasRoad) {
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '10px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(`${dist}`, px + 16, py + 16);
+      }
+    } else if (tile.zone !== ZONE.NONE) {
+      ctx.fillStyle = 'rgba(239, 68, 68, 0.3)';
+      ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+    }
+  }
+
+  renderSurveyOverlay(ctx, tile, px, py) {
+    if (tile.surveyingBy) {
+      const progress = tile.surveyRequired > 0 ? tile.surveyProgress / tile.surveyRequired : 0;
+      ctx.fillStyle = 'rgba(20, 184, 166, 0.35)';
+      ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+      ctx.fillStyle = '#99f6e4';
+      ctx.fillRect(px + 3, py + TILE_SIZE - 7, (TILE_SIZE - 6) * Math.min(1, progress), 4);
+      return;
+    }
+    if (!tile.oreDiscovered) return;
+    const ore = ORE_CONFIG[tile.discoveredOre];
+    ctx.fillStyle = ore?.color || '#ef4444';
+    ctx.globalAlpha = 0.35;
+    ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 9px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    if (ore?.name) ctx.fillText(ore.name === 'IRON' ? 'IRON' : ore.name.slice(0, 5).toUpperCase(), px + TILE_SIZE / 2, py + TILE_SIZE / 2);
+  }
+}

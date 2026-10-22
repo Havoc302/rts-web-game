@@ -9,8 +9,8 @@ Agent handoff protocol:
 
 Open handoff (2026-10-20):
 - Active task: none in progress; the next item is to pick up the Phase 1 follow-ups listed in `docs/DESIGN.md`.
-- Latest completed task: space bar pauses and resumes (`0.4.9`); see the final task entry in this log.
-- Verified baseline: `npm test` passes 55 suites across 15 entry points.
+- Latest completed task: publish snapshot folder `simconquer2000/` (`0.4.10`); see the final task entry in this log.
+- Verified baseline: `npm test` rebuilds `simconquer2000/` and passes 56 suites across 15 entry points.
 - Phase 1 follow-ups are tracked in `docs/DESIGN.md`; in particular, localStorage autosave and named tick-stage extraction are not implemented. Do not treat historical `Current task` headings below as active.
 
 Current task: Add standalone JSON game save export/import.
@@ -2131,5 +2131,22 @@ Current task: Space bar pauses and resumes (`0.4.9`).
 Validation:
 - `node tests/run-all.js` passes all 15 entry points in about 3.5 s.
 - Browser check: with a tool button focused by a mouse click, Space resumed at 1x and a second press paused; with a text input focused, Space did nothing; no page errors. New Game opens on the globe, where Space correctly does nothing until the city is open.
+
+
+Current task: Publish snapshot folder `simconquer2000/` (`0.4.10`).
+
+The site will be hosted from local Apache behind a Cloudflare tunnel, so the web root must hold the runtime files and nothing else.
+
+- [done] `scripts/prod-manifest.mjs` is the single list of runtime files: `index.html`, `style.css`, `src/` (28 files, self-contained) and `assets/audio/bgm.mp3`.
+- [done] `scripts/build-prod.mjs` wipes and rebuilds `simconquer2000/` from that list, writes its own `README.md`, and refuses to run if the output path is not the snapshot folder. Exposed as `npm run build:prod`, with `pretest` rebuilding first so a stale copy cannot be committed.
+- [done] `npm run serve:prod` previews the snapshot on its own port. Verified standalone: page boots at the current version, New Game generates terrain, globe opens, zero failed requests and no page errors.
+- [done] `tests/cases/prod-build.case.js` (in the `ui` bundle) asserts the snapshot is byte-for-byte identical to the sources and contains exactly the manifest and nothing else, which is what keeps `tests/`, `docs/`, `AI-task-list.txt`, `scripts/`, `node_modules/` and `.git` off the public server. Verified it fails on a stale file and passes after a rebuild.
+- [done] Repaired the per-suite `test:*` scripts, which still pointed at `tests/*.test.js` paths that moved into `tests/cases/` in `0.4.7`.
+- [done] `docs/DESIGN.md` decision 44 and the header table record the snapshot. Versions bumped to `0.4.10`.
+
+Validation:
+- `npm test` rebuilds the snapshot ("Built simconquer2000/ with 31 files (4778.3 KB).") then passes all 15 entry points in about 3.3 s.
+- Snapshot contents: 31 files, 4.67 MB total, no dev-only paths; `simconquer2000/src/version.js` reports `0.4.10`.
+- Drift check: appending one line to the published `style.css` fails the case with a clear "differs from the source; run npm run build:prod" message, and a rebuild clears it.
 
 

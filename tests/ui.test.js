@@ -11,4 +11,5 @@ await runCases(import.meta.url, [
   './cases/audio-manager.case.js',
   './cases/renderer-cache.case.js',
   './cases/version-sync.case.js',
+  './cases/prod-build.case.js',
 ]);

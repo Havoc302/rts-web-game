@@ -1,0 +1,1380 @@
+export { APP_VERSION } from './version.js';
+
+export const MAP_WIDTH = 200;
+export const MAP_HEIGHT = 200;
+export const GRID_WIDTH = MAP_WIDTH;
+export const GRID_HEIGHT = MAP_HEIGHT;
+export const TILE_SIZE = 32;
+export const STARTING_TREASURY = 25000;
+
+export const MAP_SEED_STORAGE_KEY = 'simconquer_map_seed';
+// Read once so existing players keep their map seed after the rename.
+export const MAP_SEED_STORAGE_KEY_LEGACY = 'bc2000_map_seed';
+
+export const PRODUCER_CATEGORY = {
+  POWER: 'power',
+  WATER: 'water',
+  SEWAGE: 'sewage',
+  UTILITY: 'utility',
+  RESOURCE: 'resource',
+  STORAGE: 'storage',
+  FACTORY: 'factory',
+  SERVICE: 'service',
+  CIVIC: 'civic',
+};
+
+// ResourceManager.updateProducerJobs may only staff these. Civic/service
+// buildings are owned by ServiceManager. Industrial and agricultural *zones*
+// are not utility producers and are never staffed here.
+export const RESOURCE_JOB_CATEGORIES = [PRODUCER_CATEGORY.RESOURCE, PRODUCER_CATEGORY.FACTORY];
+
+export const TERRAIN = {
+  FLAT: 'flat',
+  MOUNTAIN: 'mountain',
+  WATER: 'water',
+  FOREST: 'forest',
+  // Permanent ice over a frozen water body. Lakes are frozen end to end, while rivers keep
+  // an open lane and freeze in patches along their banks.
+  ICE: 'ice',
+  // Ocean water. A city hex that touches ocean on the overworld gets a salt-water band on
+  // the matching side of the square map. Fresh-water rules do not apply: pumps cannot drink
+  // it, but sewage can be discharged into it and only a Desalination Plant can tap it.
+  SALT_WATER: 'salt_water',
+  // Buildable beach ground between salt water and the inland terrain.
+  SAND: 'sand',
+};
+
+export const TERRAIN_TYPE = {
+  EMPTY: TERRAIN.FLAT,
+  RIVER: TERRAIN.WATER,
+  ROCK: TERRAIN.MOUNTAIN,
+  FOREST: TERRAIN.FOREST,
+  ICE: TERRAIN.ICE,
+  SALT_WATER: TERRAIN.SALT_WATER,
+  SAND: TERRAIN.SAND,
+};
+
+/** Flat and beach ground accept roads, zones, and buildings. */
+export function isBuildableTerrain(terrain) {
+  return terrain === TERRAIN.FLAT || terrain === TERRAIN.SAND;
+}
+
+export const ZONE = {
+  NONE: 'none',
+  RESIDENTIAL: 'residential',
+  COMMERCIAL: 'commercial',
+  INDUSTRIAL: 'industrial',
+  AGRICULTURAL: 'agricultural',
+};
+
+export const DENSITY = {
+  LIGHT: 'light',
+  MEDIUM: 'medium',
+  HIGH: 'high',
+};
+
+export const SERVICE_TYPE = {
+  POLICE_STATION: 'police_station',
+  FIRE_STATION: 'fire_station',
+  HOSPITAL: 'hospital',
+  SCHOOL: 'school',
+  LIBRARY: 'library',
+  UNIVERSITY: 'university',
+  CITY_HALL: 'city_hall',
+};
+
+export const PRODUCER_TYPE = {
+  POWER_PLANT: 'power_plant',
+  WINDMILL: 'windmill',
+  SOLAR_PANEL: 'solar_panel',
+  BATTERY: 'battery',
+  COAL_PLANT: 'coal_plant',
+  NUCLEAR_PLANT: 'nuclear_plant',
+  WATER_TOWER: 'water_tower',
+  SEWAGE_PLANT: 'sewage_plant',
+  DESALINATION_PLANT: 'desalination_plant',
+  SURVEY_STATION: 'survey_station',
+  MINE_IRON: 'mine_iron',
+  MINE_BAUXITE: 'mine_bauxite',
+  MINE_COAL: 'mine_coal',
+  MINE_URANIUM: 'mine_uranium',
+  MINE_COPPER: 'mine_copper',
+  MINE_TITANIUM: 'mine_titanium',
+  QUARRY_SAND: 'quarry_sand',
+  OIL_DERRICK: 'oil_derrick',
+  REFINERY: 'refinery',
+  WAREHOUSE_ORE: 'warehouse_ore',
+  WAREHOUSE_BAR: 'warehouse_bar',
+  WAREHOUSE_GOODS: 'warehouse_goods',
+  SMELTER: 'smelter',
+  SILO: 'silo',
+  ...SERVICE_TYPE,
+};
+
+export const POWER_PRODUCER_TYPES = [
+  PRODUCER_TYPE.POWER_PLANT,
+  PRODUCER_TYPE.WINDMILL,
+  PRODUCER_TYPE.SOLAR_PANEL,
+  PRODUCER_TYPE.BATTERY,
+  PRODUCER_TYPE.COAL_PLANT,
+  PRODUCER_TYPE.NUCLEAR_PLANT,
+];
+
+// Day/night cycle: each tick advances the clock by one in-game hour.
+export const TICKS_PER_HOUR = 1;
+export const HOURS_PER_DAY = 24;
+export const DAY_START_HOUR = 6;
+export const NIGHT_START_HOUR = 18;
+export const NIGHT_TINT_ALPHA = 0.35;
+
+// Capacity doubles at each tier while an upgrade costs 1.8x the previous tier price,
+// rounded to the nearest $10. That keeps upgrading strictly cheaper per unit of
+// capacity than placing enough new tier-1 buildings to match it.
+export const UPGRADE_PRICE_MULTIPLIER = 1.8;
+export function roundPriceToTen(value) {
+  return Math.round(value / 10) * 10;
+}
+export function tierPriceLadder(basePrice) {
+  const second = roundPriceToTen(basePrice * UPGRADE_PRICE_MULTIPLIER);
+  const third = roundPriceToTen(second * UPGRADE_PRICE_MULTIPLIER);
+  return [basePrice, second, third];
+}
+
+// Build the ladder backwards when the top tier should carry the original price.
+export function tierPriceLadderFromTop(topPrice) {
+  const third = roundPriceToTen(topPrice);
+  const second = roundPriceToTen(third / UPGRADE_PRICE_MULTIPLIER);
+  const first = roundPriceToTen(second / UPGRADE_PRICE_MULTIPLIER);
+  return [first, second, third];
+}
+
+// Energy producers and storage are player-upgradable in three tiers.
+export const WIND_TIER_CONFIG = {
+  peak: [16, 32, 64],                    // output at windIntensity 1.0
+  cost: tierPriceLadder(500),            // [500, 900, 1620]
+};
+
+export const SOLAR_TIER_CONFIG = {
+  peak: [15, 30, 60],                    // output at clear midday
+  cost: tierPriceLadder(100),            // [100, 180, 320]
+};
+
+export const BATTERY_TIER_CONFIG = {
+  storage: [100, 200, 400],
+  cost: tierPriceLadder(250),            // [250, 450, 810]
+};
+
+// Water and sewage plants double their capacity at each tier. Their original
+// building price is the tier-3 upgrade price, so the ladder is built from the top.
+// Total cost to reach tier 3: $5,600 (water) / $7,450 (sewage).
+export const WATER_TIER_CONFIG = {
+  capacity: [120, 240, 480],
+  cost: tierPriceLadderFromTop(3000),    // [930, 1670, 3000]
+};
+
+export const SEWAGE_TIER_CONFIG = {
+  capacity: [120, 240, 480],
+  cost: tierPriceLadderFromTop(4000),    // [1230, 2220, 4000]
+};
+
+// Tier-3 compatibility aliases (the top tier is the previous fixed building).
+export const WIND_CONFIG = {
+  BASE_CAPACITY: WIND_TIER_CONFIG.peak[0],
+  MAX_CAPACITY: WIND_TIER_CONFIG.peak[2],
+};
+
+export const SOLAR_CONFIG = {
+  PEAK_CAPACITY: SOLAR_TIER_CONFIG.peak[2],
+};
+
+export const BATTERY_CONFIG = {
+  MAX_STORAGE: BATTERY_TIER_CONFIG.storage[2],
+  DISCHARGE_RATE: BATTERY_TIER_CONFIG.storage[2] / 10,
+  DISCHARGE_DIVISOR: 10,                // a full battery always empties in ten ticks
+};
+
+export const COAL_CONFIG = {
+  RADIUS: 6,
+  EMISSION: 12,
+};
+
+export const NUCLEAR_CONFIG = {
+  ACCIDENT_RADIUS: 15,
+  ACCIDENT_POLLUTION: 100,
+  ACCIDENT_DISPLACEMENT_RATIO: 0.5,
+};
+
+export const ORE_TYPE = {
+  IRON_ORE: 'iron_ore',
+  BAUXITE: 'bauxite',
+  COAL: 'coal',
+  OIL: 'oil',
+  URANIUM: 'uranium',
+  COPPER: 'copper',
+  TITANIUM: 'titanium',
+};
+
+// `spawnWeight` biases which ore a discovered deposit turns out to be. Common metals stay
+// common while titanium is deliberately rare, so finding it stays a reward.
+export const ORE_CONFIG = {
+  [ORE_TYPE.IRON_ORE]: { name: 'IRON', color: '#94a3b8', spawnWeight: 20 },
+  [ORE_TYPE.BAUXITE]: { name: 'Bauxite', color: '#c2410c', spawnWeight: 16 },
+  [ORE_TYPE.COAL]: { name: 'Coal', color: '#1f2937', spawnWeight: 20 },
+  [ORE_TYPE.OIL]: { name: 'Oil', color: '#111827', spawnWeight: 12 },
+  [ORE_TYPE.URANIUM]: { name: 'Uranium', color: '#84cc16', spawnWeight: 8 },
+  [ORE_TYPE.COPPER]: { name: 'Copper', color: '#e07b39', spawnWeight: 14 },
+  [ORE_TYPE.TITANIUM]: { name: 'Titanium', color: '#e2e8f0', spawnWeight: 6 },
+};
+
+export const COVERAGE_CONFIG = {
+  BASE_DIRECT_RANGE: 5,
+  BASE_ROAD_RANGE: 10,
+  BASE_ROAD_ADJACENT_RANGE: 3,
+  JOB_BONUS_PER_FILLED: 1,
+};
+
+export const SURVEY_COST_PER_TICK = 10;
+
+
+// Global production, storage, and consumption balance values.
+export const RESOURCE_CONFIG = {
+  FOOD_PER_RESIDENT: 0.05,              // Food consumed by each resident per tick
+  CONSUMER_GOODS_PER_RESIDENT: 0.08,    // Consumer goods demand per resident per tick
+  MINE_EXTRACTION_PER_JOB: 0.2,         // Raw resource extracted by one filled mine job per tick
+  WAREHOUSE_CAPACITY_PER_TILE: 500,     // Storage capacity provided by one warehouse building
+  COAL_PLANT_FUEL_PER_MW: 0.02,         // Coal consumed per megawatt supplied by a coal plant
+  SILO_CAPACITY: 1000,                  // Storage capacity provided by one silo
+  FOOD_PER_AGRICULTURAL_JOB: 0.1,        // Legacy per-job food rate; farm tiles now use AGRICULTURAL_FOOD_YIELD * fill ratio
+  OIL_DERRICK_OUTPUT_PER_TICK: 100,     // Oil produced by one fully staffed derrick per tick
+  REFINERY_OIL_PER_TICK: 100,           // Oil a staffed operational refinery processes per tick
+  REFINERY_FUEL_PER_OIL: 0.5,           // Fuel yielded per unit of refined oil
+  NUCLEAR_URANIUM_PER_TICK: 10,
+};
+
+export const FUEL_CONFIG = {
+  PER_TILE: {
+    residential: 1,
+    commercial: 2,
+    industrial: 4,
+    agricultural: 4,
+  },
+  TAX_SHORTFALL_FACTOR: 0.5,            // All tile tax is halved while fuel demand is unmet
+};
+
+export const BIOME_TYPES = {
+  TEMPERATE: 'temperate',
+  PLAINS: 'plains',
+  HILLY: 'hilly',
+  MOUNTAINOUS: 'mountainous',
+  SWAMP: 'swamp',
+  DESERT: 'desert',
+  TUNDRA: 'tundra',
+  ARCTIC: 'arctic',
+};
+
+// Modifiers applied on top of TERRAIN_GENERATION_CONFIG. Omit biome for current
+// city-map defaults (scale 1, mixed rivers, 0–5 lakes).
+// Version 4 paints mountains before the river (rivers cut valleys through them and springs can
+// rise in a range), so terrain for a given seed changed and earlier saves must be regenerated.
+export const BIOME_GENERATION_VERSION = 4;
+
+export const BIOME_LAKE_CONFIG = {
+  [BIOME_TYPES.SWAMP]: { lakeCountMin: 10, lakeCountMax: 16, lakeRadiusScale: 3.2 },
+};
+
+export const BIOME_TERRAIN_CONFIG = {
+  [BIOME_TYPES.PLAINS]: { rockClusterScale: 0.25, forestClusterScale: 0.8, rockRadiusScale: 1 },
+  [BIOME_TYPES.HILLY]: { rockClusterScale: 1.25, forestClusterScale: 0.75, rockRadiusScale: 1.8 },
+  [BIOME_TYPES.MOUNTAINOUS]: { rockClusterScale: 1.5, forestClusterScale: 0.35, rockRadiusScale: 3 },
+  [BIOME_TYPES.ARCTIC]: { rockClusterScale: 0, forestClusterScale: 0, rockRadiusScale: 0 },
+};
+
+export const BIOME_CONFIG = {
+  [BIOME_TYPES.TEMPERATE]: {
+    rockClusterScale: 1,
+    forestClusterScale: 1,
+    lakeCountMin: 0,
+    lakeCountMax: 5,
+    lakeRadiusScale: 1,
+    riverMode: 'mixed',
+  },
+  [BIOME_TYPES.DESERT]: {
+    rockClusterScale: 0.1,
+    forestClusterScale: 0.02,
+    lakeCountMin: 1,
+    lakeCountMax: 2,
+    lakeRadiusScale: 0.6,
+    riverMode: 'none',
+  },
+  [BIOME_TYPES.PLAINS]: {
+    rockClusterScale: 0.5,
+    forestClusterScale: 1,
+    lakeCountMin: 0,
+    lakeCountMax: 5,
+    lakeRadiusScale: 1,
+    riverMode: 'mixed',
+  },
+  [BIOME_TYPES.HILLY]: {
+    rockClusterScale: 1.25,
+    forestClusterScale: 1,
+    lakeCountMin: 0,
+    lakeCountMax: 5,
+    lakeRadiusScale: 1,
+    riverMode: 'mixed',
+  },
+  [BIOME_TYPES.MOUNTAINOUS]: {
+    rockClusterScale: 1.5,
+    forestClusterScale: 1,
+    lakeCountMin: 0,
+    lakeCountMax: 5,
+    lakeRadiusScale: 1,
+    riverMode: 'mixed',
+  },
+  [BIOME_TYPES.SWAMP]: {
+    rockClusterScale: 1,
+    forestClusterScale: 0.5,
+    lakeCountMin: 4,
+    lakeCountMax: 6,
+    lakeRadiusScale: 1.6,
+    riverMode: 'fork_merge',
+  },
+  // Polar land outside the permanent cap is tundra: frozen lakes and a part-frozen river
+  // through bare rock and soil. There are no trees, so nothing burns.
+  [BIOME_TYPES.TUNDRA]: {
+    rockClusterScale: 0.8,
+    forestClusterScale: 0,
+    lakeCountMin: 3,
+    lakeCountMax: 6,
+    lakeRadiusScale: 0.6,
+    riverMode: 'mixed',
+    frozenWater: true,
+  },
+  // Permanent polar ice sheets. Arctic is a flat, featureless surface: no trees, no rock
+  // formations, no lakes or rivers, and `oreScale: 0` removes hidden ore so surveying has
+  // nothing to find. It is still ordinary buildable ground on the city map.
+  [BIOME_TYPES.ARCTIC]: {
+    rockClusterScale: 0,
+    forestClusterScale: 0,
+    lakeCountMin: 0,
+    lakeCountMax: 0,
+    lakeRadiusScale: 1,
+    riverMode: 'none',
+    oreScale: 0,
+  },
+};
+
+// Happiness feedback values shared by food and consumer-goods simulation.
+export const HAPPINESS_CONFIG = {
+  BASE_SCORE: 50,                         // Neutral city happiness before local conditions
+  MIN_SCORE: 0,                           // Lower bound for the city happiness scale
+  MAX_SCORE: 100,                         // Upper bound for the city happiness scale
+  CONSUMER_GOODS_MAX_BONUS: 15,          // Maximum happiness points from meeting goods demand
+  UNFED_OUTFLOW_PERCENT: 0.05,            // Population fraction lost from an unfed residential tile per tick
+  TAX_NEUTRAL_RATE: 40,                  // Tax rate that neither improves nor harms happiness
+  TAX_PENALTY_PER_POINT: 1.0,             // Happiness points lost per tax point above neutral (1.0 ensures >50% tax forces happiness below 50)
+  LOW_TAX_BONUS_PER_POINT: 0.25,          // Happiness points gained per tax point below neutral
+  EMPLOYMENT_MAX_BONUS: 15,               // Happiness bonus at full employment
+  UTILITY_SERVICE_BONUS: 10,              // Happiness bonus when all residential utilities are available
+  UTILITY_SHORTFALL_PENALTY: 15,          // Happiness penalty when residential utilities are missing
+  SERVICE_BONUS_PER_COVERAGE: 2,          // (legacy — kept for reference) raw count weight
+  SERVICE_MAX_BONUS: 10,                  // Maximum happiness bonus from full civic-service coverage (normalised 0-1 average)
+  POLLUTION_PENALTY_PER_POINT: 1,         // Happiness points lost per pollution point
+  CRIME_PENALTY_PER_POINT: 2,             // Happiness points lost per crime point
+  FOOD_SHORTFALL_PENALTY: 25,             // Happiness penalty when food demand is unmet
+  FAMINE_TICKS: 10,                       // Consecutive food-shortfall ticks before famine
+  FAMINE_PENALTY: 40,                     // Extra happiness penalty during sustained famine
+  CLEAN_WATERFRONT_MAX_BONUS: 5,          // Happiness bonus when every resident lives beside clean water
+  POLLUTED_WATERFRONT_MAX_PENALTY: 10,    // Happiness penalty when every resident lives beside polluted water
+  GROWTH_DELTA_PER_POINT: 0.1,            // Residential demand delta per happiness point away from BASE_SCORE (50 is neutral)
+  UNTREATED_PATIENT_PENALTY: 0.5,         // Happiness penalty per untreated patient
+  CRIME_POINT_PENALTY: 0.5,               // Happiness penalty per crime point
+  FIRE_INJURY_PENALTY: 0.1,               // Happiness penalty per fire injury
+};
+
+export const EDUCATION_CONFIG = {
+  SCHOOL_DEMAND_RATIO: 0.15,              // School seats needed per resident
+  UNI_DEMAND_RATIO: 0.05,                 // University seats needed per resident
+  STUDENT_CAPACITY_PER_JOB: 20,           // Seats provided by one staffed education job
+  MAX_SCHOOL_TAX_BONUS: 0.15,             // Tax bonus at full school coverage
+  MAX_UNI_TAX_BONUS: 0.20,                // Tax bonus at full university coverage
+};
+
+export const ORE_GENERATION = {
+  [TERRAIN.FLAT]: 0.03,
+  [TERRAIN.FOREST]: 0.015,
+  [TERRAIN.MOUNTAIN]: 0.35,
+  [TERRAIN.WATER]: 0.01,
+};
+
+export const SERVICE_CONFIG = {
+  [SERVICE_TYPE.POLICE_STATION]: {
+    name: 'Police Station',
+    category: 'service',
+    cost: 200,                         // tier 1; see SERVICE_TIER_CONFIG.costs
+    color: '#3b82f6',
+    jobs: { light: 5, medium: 10, high: 20 },
+    officersPerPopulation: 1000,
+    utilityUsage: { power: 1, water: 1, sewage: 1 },
+    baseUtilityDemand: 3,
+    runningCostPerJob: 2,
+    unique: false,
+  },
+  [SERVICE_TYPE.FIRE_STATION]: {
+    name: 'Fire Department',
+    category: 'service',
+    cost: 500,                         // tier 1; see SERVICE_TIER_CONFIG.costs
+    color: '#ef4444',
+    jobs: { light: 5, medium: 10, high: 20 },
+    officersPerPopulation: 1000,
+    utilityUsage: { power: 1, water: 1, sewage: 1 },
+    baseUtilityDemand: 3,
+    runningCostPerJob: 2,
+    unique: false,
+  },
+  [SERVICE_TYPE.HOSPITAL]: {
+    name: 'Hospital & Ambulance',
+    category: 'service',
+    cost: 300,                         // tier 1; see SERVICE_TIER_CONFIG.costs
+    color: '#10b981',
+    jobs: { light: 5, medium: 10, high: 20 },
+    officersPerPopulation: 1000,
+    utilityUsage: { power: 2, water: 2, sewage: 2 },
+    baseUtilityDemand: 6,
+    runningCostPerJob: 4,
+    unique: false,
+  },
+  [SERVICE_TYPE.SCHOOL]: {
+    name: 'School',
+    category: 'service',
+    cost: 3500,
+    color: '#f59e0b',
+    radius: { light: 8, medium: 15, high: 25 },
+    jobs: { light: 10, medium: 25, high: 40 },
+    popThresholds: { medium: 1000, high: 3500 },
+    officersPerPopulation: 187,
+    utilityUsage: { power: 1, water: 1, sewage: 1 },
+    runningCost: { light: 20, medium: 50, high: 80 },
+    runningCostPerJob: 2,
+    unique: false,
+  },
+  [SERVICE_TYPE.LIBRARY]: {
+    name: 'Public Library',
+    category: 'service',
+    cost: 2500,
+    color: '#8b5cf6',
+    radius: { light: 8, medium: 14, high: 22 },
+    jobs: { light: 5, medium: 20, high: 75 },
+    popThresholds: { medium: 200, high: 1000 },
+    utilityUsage: { power: 1, water: 1, sewage: 1 },
+    runningCost: { light: 10, medium: 50, high: 140 },
+    runningCostPerJob: 1,
+    unique: false,
+  },
+  [SERVICE_TYPE.UNIVERSITY]: {
+    name: 'University',
+    category: 'service',
+    cost: 12000,
+    color: '#0ea5e9',
+    radius: { light: 15, medium: 25, high: 40 },
+    jobs: { light: 10, medium: 40, high: 100 },
+    popThresholds: { medium: 3000, high: 10000 },
+    // One staffed job per 400 residents x 20 seats covers the 5% university demand.
+    officersPerPopulation: 400,
+    utilityUsage: { power: 2, water: 2, sewage: 2 },
+    runningCost: { light: 40, medium: 120, high: 300 },
+    runningCostPerJob: 3,
+    unique: false,
+  },
+  [SERVICE_TYPE.CITY_HALL]: {
+    name: 'City Hall',
+    category: 'civic',
+    cost: 10000,
+    color: '#eab308',
+    radius: { light: 30, medium: 45, high: 60 },
+    jobs: { light: 30, medium: 100, high: 300 },
+    popThresholds: { medium: 1000, high: 5000 },
+    utilityUsage: { power: 2, water: 2, sewage: 2 },
+    unique: true,
+  },
+};
+
+// Fire, police and hospital buildings are upgraded by the player instead of growing
+// automatically. The tier sets the staff cap, coverage base, vehicle count, cells or
+// patient beds, and the cost of reaching it (1.8x the previous tier, rounded to $10).
+export const PRODUCER_TIER_MAX = 3;
+export const TIERED_SERVICE_TYPES = [
+  SERVICE_TYPE.POLICE_STATION,
+  SERVICE_TYPE.FIRE_STATION,
+  SERVICE_TYPE.HOSPITAL,
+];
+export const SERVICE_TIER_CONFIG = {
+  maxStaff: [5, 10, 20],
+  roadReach: [3, 6, 12],
+  sideReach: [1, 2, 4],
+  vehicles: [1, 2, 3],
+  cells: [5, 10, 20],
+  costs: {
+    [SERVICE_TYPE.FIRE_STATION]: tierPriceLadder(500),       // [500, 900, 1620]
+    [SERVICE_TYPE.HOSPITAL]: tierPriceLadder(300),           // [300, 540, 970]
+    [SERVICE_TYPE.POLICE_STATION]: tierPriceLadder(200),     // [200, 360, 650]
+  },
+  // Dynamic utility load. The fixed building load stays at config.utilityUsage;
+  // people add to it while they are inside the building.
+  utilityPerStaff: { power: 0.2, water: 0.1, sewage: 0.1 },
+  utilityPerPatient: { power: 0.02, water: 0.05, sewage: 0.05 },
+  utilityPerPrisoner: { power: 0.1, water: 0.1, sewage: 0.1 },
+};
+
+export function isTieredService(type) {
+  return TIERED_SERVICE_TYPES.includes(type);
+}
+
+export function clampTier(tier) {
+  const value = Math.round(Number(tier) || 1);
+  return Math.min(PRODUCER_TIER_MAX, Math.max(1, value));
+}
+
+export function getProducerTier(producer) {
+  return clampTier(producer?.tier ?? 1);
+}
+
+export function getServiceTierStat(key, tier) {
+  const values = SERVICE_TIER_CONFIG[key] || [];
+  return values[clampTier(tier) - 1] ?? values[0] ?? 0;
+}
+
+export function getServiceTierCost(type, tier) {
+  return SERVICE_TIER_CONFIG.costs[type]?.[clampTier(tier) - 1] ?? 0;
+}
+
+/** Cost to move from `tier` to the next tier, or 0 at the maximum. */
+export function getServiceUpgradeCost(type, tier) {
+  const current = clampTier(tier);
+  return current >= PRODUCER_TIER_MAX ? 0 : getServiceTierCost(type, current + 1);
+}
+
+/** Power/storage tiers share the same 1..3 model. */
+export function isTieredPowerProducer(type) {
+  return type === PRODUCER_TYPE.WINDMILL || type === PRODUCER_TYPE.SOLAR_PANEL || type === PRODUCER_TYPE.BATTERY;
+}
+
+/** Water pumps and sewage plants are tiered utility producers. */
+export function isTieredUtilityProducer(type) {
+  return type === PRODUCER_TYPE.WATER_TOWER || type === PRODUCER_TYPE.SEWAGE_PLANT;
+}
+
+/** True for every producer that exposes the tier/upgrade UI. */
+export function isTieredProducer(type) {
+  return isTieredService(type) || isTieredPowerProducer(type) || isTieredUtilityProducer(type);
+}
+
+export function getPowerTierTable(type) {
+  if (type === PRODUCER_TYPE.WINDMILL) return WIND_TIER_CONFIG;
+  if (type === PRODUCER_TYPE.SOLAR_PANEL) return SOLAR_TIER_CONFIG;
+  if (type === PRODUCER_TYPE.BATTERY) return BATTERY_TIER_CONFIG;
+  if (type === PRODUCER_TYPE.WATER_TOWER) return WATER_TIER_CONFIG;
+  if (type === PRODUCER_TYPE.SEWAGE_PLANT) return SEWAGE_TIER_CONFIG;
+  return null;
+}
+
+export function getPowerTierCost(type, tier) {
+  const table = getPowerTierTable(type);
+  return table?.cost?.[clampTier(tier) - 1] ?? 0;
+}
+
+export function getPowerUpgradeCost(type, tier) {
+  const current = clampTier(tier);
+  return current >= PRODUCER_TIER_MAX ? 0 : getPowerTierCost(type, current + 1);
+}
+
+export function getBatteryStorageForTier(tier) {
+  return BATTERY_TIER_CONFIG.storage[clampTier(tier) - 1];
+}
+
+export function getWindPeakForTier(tier) {
+  return WIND_TIER_CONFIG.peak[clampTier(tier) - 1];
+}
+
+export function getSolarPeakForTier(tier) {
+  return SOLAR_TIER_CONFIG.peak[clampTier(tier) - 1];
+}
+
+export function getWaterCapacityForTier(tier) {
+  return WATER_TIER_CONFIG.capacity[clampTier(tier) - 1];
+}
+
+export function getSewageCapacityForTier(tier) {
+  return SEWAGE_TIER_CONFIG.capacity[clampTier(tier) - 1];
+}
+
+/** Upgrade price for any tiered producer, service or utility. */
+export function getProducerUpgradeCost(type, tier) {
+  return isTieredService(type) ? getServiceUpgradeCost(type, tier) : getPowerUpgradeCost(type, tier);
+}
+
+/** Dynamic utility draw for a tiered emergency service. */
+export function getServiceUtilityUsage(type, tier, { filledJobs = 0, patients = 0, prisoners = 0 } = {}) {
+  const config = SERVICE_CONFIG[type];
+  if (!config) return { power: 0, water: 0, sewage: 0 };
+  if (!isTieredService(type)) return { ...(config.utilityUsage || { power: 0, water: 0, sewage: 0 }) };
+  const usage = {};
+  for (const key of ['power', 'water', 'sewage']) {
+    usage[key] = (config.utilityUsage?.[key] || 0)
+      + filledJobs * (SERVICE_TIER_CONFIG.utilityPerStaff[key] || 0)
+      + patients * (SERVICE_TIER_CONFIG.utilityPerPatient[key] || 0)
+      + prisoners * (SERVICE_TIER_CONFIG.utilityPerPrisoner[key] || 0);
+  }
+  return usage;
+}
+
+/** One helper for every producer's current utility draw. */
+export function getProducerUtilityUsage(producer) {
+  const type = producer?.type;
+  if (isTieredService(type)) {
+    return getServiceUtilityUsage(type, getProducerTier(producer), {
+      filledJobs: producer.filledJobs || 0,
+      patients: producer.patients || 0,
+      prisoners: producer.prisoners || 0,
+    });
+  }
+  const base = PRODUCER_CONFIG[type]?.utilityUsage || { power: 0, water: 0, sewage: 0 };
+  if (type === PRODUCER_TYPE.DESALINATION_PLANT) {
+    // Peaking plant: draw tracks the water actually delivered, so an idle plant is nearly
+    // free and a plant covering the whole shortfall pays the full bill.
+    const capacity = producer.capacity || PRODUCER_CONFIG[type]?.capacity || DESALINATION_CONFIG.CAPACITY;
+    const outputShare = capacity > 0 ? Math.min(1, Math.max(0, (producer.usedCapacity || 0) / capacity)) : 0;
+    return { power: DESALINATION_CONFIG.PEAK_POWER * outputShare, water: 0, sewage: 0 };
+  }
+  if (isTieredUtilityProducer(type)) {
+    // Utility draw rises with capacity, so a tier-2/3 plant is not four times as
+    // efficient as four tier-1 plants for the same load.
+    const factor = 2 ** (getProducerTier(producer) - 1);
+    return {
+      power: (base.power || 0) * factor,
+      water: (base.water || 0) * factor,
+      sewage: (base.sewage || 0) * factor,
+    };
+  }
+  return { ...base };
+}
+
+// Ocean coastline painted onto a city map whose hex touches ocean on the overworld. Each
+// ocean-facing hex edge is one half-plane: salt water outside it, a beach strip inside it,
+// ordinary terrain beyond. Islands are simply hexes with several ocean edges at once.
+export const COAST_CONFIG = {
+  MIN_DEPTH: 20,                           // Minimum salt-water depth from the matching map side
+  MAX_DEPTH: 50,                           // Maximum salt-water depth
+  BEACH_MIN: 1,                            // Minimum beach thickness inland of the water
+  BEACH_MAX: 2,                            // Maximum beach thickness
+  SECOND_RING_CHANCE: 0.55,                // Share of the coast whose beach is two tiles thick
+  WOBBLE: 9,                               // Coastline wobble amplitude in tiles
+  WOBBLE_SCALE: 11,                         // Wobble lattice size in tiles (higher = longer sweeps)
+  ROCK_BEACH_CHANCE: 0.3,                  // Share of beach tiles that are rock instead of sand
+  ROCK_PATCH_SCALE: 2,                     // Rock patch lattice size in tiles
+  POLAR_ICE_CHANCE: 0.55,                  // Share of a polar shoreline that is ice rather than rock
+  RIVER_SOURCE_MIN_SEA_DISTANCE: 50,       // A river spring must be this many tiles from the sea
+  BRIDGE_MAX_TILES: 10,                    // Longest continuous bridge run that may be built
+};
+
+// The six hex edges a city map can present to the sea, clockwise from north. A pointy-top
+// hex has neighbour edges at these bearings and no pure east/west edge.
+export const COAST_DIRECTIONS = ['N', 'NE', 'SE', 'S', 'SW', 'NW'];
+
+// Desalination Plant: one fixed building, no tiers. Produces as much water as two tier-3
+// pumps (2 x 480) and is always the last water provider, so its power draw tracks the gap
+// it is actually filling.
+export const DESALINATION_CONFIG = {
+  CAPACITY: 960,                           // Water produced at full output
+  PEAK_POWER: 55,                          // Power draw at full output (two tier-3 pumps draw 16)
+  MAINTENANCE_MULTIPLIER: 3,               // Upkeep relative to one water pump
+};
+
+export const PRODUCER_CONFIG = {
+  [PRODUCER_TYPE.POWER_PLANT]: {
+    name: 'Power Plant',
+    category: PRODUCER_CATEGORY.POWER,
+    utility: 'power',
+    capacity: 100,
+    cost: 5000,
+    color: '#f39c12',
+    requiresWaterAdjacent: false,
+    utilityUsage: { water: 1, sewage: 1 },
+    testOnly: true,
+  },
+  [PRODUCER_TYPE.WINDMILL]: {
+    name: 'Windmill',
+    category: PRODUCER_CATEGORY.POWER,
+    utility: 'power',
+    capacity: WIND_TIER_CONFIG.peak[0],
+    cost: WIND_TIER_CONFIG.cost[0],
+    color: '#94a3b8',
+    requiresWaterAdjacent: false,
+    requiresBatteryAdjacent: true,
+  },
+  [PRODUCER_TYPE.SOLAR_PANEL]: {
+    name: 'Solar Panel',
+    category: PRODUCER_CATEGORY.POWER,
+    utility: 'power',
+    capacity: SOLAR_TIER_CONFIG.peak[0],
+    cost: SOLAR_TIER_CONFIG.cost[0],
+    color: '#fbbf24',
+    requiresWaterAdjacent: false,
+    requiresBatteryAdjacent: true,
+  },
+  [PRODUCER_TYPE.BATTERY]: {
+    name: 'Battery Storage',
+    category: PRODUCER_CATEGORY.POWER,
+    utility: 'power',
+    capacity: BATTERY_TIER_CONFIG.storage[0],
+    cost: BATTERY_TIER_CONFIG.cost[0],
+    color: '#22c55e',
+    requiresWaterAdjacent: false,
+    utilityUsage: { water: 1, sewage: 1 },
+  },
+  [PRODUCER_TYPE.COAL_PLANT]: {
+    name: 'Coal Power Plant',
+    category: PRODUCER_CATEGORY.POWER,
+    utility: 'power',
+    capacity: 300,
+    cost: 12500,
+    color: '#57534e',
+    requiresWaterAdjacent: false,
+    utilityUsage: { water: 1, sewage: 1 },
+  },
+  [PRODUCER_TYPE.NUCLEAR_PLANT]: {
+    name: 'Nuclear Power Plant',
+    category: PRODUCER_CATEGORY.POWER,
+    utility: 'power',
+    capacity: 800,
+    cost: 25000,
+    color: '#a3e635',
+    requiresWaterAdjacent: true,
+    utilityUsage: { water: 1, sewage: 1 },
+  },
+  [PRODUCER_TYPE.WATER_TOWER]: {
+    name: 'Water Pump',
+    category: PRODUCER_CATEGORY.WATER,
+    utility: 'water',
+    capacity: WATER_TIER_CONFIG.capacity[0],
+    cost: WATER_TIER_CONFIG.cost[0],
+    color: '#3498db',
+    requiresWaterAdjacent: true,
+    utilityUsage: { power: 2, sewage: 1 },
+  },
+  [PRODUCER_TYPE.SEWAGE_PLANT]: {
+    name: 'Sewage Plant',
+    category: PRODUCER_CATEGORY.SEWAGE,
+    utility: 'sewage',
+    capacity: SEWAGE_TIER_CONFIG.capacity[0],
+    cost: SEWAGE_TIER_CONFIG.cost[0],
+    color: '#8e44ad',
+    // Sewage can be discharged into fresh water or the sea.
+    requiresWaterAdjacent: true,
+    allowsSaltWater: true,
+    utilityUsage: { power: 2, water: 1 },
+  },
+  [PRODUCER_TYPE.DESALINATION_PLANT]: {
+    name: 'Desalination Plant',
+    category: PRODUCER_CATEGORY.WATER,
+    utility: 'water',
+    capacity: DESALINATION_CONFIG.CAPACITY,
+    cost: 10000,
+    color: '#0ea5e9',
+    // Only the sea will do: this building exists for coastal cities.
+    requiresSaltWaterAdjacent: true,
+    // Power is billed per unit of water produced, see getProducerUtilityUsage.
+    utilityUsage: { power: 0, sewage: 0 },
+  },
+  [PRODUCER_TYPE.SURVEY_STATION]: {
+    name: 'Survey Station',
+    category: 'utility',
+    cost: 7500,
+    capacity: 0,
+    color: '#14b8a6',
+    utilityUsage: { power: 2, water: 1, sewage: 1 },
+    activeUtilityUsage: { power: 10 },
+    surveyDuration: { standard: 10, mountain: 20 },
+    unique: false,
+  },
+  [PRODUCER_TYPE.MINE_IRON]: {
+    name: 'Iron Mine', category: 'resource', utility: 'resource', capacity: 0,
+    cost: 5000, color: '#94a3b8',
+    requiresDiscoveredOre: ORE_TYPE.IRON_ORE,
+    utilityUsage: { power: 1, water: 1, sewage: 1 },
+    jobs: { light: 10, medium: 10, high: 10 },
+  },
+  [PRODUCER_TYPE.MINE_BAUXITE]: {
+    name: 'Bauxite Mine', category: 'resource', utility: 'resource', capacity: 0,
+    cost: 5000, color: '#c2410c',
+    requiresDiscoveredOre: ORE_TYPE.BAUXITE,
+    utilityUsage: { power: 1, water: 1, sewage: 1 },
+    jobs: { light: 10, medium: 10, high: 10 },
+  },
+  [PRODUCER_TYPE.MINE_COAL]: {
+    name: 'Coal Mine', category: 'resource', utility: 'resource', capacity: 0,
+    cost: 5000, color: '#1f2937',
+    requiresDiscoveredOre: ORE_TYPE.COAL,
+    utilityUsage: { power: 1, water: 1, sewage: 1 },
+    jobs: { light: 10, medium: 10, high: 10 },
+  },
+  [PRODUCER_TYPE.MINE_URANIUM]: {
+    name: 'Uranium Mine', category: 'resource', utility: 'resource', capacity: 0,
+    cost: 12000, color: '#84cc16',
+    requiresDiscoveredOre: ORE_TYPE.URANIUM,
+    utilityUsage: { power: 2, water: 1, sewage: 1 },
+    jobs: { light: 10, medium: 10, high: 10 },
+  },
+  [PRODUCER_TYPE.MINE_COPPER]: {
+    name: 'Copper Mine', category: 'resource', utility: 'resource', capacity: 0,
+    cost: 5000, color: '#e07b39',
+    requiresDiscoveredOre: ORE_TYPE.COPPER,
+    utilityUsage: { power: 1, water: 1, sewage: 1 },
+    jobs: { light: 10, medium: 10, high: 10 },
+  },
+  [PRODUCER_TYPE.MINE_TITANIUM]: {
+    name: 'Titanium Mine', category: 'resource', utility: 'resource', capacity: 0,
+    cost: 5000, color: '#e2e8f0',
+    requiresDiscoveredOre: ORE_TYPE.TITANIUM,
+    utilityUsage: { power: 1, water: 1, sewage: 1 },
+    jobs: { light: 10, medium: 10, high: 10 },
+  },
+  // Sand is everywhere, so unlike the ore mines a quarry needs no surveyed deposit.
+  // Quarries strip-mine topsoil rather than sinking a shaft, hence the different name.
+  [PRODUCER_TYPE.QUARRY_SAND]: {
+    name: 'Sand Quarry', category: 'resource', utility: 'resource', capacity: 0,
+    cost: 5000, color: '#e2c88b',
+    utilityUsage: { power: 1, water: 1, sewage: 1 },
+    jobs: { light: 10, medium: 10, high: 10 },
+  },
+  [PRODUCER_TYPE.OIL_DERRICK]: {
+    name: 'Oil Derrick', category: 'resource', utility: 'resource', capacity: 0,
+    cost: 7000, color: '#111827',
+    requiresDiscoveredOre: ORE_TYPE.OIL,
+    utilityUsage: { power: 1, water: 1, sewage: 1 },
+    jobs: { light: 10, medium: 10, high: 10 },
+  },
+  [PRODUCER_TYPE.REFINERY]: {
+    name: 'Oil Refinery',
+    category: PRODUCER_CATEGORY.FACTORY,
+    utility: 'factory',
+    capacity: 0,
+    cost: 8000,
+    color: '#7c2d12',
+    utilityUsage: { power: 3, water: 1, sewage: 2 },
+    jobs: { light: 10, medium: 10, high: 10 },
+  },
+  [PRODUCER_TYPE.WAREHOUSE_ORE]: {
+    name: 'Ore Warehouse', category: 'storage', utility: 'storage', capacity: 0,
+    cost: 4000, color: '#78716c',
+    utilityUsage: { power: 1, water: 0, sewage: 0 },
+  },
+  [PRODUCER_TYPE.WAREHOUSE_BAR]: {
+    name: 'Bar Warehouse', category: 'storage', utility: 'storage', capacity: 0,
+    cost: 5000, color: '#b45309',
+    utilityUsage: { power: 1, water: 0, sewage: 0 },
+  },
+  [PRODUCER_TYPE.WAREHOUSE_GOODS]: {
+    name: 'Goods Warehouse', category: 'storage', utility: 'storage', capacity: 0,
+    cost: 6000, color: '#2563eb',
+    utilityUsage: { power: 1, water: 0, sewage: 0 },
+  },
+  [PRODUCER_TYPE.SILO]: {
+    name: 'Silo', category: 'storage', utility: 'storage', capacity: 0,
+    cost: 4500, color: '#a16207',
+    storageTypes: ['oil', 'fuel'], defaultStorageType: 'oil',
+    utilityUsage: { power: 1, water: 0, sewage: 0 },
+  },
+  [PRODUCER_TYPE.SMELTER]: {
+    name: 'Smelter', category: 'factory', utility: 'factory', capacity: 0,
+    cost: 9000, color: '#dc2626',
+    utilityUsage: { power: 3, water: 2, sewage: 2 },
+    jobs: { light: 10, medium: 20, high: 40 },
+  },
+  ...SERVICE_CONFIG,
+};
+
+export const USAGE_RATES = {
+  [ZONE.RESIDENTIAL]: {
+    [DENSITY.LIGHT]: { power: 1, water: 2, sewage: 2 },
+    [DENSITY.MEDIUM]: { power: 2, water: 3, sewage: 3 },
+    [DENSITY.HIGH]: { power: 3, water: 5, sewage: 5 },
+  },
+  [ZONE.COMMERCIAL]: {
+    [DENSITY.LIGHT]: { power: 2, water: 1, sewage: 1 },
+    [DENSITY.MEDIUM]: { power: 3, water: 2, sewage: 2 },
+    [DENSITY.HIGH]: { power: 4, water: 2, sewage: 2 },
+  },
+  [ZONE.INDUSTRIAL]: {
+    [DENSITY.LIGHT]: { power: 1, water: 1, sewage: 1 },
+    [DENSITY.MEDIUM]: { power: 3, water: 2, sewage: 2 },
+    [DENSITY.HIGH]: { power: 5, water: 3, sewage: 2 },
+  },
+  [ZONE.AGRICULTURAL]: {
+    [DENSITY.LIGHT]: { power: 0.5, water: 2, sewage: 1 },
+    [DENSITY.MEDIUM]: { power: 1.5, water: 4, sewage: 1 },
+    [DENSITY.HIGH]: { power: 2.5, water: 6, sewage: 2 },
+  },
+};
+
+export const GROWTH_CONFIG = {
+  SERVICED_DELTA: 1,
+  SHORTFALL_DELTA: -2,
+  THRESHOLD_MEDIUM: 10,
+  THRESHOLD_HIGH: 25,
+  MAX_SCORE: 50,
+};
+
+export const COSTS = {
+  ROAD: 100,
+  BRIDGE: 500,
+  TUNNEL: 1000,
+  ZONE: 200,
+  INDUSTRIAL_ZONE: 300,
+  AGRICULTURAL_ZONE: 300,
+  ZONE_UPGRADE_MULTIPLIER: 2,
+  BULLDOZE: 50,
+};
+
+export const ROAD_MAINTENANCE_COST = 1; // Maintenance cost per road or bridge tile per tick
+export const ROAD_MAINTENANCE_CONFIG = {
+  DEFAULT_BUDGET: 100,
+  // Underfunding rolls a share of the network equal to the missing budget, so 99% funding
+  // rolls one tile per hundred road tiles and 50% funding rolls half the network.
+  // Each rolled tile then has this flat chance of taking DAMAGE_PER_HIT.
+  DAMAGE_ROLL_CHANCE: 0.05,
+  // Damage from one hit. Road tiles degrade from 0 to 100, so ten hits wreck a tile and
+  // the tile is worth ten hits of health.
+  DAMAGE_PER_HIT: 10,
+};
+export const UTILITY_OPERATING_COST = 2; // Per power generator, battery, water pump, or sewage plant per tick
+
+export const TAX_REVENUE_CONFIG = {
+  RESIDENTS_PER_TAX_UNIT: 100,
+  EMPLOYED_PER_TAX_UNIT: 100,
+  MONEY_PER_TAX_UNIT: 10,
+};
+
+export const LOAN_CONFIG = {
+  PRINCIPAL_OPTIONS: [1000, 2500, 5000, 7500, 10000, 15000, 20000],
+  TERM_TICKS: 720,
+  MIN_INTEREST_RATE: 0.02,
+  MAX_INTEREST_RATE: 0.20,
+  HAPPINESS_MIN: 0,
+  HAPPINESS_MAX: 100,
+  // Each loan already on the books adds this much to the next loan's base rate, because the
+  // lender is pricing in a city that is already in debt.
+  RISK_PREMIUM_PER_LOAN: 0.10,
+  // Ceiling so a deep debt stack cannot produce an unbounded rate.
+  MAX_TOTAL_INTEREST_RATE: 1.0,
+};
+
+export const POLLUTION_CONFIG = {
+  // Industrial pollution footprint and strength by zone density.
+  INDUSTRIAL_RADIUS: { light: 3, medium: 5, high: 7 },
+  INDUSTRIAL_EMISSION: { light: 2, medium: 5, high: 10 },
+
+  // Pollution created when sewage service is unavailable.
+  SEWAGE_BACKUP_RADIUS: 4,
+  SEWAGE_BACKUP_EMISSION: 6,
+
+  // Pollution lost by river water as it moves downstream.
+  RIVER_SEWAGE_FALLOFF: 10,
+  RIVER_FLOW_DOWNSTREAM_THRESHOLD: 0.5,
+
+  // Pollution spread by a water tower supplied by contaminated water.
+  CONTAMINATED_TOWER_RADIUS: 8,
+  CONTAMINATED_TOWER_EMISSION: 15,
+
+  // Pollution levels that affect development and display.
+  POLLUTION_GROWTH_PENALTY_THRESHOLD: 5,
+  POLLUTION_GROWTH_PENALTY: -1,
+  RIVER_POLLUTION_LEVEL_MAX_DISPLAY: 30,
+  POLLUTION_DISPLAY_THRESHOLD: 0.5,
+
+  RIVER_FLOW_DIRECTION: 'south',
+};
+
+export const RESIDENTIAL_CAPACITY = {
+  [DENSITY.LIGHT]: 25,
+  [DENSITY.MEDIUM]: 125,
+  [DENSITY.HIGH]: 500,
+};
+
+// Australia-based age mix, with a simplified job mix for gameplay.
+// Age: 0-14 ~18%, 15-64 ~65%, 65+ ~17%. Compulsory school 5-17 ~16%.
+// Employment-to-population for people 15+ ~64% → about 52% of all residents work.
+export const DEMOGRAPHICS_CONFIG = {
+  SCHOOL_AGE_RATE: 0.16,
+  RETIREE_RATE: 0.17,
+  WORKFORCE_RATE: 0.52,
+  JOB_SHARE: {
+    [ZONE.COMMERCIAL]: 0.40,
+    [ZONE.INDUSTRIAL]: 0.40,
+    [ZONE.AGRICULTURAL]: 0.20,
+  },
+  PENSION_VS_WORKER_TAX: 0.5,
+  RETIREE_PATIENT_MULTIPLIER: 3,
+  RETIREE_UNDERFUND_PATIENT_SCALER: 4,
+  SCHOOL_UNMET_GROWTH_PENALTY: -1,
+  // Fully staffed farm output by density, matching the previous 40/200/800 jobs at 0.1 food/job.
+  AGRICULTURAL_FOOD_YIELD: {
+    [DENSITY.LIGHT]: 4,
+    [DENSITY.MEDIUM]: 20,
+    [DENSITY.HIGH]: 80,
+  },
+};
+
+export function splitDemographics(population) {
+  const pop = Math.max(0, population || 0);
+  return {
+    schoolAge: Math.round(pop * DEMOGRAPHICS_CONFIG.SCHOOL_AGE_RATE),
+    retirees: Math.round(pop * DEMOGRAPHICS_CONFIG.RETIREE_RATE),
+    workforce: Math.round(pop * DEMOGRAPHICS_CONFIG.WORKFORCE_RATE),
+  };
+}
+
+export function jobsProvidedFor(zone, density) {
+  const capacity = RESIDENTIAL_CAPACITY[density] || 0;
+  const share = DEMOGRAPHICS_CONFIG.JOB_SHARE[zone] || 0;
+  const maxShare = Math.max(...Object.values(DEMOGRAPHICS_CONFIG.JOB_SHARE));
+  return Math.max(1, Math.round(capacity * DEMOGRAPHICS_CONFIG.WORKFORCE_RATE * share / maxShare));
+}
+
+export const JOBS_PROVIDED = {
+  [ZONE.COMMERCIAL]: {
+    [DENSITY.LIGHT]: jobsProvidedFor(ZONE.COMMERCIAL, DENSITY.LIGHT),
+    [DENSITY.MEDIUM]: jobsProvidedFor(ZONE.COMMERCIAL, DENSITY.MEDIUM),
+    [DENSITY.HIGH]: jobsProvidedFor(ZONE.COMMERCIAL, DENSITY.HIGH),
+  },
+  [ZONE.INDUSTRIAL]: {
+    [DENSITY.LIGHT]: jobsProvidedFor(ZONE.INDUSTRIAL, DENSITY.LIGHT),
+    [DENSITY.MEDIUM]: jobsProvidedFor(ZONE.INDUSTRIAL, DENSITY.MEDIUM),
+    [DENSITY.HIGH]: jobsProvidedFor(ZONE.INDUSTRIAL, DENSITY.HIGH),
+  },
+  [ZONE.AGRICULTURAL]: {
+    [DENSITY.LIGHT]: jobsProvidedFor(ZONE.AGRICULTURAL, DENSITY.LIGHT),
+    [DENSITY.MEDIUM]: jobsProvidedFor(ZONE.AGRICULTURAL, DENSITY.MEDIUM),
+    [DENSITY.HIGH]: jobsProvidedFor(ZONE.AGRICULTURAL, DENSITY.HIGH),
+  },
+};
+
+export function getZonePlacementCost(zone) {
+  if (zone === ZONE.RESIDENTIAL || zone === ZONE.COMMERCIAL) return COSTS.ZONE;
+  if (zone === ZONE.INDUSTRIAL) return COSTS.INDUSTRIAL_ZONE;
+  if (zone === ZONE.AGRICULTURAL) return COSTS.AGRICULTURAL_ZONE;
+  return 0;
+}
+
+export function getZoneUpgradeCost(zone, density) {
+  const tier = [DENSITY.LIGHT, DENSITY.MEDIUM, DENSITY.HIGH].indexOf(density);
+  if (tier < 0 || tier >= 2) return 0;
+  return getZonePlacementCost(zone) * COSTS.ZONE_UPGRADE_MULTIPLIER ** (tier + 1);
+}
+
+export function isZoneAtCapacity(tile) {
+  if (!tile) return false;
+  if (tile.zone === ZONE.RESIDENTIAL) {
+    const capacity = RESIDENTIAL_CAPACITY[tile.density] || 0;
+    return capacity > 0 && (tile.population || 0) >= capacity;
+  }
+  if (![ZONE.COMMERCIAL, ZONE.INDUSTRIAL, ZONE.AGRICULTURAL].includes(tile.zone)) return false;
+  const jobs = tile.totalJobs ?? JOBS_PROVIDED[tile.zone]?.[tile.density] ?? 0;
+  return jobs > 0 && (tile.filledJobs || 0) >= jobs;
+}
+
+export const EMPLOYABLE_POPULATION = RESIDENTIAL_CAPACITY;
+
+export const LABOR_TAX_GROWTH_CONFIG = {
+  // Employment thresholds and deltas used by commercial/industrial growth.
+  EMPLOYMENT_BONUS_MAX: 1,
+  EMPLOYMENT_RATE_HIGH: 0.75,
+  EMPLOYMENT_RATE_LOW: 0.25,
+  EMPLOYMENT_SHORTAGE_PENALTY: -1,
+  MIN_SERVICE_EMPLOYMENT_RATE: 0.3,
+
+  // Job-market vacancy attraction bonus for residential growth.
+  MAX_JOB_ATTRACTION_BONUS: 3, // Max growth score bonus at 100% job vacancy
+
+  // Tax pressure and its effect on population and jobs.
+  LOW_TAX_GROWTH_BONUS: 1,
+  GROWTH_NEUTRAL_RATE: 40,
+  POPULATION_OUTFLOW_START_RATE: 50,
+  MAX_TAX_RATE: 100,
+  MAX_OUTFLOW_GROWTH_PENALTY: 8,
+  MAX_HIGH_TAX_JOBS_REDUCTION: 0.5,
+};
+
+export const FOREST_POLLUTION_ABSORPTION = 6;
+export const FOREST_DESIRABILITY_RADIUS = 3;
+
+export const CRIME_CONFIG = {
+  // Crime probability and event volume.
+  BASE_CRIME_CHANCE: 0.05,            // Baseline probability of crime spawning per tick
+  JOB_SCARCITY_CRIME_SCALER: 2.5,     // Scales crime probability with job scarcity (residents who want work but have none), not raw unemployment
+  CRIME_EVENTS_PER_TICK_MAX: 15,      // Max zoned tiles hit per tick
+
+  // Every crime is an incident that runs for four ticks. Police roll to respond each
+  // tick; the chance falls with distance from the station across its coverage area.
+  CRIME_INCIDENT_TICKS: 4,
+  CRIME_RESPONSE_MIN_CHANCE: 0.07,    // per-tick chance at the edge of coverage
+  CRIME_RESPONSE_MAX_CHANCE: 0.44,    // per-tick chance beside the station
+  CRIME_RESPONSE_CURVE: 1.2,          // >1 keeps close response even faster than linear
+  PRISONER_HOLD_TICKS: 10,            // a caught criminal occupies a cell this long
+  CATCH_AND_RELEASE_HAPPINESS_PENALTY: 1,
+  CATCH_AND_RELEASE_PENALTY_TICKS: 2, // citywide mood hit when all cells are full
+
+  // Crime severity, spread, decay, and growth impact.
+  CRIME_PENALTY_THRESHOLD: 3,         // Crime level triggering growth score penalties
+  CRIME_MEMORY_TICKS: 5,              // Ticks for an incident to fade after the last event
+  CRIME_GROWTH_PENALTY: -2,           // Growth delta applied when crime reaches the penalty threshold
+  CRIME_INCREMENT_PER_EVENT: 3,        // Crime points added by a successful event
+  CRIME_DIFFUSION_THRESHOLD: 4,        // Crime level required before spreading to neighbors
+  CRIME_DIFFUSION_INCREMENT: 1,        // Crime points added to each diffused neighbor
+  MAX_CRIME_LEVEL: 10,                 // Maximum crime points on one tile
+
+  // Tax loss caused by crime.
+  TAX_LOSS_PER_CRIME_POINT: 0.05,     // Each crime point reduces tile tax yield by 5%
+  MAX_TAX_LOSS_RATIO: 0.50,           // Capped at 50% max tax loss per tile
+};
+
+export const MEDICAL_CONFIG = {
+  PATIENTS_PER_RESIDENT: 0.01,            // Baseline passive sickness rate per resident
+  PATIENTS_PER_INDUSTRIAL_JOB: 0.05,      // Higher injury rate per filled industrial job
+  PATIENTS_PER_CRIME_POINT: 0.5,          // Additional trauma patients per point of tile crime
+  PATIENTS_PER_POLLUTION_POINT: 0.2,      // Additional sickness per point of tile pollution
+  HOSPITAL_PATIENT_CAPACITY_PER_JOB: 10,  // Patient capacity provided per staffed hospital job
+  UNHEALTHY_GROWTH_PENALTY: -2,           // Growth penalty on residential tiles during hospital shortfall
+};
+
+export const FIRE_CONFIG = {
+  BASE_IGNITION_CHANCE: 0.00001,          // Fixed standalone infrastructure chance: 0.001% per tick
+  FOREST_IGNITION_CHANCE: 0.000001,       // Fixed forest ignition chance: 0.0001% per tick
+  MAX_IGNITION_CHANCE_NON_INDUSTRIAL: 0.001, // Maximum occupied tile risk (0.1% per tick)
+  MAX_IGNITION_CHANCE_INDUSTRIAL: 0.002,  // Maximum occupied industrial tile risk (0.2% per tick)
+  HIGH_POLLUTION_IGNITION_THRESHOLD: 5,   // Pollution level at which ignition becomes more likely
+  HIGH_POLLUTION_IGNITION_BONUS: 0.0003,  // Extra chance if tile pollution >= 5
+  EXTREME_WEATHER_IGNITION_MULTIPLIER: 1.5, // Thunderstorm or extreme heat ignition boost
+  HOT_IGNITION_TEMP_C: 35,               // Heat boost starts strictly above 35 C
+  BURNING_POPULATION_RELOCATION_RATE: 0.5, // Share of residents relocated from a burning home tile per fire tick
+  DAMAGE_PER_TICK: 10,                    // Fire damage accumulated per tick (10 ticks to reach 100)
+  MAX_DAMAGE: 100,                         // Damage threshold that destroys the burning building
+  SPREAD_CHANCE_PER_TICK: 0.15,           // Chance to ignite an adjacent non-dirt/road tile per tick
+  FOREST_SPREAD_CHANCE_PER_TICK: 0.01,    // Natural wildfire spread chance: 1% per adjacent forest tile per tick
+  FOREST_FIRE_INJURY_CHANCE: 0.001,       // One-time 0.1% chance a wildfire causes one injury
+  INJURIES_PER_BURNING_TILE: 5,           // Burn trauma patients added to hospital demand per active fire tick
+  BASE_SUPPRESSION_POWER: 55,             // Suppression subtracted from fire damage per tick when a station covers the tile
+  MOUNTAIN_IGNITION_CHANCE: 0.0001,       // Mountains hold fuel and can ignite
+  REPAIR_PER_TICK: 0.1,                   // After a non-destroying fire, tax/use restored by this fraction per tick
+  // Fires only raise the alert strip when a player-built tile is this close (square radius),
+  // so remote wildfires in unclaimed forest stay as scenery instead of nagging the player.
+  ALERT_DEVELOPMENT_RADIUS: 20,
+};
+
+// Global service staffing, coverage, and operating-cost balance controls.
+export const SERVICE_GLOBAL_CONFIG = {
+  BUDGET_MAX_VALUE: 100,                  // Maximum service budget slider value
+  UTILITY_FAILURE_GRACE_TICKS: 5,         // Consecutive failed utility ticks tolerated before a building goes offline
+  MIN_STAFFING_BASELINE: 2,               // Minimum staff for population-scaled services
+  DEFAULT_SERVICE_RADIUS: 10,             // Fallback radius when a service tier omits one
+  MIN_EFFECTIVE_SERVICE_RADIUS: 1,         // Smallest non-zero radius for staffed coverage
+  COVERAGE_MIN_FACTOR: 0.3,               // Coverage factor at zero effective staffing
+  COVERAGE_MAX_FACTOR: 0.7,               // Additional coverage factor at full staffing
+  UTILITY_DEMAND_COST_MULTIPLIER: 0.15,   // Running-cost increase per utility demand unit
+  FOREST_DESIRABILITY_BONUS: 1,           // Residential growth bonus near forest
+  CLEAN_WATERFRONT_GROWTH_BONUS: 1,       // Residential growth bonus beside clean water
+  POLLUTED_WATERFRONT_GROWTH_PENALTY: -2, // Residential growth penalty beside polluted water
+  POLICE_DESIRABILITY_BONUS: 1,           // Residential growth bonus for police coverage
+  FIRE_DESIRABILITY_BONUS: 1,             // Residential growth bonus for fire coverage
+  HOSPITAL_DESIRABILITY_BONUS: 1,         // Residential growth bonus for hospital coverage
+  SCHOOL_DESIRABILITY_BONUS: 1,           // Residential growth bonus for school coverage
+  LIBRARY_DESIRABILITY_BONUS: 1,          // Residential growth bonus for library coverage
+  CITY_HALL_DESIRABILITY_BONUS: 2,        // Residential growth bonus for city hall coverage
+};
+
+// Procedural map-generation balance controls. Adjust these to change map character.
+export const TERRAIN_GENERATION_CONFIG = {
+  GENERATION_VERSION: 2,                  // Version 1 remains loadable through the legacy cluster generator
+  DEFAULT_RANDOM_SEED: 12345,             // Fallback when parseInt(seed) is not a number
+  RANDOM_SEED_MAX: 9000000,               // Upper bound for generated map seeds
+  RANDOM_SEED_MIN: 100000,                // Lower bound for generated map seeds
+  MAP_SCALE_BASE_AREA: 900,               // Map area represented by one terrain-generation scale unit
+  FOREST_CLUSTER_COUNT_SCALE: 6,          // Forest clusters per map-scale unit
+  FOREST_CLUSTER_CENTER_MARGIN: 4,        // Margin used when choosing forest cluster centers
+  FOREST_CLUSTER_RADIUS_BASE: 3,          // Minimum forest cluster radius
+  FOREST_CLUSTER_RADIUS_RANDOM: 5,        // Random forest radius range
+  FOREST_CLUSTER_RADIUS_WOBBLE_RANGE: 0.8, // Forest edge wobble range
+  FOREST_CLUSTER_RADIUS_WOBBLE_CENTER: 0.4, // Forest edge wobble midpoint
+  ROCK_CLUSTER_COUNT_SCALE: 4,            // Rock clusters per map-scale unit
+  ROCK_CLUSTER_CENTER_MARGIN: 4,          // Margin used when choosing rock cluster centers
+  ROCK_CLUSTER_RADIUS_BASE: 2,            // Minimum rock cluster radius
+  ROCK_CLUSTER_RADIUS_RANDOM: 4,          // Random rock radius range
+  ROCK_CLUSTER_RADIUS_WOBBLE_RANGE: 0.6,  // Rock edge wobble range
+  ROCK_CLUSTER_RADIUS_WOBBLE_CENTER: 0.3, // Rock edge wobble midpoint
+  LAKE_COUNT_RANDOM_RANGE: 6,             // Random lake count range, producing 0 through 5 lakes
+  LAKE_RADIUS_MIN: 2,                     // Minimum lake radius
+  LAKE_RADIUS_RANDOM_RANGE: 6,            // Random lake radius range
+  LAKE_MARGIN_BUFFER: 2,                  // Extra lake placement margin around its radius
+  LAKE_RADIUS_WOBBLE_RANGE: 0.8,           // Lake edge wobble range
+  LAKE_RADIUS_WOBBLE_CENTER: 0.4,          // Lake edge wobble midpoint
+  RIVER_SIMPLE_PROBABILITY: 0.4,           // Probability of a single uninterrupted river
+  RIVER_FORK_PROBABILITY: 0.3,             // Probability of a river fork
+  RIVER_MARGIN_SCALE: 0.25,               // Interior junction margin as a map fraction
+  RIVER_MARGIN_ABSOLUTE: 5,               // Minimum interior junction margin
+  RIVER_PATH_MAX_STEPS_MULTIPLIER: 4,     // Path length limit per map dimension
+  RIVER_PATH_TOWARD_TARGET_CHANCE: 0.65,  // Chance of moving toward the target
+  RIVER_PATH_TIE_BREAK_CHANCE: 0.5,        // Chance of choosing one axis when equally distant
+  RIVER_EDGE_POINT_MARGIN_SCALE: 0.1,      // Edge entry margin as a map fraction
+  RIVER_EDGE_POINT_MARGIN_ABSOLUTE: 3,     // Minimum edge entry margin
+};
+
+// Frozen-water rules for biomes with `frozenWater: true` (Tundra). Lakes freeze end to end;
+// rivers keep an open centre lane and freeze in patches along their banks, so the player has
+// to find an unfrozen stretch before a Water Tower or Sewage Plant can tap the river.
+export const ICE_CONFIG = {
+  RIVER_BANK_ICE_CHANCE: 0.4,              // Chance a river bank tile freezes
+  RIVER_BANK_MAX_WATER_NEIGHBORS: 2,       // Only tiles this exposed to open water count as bank
+  GROUND_PATCH_CHANCE: 0.28,               // Share of bare tundra ground covered by frost patches
+  GROUND_PATCH_SCALE: 3,                   // Patch lattice size in tiles (higher = bigger patches)
+};
+
+// A Desalination Plant costs three times a water pump to keep running.
+export const DESALINATION_OPERATING_COST = UTILITY_OPERATING_COST * DESALINATION_CONFIG.MAINTENANCE_MULTIPLIER;
+
+// Renderer tuning controls. These affect presentation and frame-time behavior.
+export const RENDERER_CONFIG = {
+  DEFAULT_ZOOM: 1.0,                       // Initial camera zoom
+  ZOOM_MAX: 2.5,                           // Maximum camera zoom
+  ZOOM_MIN: 0.4,                           // Minimum camera zoom
+  LOW_DETAIL_THRESHOLD: 0.7,               // Zoom below which low-detail rendering is used
+  DELTA_TIME_MAX: 0.1,                     // Maximum animation time accumulated per frame
+  TERRAIN_BUILD_BUDGET: 1200,              // Terrain-cache tiles built per frame
+  TERRAIN_CHUNK_TILES: 64,                 // Chunk size in tiles (64×32px = 2048px, under a 4096 GPU cap)
+  HUD_MOBILE_CADENCE_MS: 500,              // Max HUD/inspector DOM refresh rate on coarse-pointer layouts
+};
+
+export const TRAFFIC_CONFIG = {
+  // Traffic scales with residents: every 500 people adds a band worth 1-3 dots, rolled once
+  // when the band appears so the count steps up instead of jittering every tick.
+  POPULATION_PER_BAND: 500,
+  MIN_CARS_PER_BAND: 1,
+  MAX_CARS_PER_BAND: 3,
+  // Chance a newly spawned car is an emergency vehicle, and the only time one may exist is
+  // when a police station, fire station, or hospital is standing.
+  EMERGENCY_CAR_CHANCE: 0.12,
+  EMERGENCY_LIGHTS: ['#ef4444', '#3b82f6'],
+  COLORS: ['#ff4d4d', '#4d79ff', '#ffff4d', '#ffffff', '#4dff88'],
+  SPEED_MIN: 0.02,
+  SPEED_MAX: 0.04,
+  CAR_SIZE: 3,
+  LANE_OFFSET: 0.2,
+};
+
+export const POPULATION_STABILIZATION_CONFIG = {
+  POPULATION_THRESHOLD: 1000,
+  LOW_POPULATION_MAX_SHIFT: 20,
+  HIGH_POPULATION_MAX_SHIFT_PERCENT: 0.02,
+  MIN_POPULATION_SHIFT_FLOOR: 1,
+};
+
+export const WEATHER_CONFIG = {
+  THUNDERSTORM_CLOUD_COVER: 1.0,    // Full rainfall required for a lightning ignition boost
+  MAX_TICK_DELTA: 0.20,             // Maximum metric shift per tick
+  MEAN_REVERSION_STRENGTH: 0.15,    // Pull toward 0.5 to maintain central distribution
+  WIND_HAZARD_THRESHOLD: 0.98,      // Wind speed trigger for windmill structural damage
+  WIND_IGNITION_CHANCE: 0.25,       // Ignition chance during extreme over-speeding
+  RAIN_CLOUD_THRESHOLD: 0.7,        // Cloud cover above which it is raining
+  RAIN_EXTINGUISH_MIN_CHANCE: 0.10, // Per-tick chance a burning tile goes out in light rain
+  RAIN_EXTINGUISH_MAX_CHANCE: 0.40, // Per-tick chance a burning tile goes out in a downpour
+};
+
+export const AUDIO_CONFIG = {
+  MUSIC_FILE_PATH: './assets/audio/bgm.mp3',
+  DEFAULT_VOLUME: 0.20,
+};
+
+export const TEMPERATURE_CONFIG = {
+  BASE_TEMP: 20,                    // Neutral baseline temperature in °C
+  MIN_TEMP: 0,                      // Cold floor in °C
+  MAX_TEMP: 40,                     // Heat ceiling in °C
+  FREEZING_POINT: 0,                // At or below this, precipitation falls as snow instead of rain
+  // Comfort band. Inside it nothing changes; outside it, cities draw more power and
+  // citizens get grumpier the further the temperature strays.
+  COMFORT_MIN: 10,
+  COMFORT_MAX: 35,
+  // Power draw grows linearly with the excursion and is deliberately UNCAPPED: it doubles
+  // at 20 °C outside the band and keeps climbing (a -40 °C polar city pays 3.5x).
+  POWER_DEMAND_DOUBLE_EXCURSION: 20,
+  // Happiness loss per degree outside the band. This one IS capped, because past a point
+  // it is simply cold and there is no more mood left to lose.
+  HAPPINESS_PENALTY_PER_EXCURSION_DEGREE: 0.5,
+  HAPPINESS_PENALTY_CAP: 10,
+  HEALTH_RISK_LOW: 5,               // Cold exposure threshold in °C
+  HEALTH_RISK_HIGH: 35,             // Heatwave exposure threshold in °C
+  PATIENT_PER_RESIDENT_EXTREME: 0.005, // Extra patient demand per resident during temp extremes
+};
+
+// Degrees outside the comfort band; 0 while the temperature is comfortable or unknown.
+export function temperatureExcursion(temperature) {
+  if (!Number.isFinite(temperature)) return 0;
+  return Math.max(0, TEMPERATURE_CONFIG.COMFORT_MIN - temperature, temperature - TEMPERATURE_CONFIG.COMFORT_MAX);
+}
+
+// Heating/cooling load multiplier applied to every tile that draws power.
+export function temperaturePowerFactor(temperature) {
+  return 1 + temperatureExcursion(temperature) / TEMPERATURE_CONFIG.POWER_DEMAND_DOUBLE_EXCURSION;
+}
+
+// Capped happiness penalty for uncomfortable temperatures.
+export function temperatureHappinessPenalty(temperature) {
+  return Math.min(
+    TEMPERATURE_CONFIG.HAPPINESS_PENALTY_CAP,
+    temperatureExcursion(temperature) * TEMPERATURE_CONFIG.HAPPINESS_PENALTY_PER_EXCURSION_DEGREE,
+  );
+}
+
+export const CLIMATE_CONFIG = {
+  EQUATOR_TEMP: 27,
+  POLE_TEMP: -40,
+  // Latitude weight exponent. Above 1 it keeps the torrid and temperate bands close to
+  // their old warmth while concentrating the fall to freezing into the polar caps, so
+  // the gradient reads as "hemispheres stay habitable, poles turn arctic".
+  LATITUDE_GRADIENT_POWER: 1.6,
+  // Land at or beyond this absolute latitude is polar; its biome is forced to Tundra
+  // regardless of which continent region it belongs to.
+  POLAR_CAP_LATITUDE: 72,
+  // At or beyond this absolute latitude the surface is permanent Arctic ice, whether or
+  // not a continent reached it: polar ocean is frozen over and becomes buildable ice too.
+  // This is the band where the seeded temperature spread stays below freezing all year.
+  ARCTIC_CAP_LATITUDE: 78,
+  // The cap edge is not a latitude line: a seeded, smooth wobble moves the boundary by up
+  // to this many degrees so the arctic coastline is irregular instead of a circle.
+  ARCTIC_CAP_WOBBLE: 3.5,
+  // Per-cell (seeded) variation mixed into biome weather so two hexes of the same biome do
+  // not share an identical forecast mix. Only biomes that define an explicit mix use these.
+  // BIOME_WEATHER_JITTER is a relative spread (±15% of each probability).
+  BIOME_WEATHER_JITTER: 0.15,
+  BIOME_WIND_JITTER: 0.12,
+  BIOME_GALE_JITTER: 0.1,
+  TEMP_SEED_VARIATION: 3,
+  TEMP_STDDEV_MIN: 3,
+  TEMP_STDDEV_MAX: 6,
+  TEMP_MIN: -70,
+  TEMP_MAX: 42,
+  TEMP_NEIGHBOR_INFLUENCE: 0.22,
+  MOISTURE_NEIGHBOR_INFLUENCE: 0.25,
+  TEMP_REVERSION: 0.12,
+  WEATHER_MIN_DURATION: 4,
+  WEATHER_MAX_DURATION: 10,
+  // Wind runs in short windows pulled toward the cell's climate wind mean. Gale-prone
+  // climates (ice) periodically aim for the top of the scale instead.
+  WIND_MIN_DURATION: 3,
+  WIND_MAX_DURATION: 8,
+  WIND_SPREAD: 0.16,
+  WIND_GALE_MIN: 0.95,
+  WIND_GALE_MAX: 1,
+  WIND_DEFAULT_MEAN: 0.5,
+};
+
+
+
+

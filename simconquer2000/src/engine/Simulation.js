@@ -1,0 +1,853 @@
+import { GROWTH_CONFIG, DENSITY, ZONE, TERRAIN, USAGE_RATES, POLLUTION_CONFIG, JOBS_PROVIDED, RESIDENTIAL_CAPACITY, LABOR_TAX_GROWTH_CONFIG, FOREST_DESIRABILITY_RADIUS, PRODUCER_TYPE, PRODUCER_CONFIG, POWER_PRODUCER_TYPES, ROAD_MAINTENANCE_COST, ROAD_MAINTENANCE_CONFIG, UTILITY_OPERATING_COST, DESALINATION_OPERATING_COST, TAX_REVENUE_CONFIG, CRIME_CONFIG, MEDICAL_CONFIG, HAPPINESS_CONFIG, SERVICE_GLOBAL_CONFIG, TICKS_PER_HOUR, HOURS_PER_DAY, DAY_START_HOUR, NIGHT_START_HOUR, DEMOGRAPHICS_CONFIG, FUEL_CONFIG, SURVEY_COST_PER_TICK, POPULATION_STABILIZATION_CONFIG, TEMPERATURE_CONFIG, temperaturePowerFactor, EDUCATION_CONFIG, FIRE_CONFIG, splitDemographics, getProducerUtilityUsage } from '../config.js';
+import { UtilityManager } from './UtilityManager.js';
+import { PollutionManager } from './PollutionManager.js';
+import { ServiceManager } from './ServiceManager.js';
+import { CrimeManager } from './CrimeManager.js';
+import { FireManager } from './FireManager.js';
+import { ResourceManager } from './ResourceManager.js';
+import { WeatherManager } from './WeatherManager.js';
+
+const now = typeof performance !== 'undefined' ? () => performance.now() : () => Date.now();
+
+export class Simulation {
+  constructor(grid, climate = null) {
+    this.grid = grid;
+    this.tickCount = 0;
+    this.isPaused = false;
+    this.speed = 1;
+    this.taxRate = 0;
+    this.pensionBudget = SERVICE_GLOBAL_CONFIG.BUDGET_MAX_VALUE;
+    this.roadMaintenanceBudget = ROAD_MAINTENANCE_CONFIG.DEFAULT_BUDGET;
+    this.resourceManager = new ResourceManager();
+    this.weatherManager = new WeatherManager(climate);
+    this.enableTiming = false;
+    this.lastStageTimings = null;
+    this.accumulatedStageTimings = null;
+    this.timingTickCount = 0;
+    this.stats = {
+      population: 0,
+      maxPopulationCapacity: 0,
+      incomePerTick: 0,
+      powerDemand: 0,
+      powerCapacity: 0,
+      waterDemand: 0,
+      waterCapacity: 0,
+      sewageDemand: 0,
+      sewageCapacity: 0,
+      serviceExpenses: 0,
+      serviceExpenseBreakdown: {},
+      pensionExpenses: 0,
+      roadExpenses: 0,
+      utilityExpenses: 0,
+      schoolDemand: 0,
+      universityDemand: 0,
+      schoolCapacity: 0,
+      universityCapacity: 0,
+      educationTaxMultiplier: 1,
+      avgPollution: 0,
+      maxPollution: 0,
+      totalJobsProvided: 0,
+      totalEmployablePopulation: 0,
+      schoolAge: 0,
+      retirees: 0,
+      jobsFilled: 0,
+      jobsAvailable: 0,
+      jobsAvailableBreakdown: {},
+      jobsFilledBreakdown: {},
+      unemployedWorkers: 0,
+      employmentRate: 0,
+      crimeTaxLoss: 0,
+      patientDemand: 0,
+      patientCapacity: 0,
+      untreatedPatients: 0,
+      catchAndReleasePenaltyTicks: 0,
+      fireInjuries: 0,
+      displacedPopulation: 0,
+      happiness: HAPPINESS_CONFIG.BASE_SCORE,
+      happinessGrowthModifier: 0,
+      foodShortfall: 0,
+      goodsRatio: 0,
+      fuelDemand: 0,
+      fuelConsumed: 0,
+      fuelShortfall: 0,
+      alerts: [],
+      taxRate: 0,
+      resources: this.resourceManager.snapshot(),
+      zones: {
+        residential: { light: 0, medium: 0, high: 0 },
+        commercial: { light: 0, medium: 0, high: 0 },
+        industrial: { light: 0, medium: 0, high: 0 },
+        agricultural: { light: 0, medium: 0, high: 0 },
+      },
+    };
+  }
+
+  tick(advanceWorld = true, treasury = Infinity) {
+    const populationAtStart = Array.from(this.grid.getActiveZonedTiles()).reduce((sum, tile) => (
+      sum + (tile.zone === ZONE.RESIDENTIAL ? tile.population || 0 : 0)
+    ), 0);
+    const timing = this.enableTiming;
+    let t0, t1;
+    const timings = timing ? {} : null;
+
+    if (timing) t0 = now();
+    this.surveyExpenses = 0;
+    if (advanceWorld) {
+      this.tickCount++;
+      this.resourceManager.prepareTick(this.grid);
+      this.updateRoadMaintenance();
+    }
+    if (timing) {
+      t1 = now();
+      timings['prepare'] = t1 - t0;
+      t0 = t1;
+    }
+
+    this.computeStats({ preservePopulation: true });
+    if (timing) {
+      t1 = now();
+      timings['stats-before'] = t1 - t0;
+      t0 = t1;
+    }
+
+    UtilityManager.allocateAll(this.grid, this.getHourOfDay(), this.weatherManager, { preview: !advanceWorld });
+    if (timing) {
+      t1 = now();
+      timings['utilities'] = t1 - t0;
+      t0 = t1;
+    }
+
+    PollutionManager.updateIfNeeded(this.grid);
+    if (timing) {
+      t1 = now();
+      timings['pollution'] = t1 - t0;
+      t0 = t1;
+    }
+
+    ServiceManager.updateServices(this.grid, this.stats.population, this.stats.employmentRate, this.stats.totalEmployablePopulation);
+    if (timing) {
+      t1 = now();
+      timings['services'] = t1 - t0;
+      t0 = t1;
+    }
+
+    if (advanceWorld) {
+      CrimeManager.updateCrime(this.grid, this.stats);
+    }
+    if (timing) {
+      t1 = now();
+      timings['crime'] = t1 - t0;
+      t0 = t1;
+    }
+
+    if (advanceWorld) {
+      this.weatherManager?.update();
+      FireManager.updateFires(this.grid, this.stats, this.weatherManager);
+    }
+    if (timing) {
+      t1 = now();
+      timings['fire'] = t1 - t0;
+      t0 = t1;
+    }
+
+    if (advanceWorld) {
+      this.relocateDisplacedPopulation(this.stats.displacedPopulation || 0);
+      this.updateSurveys(treasury);
+      this.resourceManager.update(this.grid, this.stats, this.weatherManager?.temperature);
+    }
+    if (timing) {
+      t1 = now();
+      timings['resources'] = t1 - t0;
+      t0 = t1;
+    }
+
+    this.computeStats({ preservePopulation: true });
+    if (advanceWorld) {
+      this.applyPopulationChange(populationAtStart);
+      this.computeStats({ preservePopulation: true });
+      this.settleRelocatedPopulation();
+    }
+    if (timing) {
+      t1 = now();
+      timings['stats-after'] = t1 - t0;
+      t0 = t1;
+    }
+
+    if (advanceWorld) {
+      this.updateGrowthAndDensity();
+    }
+    if (timing) {
+      t1 = now();
+      timings['growth'] = t1 - t0;
+      timings['total'] = Object.values(timings).reduce((a, b) => a + b, 0);
+      this.lastStageTimings = timings;
+      if (!this.accumulatedStageTimings) {
+        this.accumulatedStageTimings = {};
+        this.timingTickCount = 0;
+      }
+      this.timingTickCount++;
+      for (const [k, v] of Object.entries(timings)) {
+        this.accumulatedStageTimings[k] = (this.accumulatedStageTimings[k] || 0) + v;
+      }
+    }
+
+    return this.stats.incomePerTick;
+  }
+
+  getStageTimings() {
+    return {
+      last: this.lastStageTimings,
+      accumulated: this.accumulatedStageTimings,
+      averages: this.accumulatedStageTimings && this.timingTickCount > 0
+        ? Object.fromEntries(
+            Object.entries(this.accumulatedStageTimings).map(([k, v]) => [k, v / this.timingTickCount])
+          )
+        : null,
+      tickCount: this.timingTickCount,
+    };
+  }
+
+  resetStageTimings() {
+    this.lastStageTimings = null;
+    this.accumulatedStageTimings = null;
+    this.timingTickCount = 0;
+  }
+
+  updateSurveys(treasury = Infinity) {
+    for (const surveyor of this.grid.producers) {
+      if (surveyor.type !== PRODUCER_TYPE.SURVEY_STATION || !surveyor.surveyTarget) continue;
+      const target = this.grid.getTile(surveyor.surveyTarget.x, surveyor.surveyTarget.y);
+      if (!target || target.surveyingBy !== surveyor.id) {
+        this.grid.cancelSurvey(surveyor);
+        continue;
+      }
+      if (!surveyor.operational || surveyor.onFire || target.onFire || treasury < SURVEY_COST_PER_TICK) {
+        this.grid.cancelSurvey(surveyor);
+        continue;
+      }
+
+      this.surveyExpenses += SURVEY_COST_PER_TICK;
+      surveyor.surveyProgress++;
+      target.surveyProgress = surveyor.surveyProgress;
+      if (surveyor.surveyProgress < surveyor.surveyRequired) continue;
+
+      target.oreDiscovered = true;
+      target.discoveredOre = target.ore;
+      target.surveyingBy = null;
+      target.surveyProgress = surveyor.surveyRequired;
+      surveyor.surveyTarget = null;
+      surveyor.surveyProgress = 0;
+      surveyor.surveyRequired = 0;
+    }
+  }
+
+  relocateDisplacedPopulation(population) {
+    if (population <= 0) return;
+
+    const candidates = Array.from(this.grid.getActiveZonedTiles()).filter((tile) => (
+      tile.zone === ZONE.RESIDENTIAL && !tile.destroyed
+    )).sort((a, b) => {
+      const suitability = (tile) => {
+        const serviceScore = Object.values(tile.services || {}).filter(Boolean).length;
+        const shortfallScore = Object.values(tile.shortfall || {}).filter(Boolean).length;
+        return serviceScore * 100 - shortfallScore * 25 - (tile.pollution || 0) - (tile.crime || 0);
+      };
+      return suitability(b) - suitability(a);
+    });
+
+    let remaining = population;
+    for (const tile of candidates) {
+      if (remaining <= 0) break;
+      const capacity = RESIDENTIAL_CAPACITY[tile.density] || 0;
+      const currentPopulation = tile.population || 0;
+      const room = Math.max(0, capacity - currentPopulation);
+      const moved = Math.min(remaining, room);
+      tile.relocatedPopulation = (tile.relocatedPopulation || 0) + moved;
+      remaining -= moved;
+    }
+  }
+
+  settleRelocatedPopulation() {
+    for (const tile of this.grid.getActiveZonedTiles()) {
+      if (tile.zone !== ZONE.RESIDENTIAL) continue;
+      if (!(tile.relocatedPopulation || tile.fireDisplacedPopulation)) continue;
+      this.syncGrowthScoreToPopulation(tile);
+      tile.relocatedPopulation = 0;
+      tile.fireDisplacedPopulation = 0;
+    }
+  }
+
+  syncGrowthScoreToPopulation(tile) {
+    const capacity = RESIDENTIAL_CAPACITY[tile.density] || 0;
+    if (capacity <= 0) {
+      tile.growthScore = 0;
+      return;
+    }
+    const progress = Math.min(1, Math.max(0, (tile.population || 0) / capacity));
+    const tMed = GROWTH_CONFIG.THRESHOLD_MEDIUM;
+    const tHigh = GROWTH_CONFIG.THRESHOLD_HIGH;
+    let growthScore;
+    if (tile.density === DENSITY.LIGHT) {
+      growthScore = progress * tMed;
+    } else if (tile.density === DENSITY.MEDIUM) {
+      growthScore = tMed + progress * (tHigh - tMed);
+    } else {
+      growthScore = tHigh + progress * (GROWTH_CONFIG.MAX_SCORE - tHigh);
+    }
+    tile.growthScore = Math.round(growthScore * 100) / 100;
+  }
+
+  getHourOfDay() {
+    return Math.floor(this.tickCount / TICKS_PER_HOUR) % HOURS_PER_DAY;
+  }
+
+  isDaytime() {
+    const hour = this.getHourOfDay();
+    return hour >= DAY_START_HOUR && hour < NIGHT_START_HOUR;
+  }
+
+  updateGrowthAndDensity() {
+    const empRate = this.stats.employmentRate;
+
+    const taxGrowthModifier = this.getTaxGrowthModifier();
+
+    for (const tile of this.grid.getActiveZonedTiles()) {
+
+        const isFullyServiced =
+          !tile.shortfall.power &&
+          !tile.shortfall.water &&
+          !tile.shortfall.sewage;
+
+        let delta = 0;
+        if (isFullyServiced) {
+          delta += GROWTH_CONFIG.SERVICED_DELTA;
+        } else {
+          delta += GROWTH_CONFIG.SHORTFALL_DELTA;
+        }
+
+        if (
+          tile.pollution >= POLLUTION_CONFIG.POLLUTION_GROWTH_PENALTY_THRESHOLD &&
+          tile.zone !== ZONE.INDUSTRIAL
+        ) {
+          delta += POLLUTION_CONFIG.POLLUTION_GROWTH_PENALTY;
+        }
+
+        if ((tile.crime || 0) >= CRIME_CONFIG.CRIME_PENALTY_THRESHOLD) {
+          delta += CRIME_CONFIG.CRIME_GROWTH_PENALTY;
+        }
+
+        // Tax pressure applies continuously across all zone types.
+        delta += taxGrowthModifier;
+
+        if (tile.zone === ZONE.RESIDENTIAL) {
+          // Signed mayor-rating demand: scores below 50 shrink occupancy, scores above 50 grow it.
+          delta += this.stats.happinessGrowthModifier || 0;
+          // Forest desirability bonus
+          if (this.hasNearbyForest(tile.x, tile.y)) {
+            delta += SERVICE_GLOBAL_CONFIG.FOREST_DESIRABILITY_BONUS;
+          }
+          const waterfront = this.grid.getWaterfrontStatus(tile.x, tile.y);
+          if (waterfront === 'clean') delta += SERVICE_GLOBAL_CONFIG.CLEAN_WATERFRONT_GROWTH_BONUS;
+          else if (waterfront === 'polluted') delta += SERVICE_GLOBAL_CONFIG.POLLUTED_WATERFRONT_GROWTH_PENALTY;
+          // Essential services desirability bonuses
+          if (tile.services) {
+            if (tile.services.police) delta += SERVICE_GLOBAL_CONFIG.POLICE_DESIRABILITY_BONUS;
+            if (tile.services.fire) delta += SERVICE_GLOBAL_CONFIG.FIRE_DESIRABILITY_BONUS;
+            if (tile.services.hospital) delta += SERVICE_GLOBAL_CONFIG.HOSPITAL_DESIRABILITY_BONUS;
+            if (tile.services.school) delta += SERVICE_GLOBAL_CONFIG.SCHOOL_DESIRABILITY_BONUS;
+            if (tile.services.library) delta += SERVICE_GLOBAL_CONFIG.LIBRARY_DESIRABILITY_BONUS;
+            if (tile.services.cityHall) delta += SERVICE_GLOBAL_CONFIG.CITY_HALL_DESIRABILITY_BONUS;
+          }
+          // Hospital capacity shortfall triggers a citywide public health penalty
+          if (this.stats.untreatedPatients > 0) {
+            delta += MEDICAL_CONFIG.UNHEALTHY_GROWTH_PENALTY;
+          }
+          const tileSchoolAge = splitDemographics(tile.population || 0).schoolAge;
+          if (tileSchoolAge > 0 && !tile.services?.school) {
+            delta += DEMOGRAPHICS_CONFIG.SCHOOL_UNMET_GROWTH_PENALTY;
+          }
+          // Job-market vacancy attraction: scales from 0 at full employment to MAX_JOB_ATTRACTION_BONUS
+          // at 0% employment. Gated on full utility service and a non-zero job market to prevent
+          // the zero-job boundary condition from acting as a free magnet.
+          const totalJobs = this.stats.totalJobsProvided || 0;
+          if (isFullyServiced && totalJobs > 0) {
+            const vacancyRatio = 1.0 - (this.stats.employmentRate || 0);
+            delta += Math.round(LABOR_TAX_GROWTH_CONFIG.MAX_JOB_ATTRACTION_BONUS * vacancyRatio);
+          }
+          // Residential growth stalls when workers cannot find matching jobs,
+          // or when the city has no workplaces at all.
+          const unemployed = this.stats.unemployedWorkers || 0;
+          const noJobMarket = totalJobs === 0 && (tile.population || 0) > 0;
+          if ((unemployed > 0 || noJobMarket) && delta > 0) {
+            delta = 0;
+          }
+        } else if (tile.zone === ZONE.COMMERCIAL || tile.zone === ZONE.INDUSTRIAL || tile.zone === ZONE.AGRICULTURAL) {
+          // Commercial & Industrial development rate depends on how many jobs are filled (empRate)
+          let empBonus = 0;
+          if (empRate >= LABOR_TAX_GROWTH_CONFIG.EMPLOYMENT_RATE_HIGH) {
+            empBonus = LABOR_TAX_GROWTH_CONFIG.EMPLOYMENT_BONUS_MAX; // Strong worker supply boosts development
+          } else if (empRate < LABOR_TAX_GROWTH_CONFIG.EMPLOYMENT_RATE_LOW) {
+            empBonus = LABOR_TAX_GROWTH_CONFIG.EMPLOYMENT_SHORTAGE_PENALTY; // Worker shortage slows/stalls development
+          }
+          delta += empBonus;
+        }
+
+        tile.growthScore = Math.round(
+          Math.min(
+            GROWTH_CONFIG.MAX_SCORE,
+            Math.max(0, tile.growthScore + delta),
+          ) * 100,
+        ) / 100;
+
+    }
+  }
+
+  computeStats({ preservePopulation = false } = {}) {
+    const fireInjuries = this.stats.fireInjuries || 0;
+    const happiness = this.stats.happiness ?? HAPPINESS_CONFIG.BASE_SCORE;
+    const happinessGrowthModifier = this.stats.happinessGrowthModifier || 0;
+    const foodShortfall = this.stats.foodShortfall || 0;
+    const stats = {
+      population: 0,
+      maxPopulationCapacity: 0,
+      incomePerTick: 0,
+      powerDemand: 0,
+      powerCapacity: 0,
+      waterDemand: 0,
+      waterCapacity: 0,
+      sewageDemand: 0,
+      sewageCapacity: 0,
+      serviceExpenses: 0,
+      serviceExpenseBreakdown: {},
+      pensionExpenses: 0,
+      utilityExpenses: 0,
+      schoolDemand: 0,
+      universityDemand: 0,
+      schoolCapacity: 0,
+      universityCapacity: 0,
+      educationTaxMultiplier: 1,
+      avgPollution: 0,
+      maxPollution: 0,
+      totalJobsProvided: 0,
+      totalEmployablePopulation: 0,
+      schoolAge: 0,
+      retirees: 0,
+      jobsFilled: 0,
+      jobsAvailable: 0,
+      jobsAvailableBreakdown: {},
+      jobsFilledBreakdown: {},
+      unemployedWorkers: 0,
+      employmentRate: 0,
+      crimeTaxLoss: 0,
+      patientDemand: 0,
+      patientCapacity: 0,
+      untreatedPatients: 0,
+      catchAndReleasePenaltyTicks: this.stats.catchAndReleasePenaltyTicks || 0,
+      fireInjuries,
+      displacedPopulation: 0,
+      happiness,
+      happinessGrowthModifier,
+      foodShortfall,
+      goodsRatio: this.stats.goodsRatio || 0,
+      foodProduced: this.stats.foodProduced || 0,
+      foodDemand: this.stats.foodDemand || 0,
+      foodConsumed: this.stats.foodConsumed || 0,
+      foodShortfallTicks: this.stats.foodShortfallTicks || 0,
+      fuelDemand: this.stats.fuelDemand || 0,
+      fuelConsumed: this.stats.fuelConsumed || 0,
+      fuelShortfall: this.stats.fuelShortfall || 0,
+      alerts: [],
+      taxRate: this.taxRate,
+      resources: this.resourceManager.snapshot(),
+      zones: {
+        residential: { light: 0, medium: 0, high: 0 },
+        commercial: { light: 0, medium: 0, high: 0 },
+        industrial: { light: 0, medium: 0, high: 0 },
+        agricultural: { light: 0, medium: 0, high: 0 },
+      },
+    };
+
+    // Hot and cold weather scale every powered tile and building. Water and sewage demand
+    // keep their base rates, so only the power meter responds to the temperature.
+    const powerFactor = temperaturePowerFactor(this.weatherManager?.temperature);
+
+    for (const p of this.grid.producers) {
+      stats.powerDemand += (getProducerUtilityUsage(p).power || 0) * powerFactor;
+      if (p.type === PRODUCER_TYPE.SURVEY_STATION && p.surveyTarget) {
+        stats.powerDemand += PRODUCER_CONFIG[p.type].activeUtilityUsage.power * powerFactor;
+      }
+      if (POWER_PRODUCER_TYPES.includes(p.type) || p.type === PRODUCER_TYPE.WATER_TOWER || p.type === PRODUCER_TYPE.SEWAGE_PLANT) {
+        stats.utilityExpenses += UTILITY_OPERATING_COST;
+      } else if (p.type === PRODUCER_TYPE.DESALINATION_PLANT) {
+        stats.utilityExpenses += DESALINATION_OPERATING_COST;
+      }
+      const countsForCapacity = POWER_PRODUCER_TYPES.includes(p.type)
+        ? UtilityManager.contributesPowerToGrid(this.grid, p)
+        : this.grid.isRoadAdjacent(p.x, p.y);
+      if (!countsForCapacity) continue;
+      if (POWER_PRODUCER_TYPES.includes(p.type)) stats.powerCapacity += p.capacity;
+      if (p.type === 'water_tower' || p.type === PRODUCER_TYPE.DESALINATION_PLANT) stats.waterCapacity += p.capacity;
+      if (p.type === 'sewage_plant') stats.sewageCapacity += p.capacity;
+      if (p.runningCost) {
+        stats.serviceExpenses += p.runningCost;
+        const serviceName = PRODUCER_CONFIG[p.type]?.name || p.type;
+        stats.serviceExpenseBreakdown[serviceName] = (stats.serviceExpenseBreakdown[serviceName] || 0) + p.runningCost;
+      }
+      if (p.totalJobs && p.totalJobs > 0) stats.totalJobsProvided += p.totalJobs;
+      if (p.type === PRODUCER_TYPE.HOSPITAL && p.operational) {
+        stats.patientCapacity += (p.filledJobs || 0) * MEDICAL_CONFIG.HOSPITAL_PATIENT_CAPACITY_PER_JOB;
+      }
+    }
+
+    stats.roadExpenses = this.grid.activeRoadTiles.size * ROAD_MAINTENANCE_COST * this.roadMaintenanceBudget / SERVICE_GLOBAL_CONFIG.BUDGET_MAX_VALUE;
+
+    const tileCount = this.grid.width * this.grid.height;
+    stats.maxPollution = this.grid.pollutionMax || 0;
+    stats.avgPollution = tileCount > 0 ? Math.round(((this.grid.pollutionSum || 0) / tileCount) * 10) / 10 : 0;
+
+    const highTaxPressure = this.getHighTaxPressure();
+    const jobsMultiplier = 1 - highTaxPressure * LABOR_TAX_GROWTH_CONFIG.MAX_HIGH_TAX_JOBS_REDUCTION;
+
+    for (const tile of this.grid.activeZonedTiles) {
+        stats.powerDemand += UtilityManager.getTileUtilityUsage(tile, 'power', powerFactor);
+        stats.waterDemand += UtilityManager.getTileUtilityUsage(tile, 'water');
+        stats.sewageDemand += UtilityManager.getTileUtilityUsage(tile, 'sewage');
+
+        if (stats.zones[tile.zone]) {
+          stats.zones[tile.zone][tile.density]++;
+        }
+
+        if (tile.zone === ZONE.RESIDENTIAL) {
+          const cap = RESIDENTIAL_CAPACITY[tile.density] || 0;
+          stats.maxPopulationCapacity += cap;
+          const pop = Math.min(
+            cap,
+            Math.max(0, this.computeTilePopulation(tile, cap) + (tile.relocatedPopulation || 0) - (tile.fireDisplacedPopulation || 0) - (tile.populationLoss || 0)),
+          );
+          if (!preservePopulation) tile.population = pop;
+          tile.maxPopulation = cap;
+          stats.population += tile.population || 0;
+        } else if (tile.zone === ZONE.COMMERCIAL || tile.zone === ZONE.INDUSTRIAL || tile.zone === ZONE.AGRICULTURAL) {
+          const jobs = JOBS_PROVIDED[tile.zone]?.[tile.density] || 0;
+          tile.totalJobs = Math.max(0, Math.round(jobs * jobsMultiplier));
+          stats.totalJobsProvided += tile.totalJobs;
+        } else {
+          tile.population = 0;
+          tile.maxPopulation = 0;
+          tile.totalJobs = 0;
+          tile.filledJobs = 0;
+        }
+    }
+
+    const demographics = splitDemographics(stats.population);
+    stats.schoolAge = demographics.schoolAge;
+    stats.retirees = demographics.retirees;
+    stats.totalEmployablePopulation = demographics.workforce;
+
+    stats.jobsFilled = Math.min(stats.totalJobsProvided, demographics.workforce);
+    stats.jobsAvailable = Math.max(0, stats.totalJobsProvided - stats.jobsFilled);
+    stats.unemployedWorkers = Math.max(0, demographics.workforce - stats.jobsFilled);
+    stats.employmentRate = stats.totalJobsProvided > 0 ? (stats.jobsFilled / stats.totalJobsProvided) : 0;
+
+    this.computeEducation(stats);
+
+    for (const tile of this.grid.getActiveZonedTiles()) {
+      if (tile.zone === ZONE.COMMERCIAL || tile.zone === ZONE.INDUSTRIAL || tile.zone === ZONE.AGRICULTURAL) {
+        tile.filledJobs = Math.round((tile.totalJobs || 0) * stats.employmentRate);
+        const zoneName = tile.zone[0].toUpperCase() + tile.zone.slice(1);
+        stats.jobsAvailableBreakdown[zoneName] = (stats.jobsAvailableBreakdown[zoneName] || 0) + Math.max(0, (tile.totalJobs || 0) - tile.filledJobs);
+        stats.jobsFilledBreakdown[zoneName] = (stats.jobsFilledBreakdown[zoneName] || 0) + tile.filledJobs;
+      }
+    }
+
+    stats.alerts = [];
+    const addAlert = (id, message, tile = null) => stats.alerts.push({ id, message, x: tile?.x ?? null, y: tile?.y ?? null });
+    const fireTile = Array.from(this.grid.getActiveFireTiles())[0];
+    // Only surface fires close enough to the player's own works; a distant wildfire in
+    // unclaimed forest is scenery, not an emergency.
+    if (fireTile && this.grid.hasPlayerDevelopmentWithin(fireTile.x, fireTile.y, FIRE_CONFIG.ALERT_DEVELOPMENT_RADIUS)) {
+      addAlert(`fire:${fireTile.x},${fireTile.y}`, 'Fire reported', fireTile);
+    }
+    const crimeTile = Array.from(this.grid.activeZonedTiles).find((tile) => (tile.crime || 0) >= CRIME_CONFIG.CRIME_PENALTY_THRESHOLD);
+    if (crimeTile) addAlert(`crime:${crimeTile.x},${crimeTile.y}`, 'Crime is high', crimeTile);
+    if (stats.patientDemand > 0 && stats.patientCapacity / stats.patientDemand < 0.25) {
+      addAlert('medical', 'Medical coverage is critically low');
+    }
+
+    const pensionRatio = Math.max(0, Math.min(SERVICE_GLOBAL_CONFIG.BUDGET_MAX_VALUE, this.pensionBudget ?? SERVICE_GLOBAL_CONFIG.BUDGET_MAX_VALUE)) / SERVICE_GLOBAL_CONFIG.BUDGET_MAX_VALUE;
+    const taxPerWorker = TAX_REVENUE_CONFIG.MONEY_PER_TAX_UNIT * (this.taxRate / 100) / TAX_REVENUE_CONFIG.RESIDENTS_PER_TAX_UNIT;
+    stats.pensionExpenses = Math.round(
+      demographics.retirees * taxPerWorker * DEMOGRAPHICS_CONFIG.PENSION_VS_WORKER_TAX * pensionRatio,
+    );
+    stats.serviceExpenses += stats.pensionExpenses;
+    const retireeHealthMultiplier = DEMOGRAPHICS_CONFIG.RETIREE_PATIENT_MULTIPLIER +
+      (1 - pensionRatio) * DEMOGRAPHICS_CONFIG.RETIREE_UNDERFUND_PATIENT_SCALER;
+
+    const goodsRatio = stats.goodsRatio || 0;
+    const commercialGoodsMultiplier = 1 + goodsRatio;
+    const fuelTaxFactor = stats.fuelShortfall > 0 ? FUEL_CONFIG.TAX_SHORTFALL_FACTOR : 1;
+
+    let totalPatientDemand = 0;
+    let income = 0;
+    for (const tile of this.grid.getActiveZonedTiles()) {
+
+        let tileBaseTax = 0;
+        if (tile.zone === ZONE.RESIDENTIAL) {
+          tileBaseTax = (tile.population || 0) / TAX_REVENUE_CONFIG.RESIDENTS_PER_TAX_UNIT * TAX_REVENUE_CONFIG.MONEY_PER_TAX_UNIT * (this.taxRate / 100);
+          const tileDemo = splitDemographics(tile.population || 0);
+          const nonRetirees = Math.max(0, (tile.population || 0) - tileDemo.retirees);
+          totalPatientDemand += nonRetirees * MEDICAL_CONFIG.PATIENTS_PER_RESIDENT;
+          totalPatientDemand += tileDemo.retirees * MEDICAL_CONFIG.PATIENTS_PER_RESIDENT * retireeHealthMultiplier;
+          if (this.weatherManager && (tile.population || 0) > 0) {
+            const temp = this.weatherManager.temperature;
+            if (temp < TEMPERATURE_CONFIG.HEALTH_RISK_LOW || temp > TEMPERATURE_CONFIG.HEALTH_RISK_HIGH) {
+              totalPatientDemand += (tile.population || 0) * TEMPERATURE_CONFIG.PATIENT_PER_RESIDENT_EXTREME;
+            }
+          }
+        } else {
+          tileBaseTax = (tile.filledJobs || 0) / TAX_REVENUE_CONFIG.EMPLOYED_PER_TAX_UNIT * TAX_REVENUE_CONFIG.MONEY_PER_TAX_UNIT * (this.taxRate / 100);
+          if (tile.zone === ZONE.COMMERCIAL) {
+            tileBaseTax *= commercialGoodsMultiplier;
+          }
+          if (tile.zone === ZONE.INDUSTRIAL || tile.zone === ZONE.AGRICULTURAL) {
+            totalPatientDemand += (tile.filledJobs || 0) * MEDICAL_CONFIG.PATIENTS_PER_INDUSTRIAL_JOB;
+          }
+        }
+        tileBaseTax *= stats.educationTaxMultiplier;
+        tileBaseTax *= (tile.fireRepair ?? 1);
+        tileBaseTax *= fuelTaxFactor;
+        if (tile.onFire) tileBaseTax = 0;
+
+        totalPatientDemand += (tile.crime || 0) * MEDICAL_CONFIG.PATIENTS_PER_CRIME_POINT;
+        totalPatientDemand += (tile.pollution || 0) * MEDICAL_CONFIG.PATIENTS_PER_POLLUTION_POINT;
+
+        const crimeTaxPenalty = Math.min(
+          CRIME_CONFIG.MAX_TAX_LOSS_RATIO,
+          (tile.crime || 0) * CRIME_CONFIG.TAX_LOSS_PER_CRIME_POINT,
+        );
+        const tileLoss = tileBaseTax * crimeTaxPenalty;
+        stats.crimeTaxLoss += tileLoss;
+        income += tileBaseTax - tileLoss;
+    }
+    totalPatientDemand += fireInjuries;
+    stats.patientDemand = Math.round(totalPatientDemand);
+    stats.untreatedPatients = Math.max(0, stats.patientDemand - stats.patientCapacity);
+    this.assignHospitalPatients(stats);
+    if (stats.patientDemand > 0 && stats.patientCapacity / stats.patientDemand < 0.25) {
+      if (!stats.alerts.some((alert) => alert.id === 'medical')) stats.alerts.push({ id: 'medical', message: 'Medical coverage is critically low', x: null, y: null });
+    }
+
+    stats.incomePerTick = Math.round(income);
+    this.stats = stats;
+  }
+
+  /**
+   * Distribute the patients actually being treated across operational hospitals, in
+   * proportion to each hospital's bed capacity. The per-hospital count drives its
+   * utility draw and the inspector readout.
+   */
+  assignHospitalPatients(stats) {
+    for (const producer of this.grid.producers) {
+      if (producer.type === PRODUCER_TYPE.HOSPITAL) producer.patients = 0;
+    }
+    const hospitals = this.grid.producers.filter((p) => (
+      p.type === PRODUCER_TYPE.HOSPITAL && p.operational && (p.filledJobs || 0) > 0
+    ));
+    const totalBeds = hospitals.reduce(
+      (sum, p) => sum + (p.filledJobs || 0) * MEDICAL_CONFIG.HOSPITAL_PATIENT_CAPACITY_PER_JOB,
+      0,
+    );
+    const treated = Math.min(stats.patientDemand || 0, totalBeds);
+    for (const hospital of hospitals) {
+      const beds = (hospital.filledJobs || 0) * MEDICAL_CONFIG.HOSPITAL_PATIENT_CAPACITY_PER_JOB;
+      hospital.patients = totalBeds > 0 ? Math.round(treated * (beds / totalBeds)) : 0;
+    }
+  }
+
+  computeEducation(stats) {
+    let schoolJobs = 0;
+    let universityJobs = 0;
+    for (const p of this.grid.producers) {
+      if (!p.operational || p.destroyed) continue;
+      if (p.type === PRODUCER_TYPE.SCHOOL) schoolJobs += p.filledJobs || 0;
+      else if (p.type === PRODUCER_TYPE.UNIVERSITY) universityJobs += p.filledJobs || 0;
+    }
+    stats.schoolDemand = Math.round(stats.population * EDUCATION_CONFIG.SCHOOL_DEMAND_RATIO);
+    stats.universityDemand = Math.round(stats.population * EDUCATION_CONFIG.UNI_DEMAND_RATIO);
+    stats.schoolCapacity = schoolJobs * EDUCATION_CONFIG.STUDENT_CAPACITY_PER_JOB;
+    stats.universityCapacity = universityJobs * EDUCATION_CONFIG.STUDENT_CAPACITY_PER_JOB;
+    const schoolRatio = stats.schoolDemand > 0 ? Math.min(1, stats.schoolCapacity / stats.schoolDemand) : 0;
+    const uniRatio = stats.universityDemand > 0 ? Math.min(1, stats.universityCapacity / stats.universityDemand) : 0;
+    stats.educationTaxMultiplier = 1 +
+      schoolRatio * EDUCATION_CONFIG.MAX_SCHOOL_TAX_BONUS +
+      uniRatio * EDUCATION_CONFIG.MAX_UNI_TAX_BONUS;
+  }
+
+  computeTilePopulation(tile, capacity) {
+    const gs = tile.growthScore;
+    const tMed = GROWTH_CONFIG.THRESHOLD_MEDIUM;
+    const tHigh = GROWTH_CONFIG.THRESHOLD_HIGH;
+    let progress;
+
+    if (tile.density === DENSITY.LIGHT) {
+      progress = tMed > 0 ? Math.min(1, gs / tMed) : 1;
+    } else if (tile.density === DENSITY.MEDIUM) {
+      progress = (tHigh - tMed) > 0 ? Math.min(1, (gs - tMed) / (tHigh - tMed)) : 1;
+    } else {
+      progress = tHigh > 0 ? Math.min(1, (gs - tHigh) / (GROWTH_CONFIG.MAX_SCORE - tHigh)) : 1;
+    }
+    return Math.round(capacity * Math.max(0, progress));
+  }
+
+  getHighTaxPressure() {
+    return Math.min(
+      1,
+      Math.max(0, this.taxRate - LABOR_TAX_GROWTH_CONFIG.POPULATION_OUTFLOW_START_RATE) /
+        (LABOR_TAX_GROWTH_CONFIG.MAX_TAX_RATE - LABOR_TAX_GROWTH_CONFIG.POPULATION_OUTFLOW_START_RATE),
+    );
+  }
+
+  getTaxGrowthModifier() {
+    const rate = Math.min(LABOR_TAX_GROWTH_CONFIG.MAX_TAX_RATE, Math.max(0, this.taxRate));
+    if (rate <= LABOR_TAX_GROWTH_CONFIG.POPULATION_OUTFLOW_START_RATE) {
+      return LABOR_TAX_GROWTH_CONFIG.LOW_TAX_GROWTH_BONUS -
+        rate / LABOR_TAX_GROWTH_CONFIG.GROWTH_NEUTRAL_RATE;
+    }
+
+    const outflowProgress = (rate - LABOR_TAX_GROWTH_CONFIG.POPULATION_OUTFLOW_START_RATE) /
+      (LABOR_TAX_GROWTH_CONFIG.MAX_TAX_RATE - LABOR_TAX_GROWTH_CONFIG.POPULATION_OUTFLOW_START_RATE);
+    const startPenalty = -LABOR_TAX_GROWTH_CONFIG.POPULATION_OUTFLOW_START_RATE /
+      LABOR_TAX_GROWTH_CONFIG.GROWTH_NEUTRAL_RATE;
+    return startPenalty - (LABOR_TAX_GROWTH_CONFIG.MAX_OUTFLOW_GROWTH_PENALTY - Math.abs(startPenalty)) * outflowProgress ** 2;
+  }
+
+  hasNearbyForest(cx, cy) {
+    const r = FOREST_DESIRABILITY_RADIUS;
+    const minY = Math.max(0, cy - r);
+    const maxY = Math.min(this.grid.height - 1, cy + r);
+    const minX = Math.max(0, cx - r);
+    const maxX = Math.min(this.grid.width - 1, cx + r);
+
+    for (let y = minY; y <= maxY; y++) {
+      for (let x = minX; x <= maxX; x++) {
+        if (Math.abs(x - cx) + Math.abs(y - cy) <= r) {
+          if (this.grid.tiles[y][x].terrain === TERRAIN.FOREST) return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  applyPopulationChange(populationAtStart) {
+    const maxGrowth = this.getMaxPopulationGrowth(populationAtStart);
+    const maxOutflow = this.getMaxPopulationOutflow(populationAtStart);
+    const incoming = [];
+    const outgoing = [];
+    for (const tile of this.grid.getActiveZonedTiles()) {
+      if (tile.zone !== ZONE.RESIDENTIAL || tile.destroyed) continue;
+      const capacity = RESIDENTIAL_CAPACITY[tile.density] || 0;
+      const evacuated = Math.min(tile.population || 0, tile.fireDisplacedPopulation || 0);
+      tile.population = Math.max(0, (tile.population || 0) - evacuated);
+      tile.population = Math.min(capacity, tile.population + (tile.relocatedPopulation || 0));
+      const desired = Math.min(capacity, Math.max(0,
+        this.computeTilePopulation(tile, capacity) + (tile.relocatedPopulation || 0) - (tile.fireDisplacedPopulation || 0) - (tile.populationLoss || 0),
+      ));
+      const delta = desired - (tile.population || 0);
+      if (delta > 0) incoming.push({ tile, amount: delta });
+      else if (delta < 0) outgoing.push({ tile, amount: -delta });
+    }
+    const distribute = (candidates, direction, maxShift) => {
+      const total = candidates.reduce((sum, entry) => sum + entry.amount, 0);
+      if (!total) return;
+      const budget = Math.min(maxShift, total);
+      const allocations = candidates.map((entry) => {
+        const exact = entry.amount * budget / total;
+        return { ...entry, count: Math.floor(exact), fraction: exact % 1 };
+      });
+      let remainder = budget - allocations.reduce((sum, entry) => sum + entry.count, 0);
+      for (const entry of [...allocations].sort((a, b) => b.fraction - a.fraction)) {
+        if (remainder-- <= 0) break;
+        entry.count++;
+      }
+      for (const entry of allocations) entry.tile.population += direction * entry.count;
+    };
+    distribute(incoming, 1, maxGrowth);
+    distribute(outgoing, -1, maxOutflow);
+  }
+
+  processPopulationTick(rawCalculatedDelta) {
+    if (rawCalculatedDelta === 0) return 0;
+
+    const currentPopulation = this.stats?.population || 0;
+    const maxShift = rawCalculatedDelta > 0
+      ? this.getMaxPopulationGrowth(currentPopulation)
+      : this.getMaxPopulationOutflow(currentPopulation);
+
+    const clampedDelta = Math.min(Math.max(rawCalculatedDelta, -maxShift), maxShift);
+    if (this.stats) {
+      this.stats.population = Math.max(0, currentPopulation + clampedDelta);
+    }
+    return clampedDelta;
+  }
+
+  getMaxPopulationShift(population) {
+    const pop = Math.max(0, population);
+    const { POPULATION_THRESHOLD, LOW_POPULATION_MAX_SHIFT, HIGH_POPULATION_MAX_SHIFT_PERCENT } = POPULATION_STABILIZATION_CONFIG;
+    if (pop < POPULATION_THRESHOLD) {
+      return LOW_POPULATION_MAX_SHIFT;
+    }
+    return Math.floor(pop * HIGH_POPULATION_MAX_SHIFT_PERCENT);
+  }
+
+  getMaxPopulationGrowth(population) {
+    return this.getMaxPopulationShift(population);
+  }
+
+  getMaxPopulationOutflow(population) {
+    return this.getMaxPopulationShift(population);
+  }
+
+  updateRoadMaintenance() {
+    const maxBudget = SERVICE_GLOBAL_CONFIG.BUDGET_MAX_VALUE;
+    const budget = Math.max(0, Math.min(maxBudget, this.roadMaintenanceBudget));
+
+    // Fully funded maintenance patches one damaged tile per tick, worst first, so the
+    // network heals at a tile per tick until every standing road is pristine again.
+    // Wrecked tiles are rubble, not wear: the player clears and rebuilds those.
+    if (budget >= maxBudget) {
+      this.repairRoadTile();
+      return;
+    }
+
+    const roadTiles = Array.from(this.grid.activeRoadTiles).filter((tile) => tile.hasRoad && !tile.destroyed);
+    if (roadTiles.length === 0) return;
+
+    // Underfunding rolls a share of the network equal to the missing budget: 99% funding
+    // rolls one tile per hundred, 50% funding rolls half of them. Each rolled tile then
+    // has a flat chance of taking one hit, so the damage rate scales with the shortfall.
+    const rolledExact = roadTiles.length * (maxBudget - budget) / maxBudget;
+    let rolledCount = Math.floor(rolledExact);
+    if (Math.random() < rolledExact - rolledCount) rolledCount++;
+
+    for (let index = 0; index < rolledCount; index++) {
+      const swapIndex = index + Math.floor(Math.random() * (roadTiles.length - index));
+      [roadTiles[index], roadTiles[swapIndex]] = [roadTiles[swapIndex], roadTiles[index]];
+      if (Math.random() < ROAD_MAINTENANCE_CONFIG.DAMAGE_ROLL_CHANCE) {
+        this.grid.damageRoad(roadTiles[index], ROAD_MAINTENANCE_CONFIG.DAMAGE_PER_HIT);
+      }
+    }
+  }
+
+  /**
+   * Repairs the most damaged road tile. Returns the tile, or null when nothing needs work.
+   */
+  repairRoadTile() {
+    let worst = null;
+    for (const tile of this.grid.activeRoadTiles) {
+      if (!tile.hasRoad || tile.destroyed || !tile.roadDamage) continue;
+      if (!worst || tile.roadDamage > worst.roadDamage) worst = tile;
+    }
+    if (!worst) return null;
+    return this.grid.repairRoad(worst) ? worst : null;
+  }
+}

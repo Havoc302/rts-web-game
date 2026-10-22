@@ -1,0 +1,237 @@
+import { SERVICE_TYPE, SERVICE_CONFIG, SERVICE_GLOBAL_CONFIG, LABOR_TAX_GROWTH_CONFIG, DENSITY, DEMOGRAPHICS_CONFIG, isTieredService, getProducerTier, getServiceTierStat } from '../config.js';
+import { RoadNetwork } from './RoadNetwork.js';
+import { CoverageManager } from './CoverageManager.js';
+
+const POPULATION_STAFFED_TYPES = new Set([
+  SERVICE_TYPE.POLICE_STATION,
+  SERVICE_TYPE.FIRE_STATION,
+  SERVICE_TYPE.HOSPITAL,
+  SERVICE_TYPE.SCHOOL,
+  SERVICE_TYPE.UNIVERSITY,
+]);
+
+const TIER_DENSITY = [DENSITY.LIGHT, DENSITY.MEDIUM, DENSITY.HIGH];
+
+export class ServiceManager {
+  static previousEmergencyCoverage = new WeakMap();
+
+  static getOperatingCost(type, density, filledJobs, totalJobs, budgetRatio = 1) {
+    const config = SERVICE_CONFIG[type];
+    if (!config) return 0;
+    const maxJobs = config.jobs[density] || SERVICE_GLOBAL_CONFIG.MIN_STAFFING_BASELINE;
+    // Tiered services price their overhead from the fixed building load only. Their
+    // dynamic staff/patient/prisoner demand still shows up in the utility meters, but
+    // it must not multiply the wage bill a second time.
+    const utilityDemand = config.baseUtilityDemand ?? Object.values(config.utilityUsage || {}).reduce((sum, amount) => sum + amount, 0);
+    const demandFactor = 1 + utilityDemand * SERVICE_GLOBAL_CONFIG.UTILITY_DEMAND_COST_MULTIPLIER;
+    const staffingFactor = POPULATION_STAFFED_TYPES.has(type) && maxJobs > 0 ? totalJobs / maxJobs : 1;
+    return config.runningCostPerJob
+      ? Math.ceil(filledJobs * config.runningCostPerJob * demandFactor * budgetRatio)
+      : Math.ceil((config.runningCost?.[density] || 0) * staffingFactor * demandFactor * budgetRatio);
+  }
+
+  static updateServices(grid, totalPopulation, employmentRate = 1.0, workforce = null) {
+    const serviceKeys = [
+      { type: SERVICE_TYPE.POLICE_STATION, key: 'police' },
+      { type: SERVICE_TYPE.FIRE_STATION, key: 'fire' },
+      { type: SERVICE_TYPE.HOSPITAL, key: 'hospital' },
+      { type: SERVICE_TYPE.SCHOOL, key: 'school' },
+      { type: SERVICE_TYPE.LIBRARY, key: 'library' },
+      { type: SERVICE_TYPE.UNIVERSITY, key: 'university' },
+      { type: SERVICE_TYPE.CITY_HALL, key: 'cityHall' },
+    ];
+    const workerPool = workforce == null
+      ? Math.round(Math.max(0, totalPopulation) * DEMOGRAPHICS_CONFIG.WORKFORCE_RATE)
+      : workforce;
+    let availableWorkers = Math.max(0, Math.floor(workerPool));
+    let producerStateSignature = '';
+
+    for (const { type } of serviceKeys) {
+      const config = SERVICE_CONFIG[type];
+      if (!config) continue;
+
+      const producers = grid.producers.filter((p) => p.type === type);
+      if (producers.length === 0) continue;
+
+      producers.forEach((prod) => {
+        const tiered = isTieredService(type);
+        const tier = getProducerTier(prod);
+
+        // Tiered services keep the tier the player bought. Other services still grow
+        // with city population as before.
+        let density = tiered ? TIER_DENSITY[tier - 1] : DENSITY.LIGHT;
+        if (!tiered) {
+          if (totalPopulation >= config.popThresholds.high) {
+            density = DENSITY.HIGH;
+          } else if (totalPopulation >= config.popThresholds.medium) {
+            density = DENSITY.MEDIUM;
+          }
+        }
+        prod.density = density;
+
+        const budgetRatio = Math.max(0, Math.min(SERVICE_GLOBAL_CONFIG.BUDGET_MAX_VALUE, prod.budget ?? SERVICE_GLOBAL_CONFIG.BUDGET_MAX_VALUE)) / SERVICE_GLOBAL_CONFIG.BUDGET_MAX_VALUE;
+        const maxJobs = tiered
+          ? getServiceTierStat('maxStaff', tier)
+          : (config.jobs[density] || SERVICE_GLOBAL_CONFIG.MIN_STAFFING_BASELINE);
+        const effectivePop = config.maxPopulationServed ? Math.min(totalPopulation, config.maxPopulationServed) : totalPopulation;
+        const minimumStaff = tiered ? 1 : SERVICE_GLOBAL_CONFIG.MIN_STAFFING_BASELINE;
+        const populationOfficers = Math.max(minimumStaff, Math.ceil(effectivePop / (config.officersPerPopulation || Infinity)));
+        const staffedBase = POPULATION_STAFFED_TYPES.has(type)
+          ? Math.min(maxJobs, populationOfficers)
+          : maxJobs;
+        const budgetedJobs = Math.round(staffedBase * budgetRatio);
+        prod.totalJobs = budgetedJobs;
+
+        if (!prod.operational) {
+          prod.filledJobs = 0;
+          prod.effectiveRadius = 0;
+          prod.runningCost = 0;
+          producerStateSignature += `${prod.id}:${prod.x},${prod.y}:0:0:0:${prod.budget};`;
+          return;
+        }
+
+        // Fully funded essential services receive workers before commercial and industrial jobs.
+        prod.filledJobs = Math.min(budgetedJobs, availableWorkers);
+        availableWorkers -= prod.filledJobs;
+        const maxRadius = config.radius?.[density] || SERVICE_GLOBAL_CONFIG.DEFAULT_SERVICE_RADIUS;
+        // Emergency coverage is calculated by CoverageManager from tier and staffed jobs;
+        // this field is only an informational radius for the inspector/build panel.
+        prod.effectiveRadius = tiered
+          ? getServiceTierStat('roadReach', tier) + getServiceTierStat('sideReach', tier) + Math.max(0, prod.filledJobs - 1)
+          : maxRadius;
+        prod.runningCost = this.getOperatingCost(type, density, prod.filledJobs, prod.totalJobs, budgetRatio);
+
+        producerStateSignature += `${prod.id}:${prod.x},${prod.y}:1:${prod.filledJobs}:${prod.effectiveRadius}:${prod.budget};`;
+      });
+    }
+
+    const cached = this.previousEmergencyCoverage.get(grid);
+    const coverageManagerDirty = Boolean(
+      CoverageManager.dirtyFlags.fire ||
+      CoverageManager.dirtyFlags.police ||
+      CoverageManager.dirtyFlags.medical
+    );
+    const needsCoverageUpdate = !cached ||
+      coverageManagerDirty ||
+      cached.coverageVersion !== grid.coverageVersion ||
+      cached.activeZonedTilesCount !== grid.activeZonedTiles.size ||
+      cached.producerStateSignature !== producerStateSignature;
+
+    if (!needsCoverageUpdate) {
+      return;
+    }
+
+    // Reset services on all active zoned tiles
+    for (const tile of grid.getActiveZonedTiles()) {
+      tile.serviceDistances = {
+        police: Infinity,
+        fire: Infinity,
+        hospital: Infinity,
+        school: Infinity,
+        library: Infinity,
+        university: Infinity,
+        cityHall: Infinity,
+      };
+      tile.services = {
+        police: false,
+        fire: false,
+        hospital: false,
+        school: false,
+        library: false,
+        university: false,
+        cityHall: false,
+      };
+    }
+
+    // Clear previously covered tiles that might not be zoned tiles
+    if (cached?.coveredTiles) {
+      for (const [coverageKey, serviceKey] of [['police', 'police'], ['fire', 'fire'], ['medical', 'hospital']]) {
+        for (const tile of cached.coveredTiles[coverageKey] || []) {
+          if (tile.services) tile.services[serviceKey] = false;
+          if (tile.serviceDistances) tile.serviceDistances[serviceKey] = Infinity;
+        }
+      }
+    }
+
+    // Compute road network distances for school, library, and City Hall
+    for (const { type, key } of serviceKeys) {
+      if (key === 'police' || key === 'fire' || key === 'hospital') continue;
+      const producers = grid.producers.filter((p) => p.type === type && p.operational);
+      if (producers.length === 0) continue;
+
+      const { roadDistancesMap } = RoadNetwork.computeProducerDistances(grid, type);
+
+      for (const tile of grid.getActiveZonedTiles()) {
+        const roadKey = `${tile.x},${tile.y}`;
+        let minDist = Infinity;
+
+        // Check tile itself if it's a road
+        if (roadDistancesMap.has(roadKey)) {
+          for (const [pId, info] of roadDistancesMap.get(roadKey)) {
+            if (info.distance <= info.producer.effectiveRadius && info.distance < minDist) {
+              minDist = info.distance;
+            }
+          }
+        }
+
+        // Check adjacent roads if tile is not a road
+        const neighbors = grid.getNeighbors(tile.x, tile.y);
+        for (const n of neighbors) {
+          const nKey = `${n.x},${n.y}`;
+          if (roadDistancesMap.has(nKey)) {
+            for (const [pId, info] of roadDistancesMap.get(nKey)) {
+              const distToTile = info.distance + 1;
+              if (info.distance <= info.producer.effectiveRadius && distToTile < minDist) {
+                minDist = distToTile;
+              }
+            }
+          }
+        }
+
+        if (minDist < Infinity) {
+          tile.serviceDistances[key] = Math.min(tile.serviceDistances[key] ?? Infinity, minDist);
+          tile.services[key] = true;
+        }
+      }
+    }
+
+    CoverageManager.updateAll(grid);
+    const newCoveredTiles = { police: [], fire: [], medical: [] };
+    for (const [coverageKey, serviceKey] of [['police', 'police'], ['fire', 'fire'], ['medical', 'hospital']]) {
+      const coverage = CoverageManager.getCoverageSet(grid, coverageKey);
+      for (const location of coverage) {
+        const comma = location.indexOf(',');
+        const x = Number(location.slice(0, comma));
+        const y = Number(location.slice(comma + 1));
+        const tile = grid.getTile(x, y);
+        if (!tile) continue;
+        newCoveredTiles[coverageKey].push(tile);
+        if (!tile.serviceDistances) tile.serviceDistances = {
+          police: Infinity,
+          fire: Infinity,
+          hospital: Infinity,
+          school: Infinity,
+          library: Infinity,
+          cityHall: Infinity,
+        };
+        if (!tile.services) tile.services = {
+          police: false,
+          fire: false,
+          hospital: false,
+          school: false,
+          library: false,
+          cityHall: false,
+        };
+        tile.serviceDistances[serviceKey] = 0;
+        tile.services[serviceKey] = true;
+      }
+    }
+
+    this.previousEmergencyCoverage.set(grid, {
+      coverageVersion: grid.coverageVersion,
+      activeZonedTilesCount: grid.activeZonedTiles.size,
+      producerStateSignature,
+      coveredTiles: newCoveredTiles,
+    });
+  }
+}
