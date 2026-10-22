@@ -261,6 +261,13 @@
           </div>
           <div class="progress-bar"><div class="fill sewage" id="meter-sewage-fill"></div></div>
         </div>
+        <div class="utility-meter" title="Demand / food grown by farms this tick. Flashes red when the city eats more than it grows, even while the stockpile covers the gap.">
+          <div class="meter-header">
+            <span>🌾 Food</span>
+            <span id="meter-food-text">0 / 0</span>
+          </div>
+          <div class="progress-bar"><div class="fill food" id="meter-food-fill"></div></div>
+        </div>
         <div class="utility-meter">
           <div class="meter-header">
             <span>🏥 Hospital</span>
@@ -275,7 +282,7 @@
           </div>
           <div class="progress-bar"><div class="fill sewage" id="meter-pollution-fill"></div></div>
         </div>
-        <div class="utility-meter">
+        <div class="utility-meter" title="Demand / fuel left in your Silos. Flashes red when this tick's demand is more than the stock left in the tank, which halves every zone's tax until it is met.">
           <div class="meter-header">
             <span>⛽ Fuel</span>
             <span id="meter-fuel-text">0 / 0</span>

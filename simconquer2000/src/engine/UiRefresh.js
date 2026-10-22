@@ -14,10 +14,13 @@ function meterView(demand, capacity, formatDecimals) {
   return `${displayDemand} / ${displayCapacity}`;
 }
 
-function meterFill(demand, capacity, overColor = '#ef4444') {
-  const pct = capacity > 0 ? Math.min(100, Math.round((demand / capacity) * 100)) : 0;
-  const color = demand > capacity ? overColor : '';
-  return `${pct}%|${color}`;
+// A meter is short when demand outstrips supply. A short meter fills the bar completely and
+// carries the `short` marker, which the DOM layer turns into a flashing red bar: a percentage
+// alone would leave a zero-supply bar invisible at 0%, flashing nothing where it matters most.
+function meterFill(demand, supply) {
+  const short = Number(demand) > Number(supply);
+  const pct = short ? 100 : supply > 0 ? Math.min(100, Math.round((demand / supply) * 100)) : 0;
+  return `${pct}%|${short ? 'short' : ''}`;
 }
 
 // Thresholds match WeatherManager.getWeatherLabel().
@@ -161,6 +164,10 @@ export function buildHudSnapshot(simulation, treasury) {
     'meter-water-fill': meterFill(stats.waterDemand, stats.waterCapacity),
     'meter-sewage-text': meterView(stats.sewageDemand, stats.sewageCapacity, true),
     'meter-sewage-fill': meterFill(stats.sewageDemand, stats.sewageCapacity),
+    // Food is measured against what the farms produce this tick, not a capacity: a city that eats
+    // more than it grows is living off its stockpile and will run dry.
+    'meter-food-text': meterView(stats.foodDemand || 0, stats.foodProduced || 0, true),
+    'meter-food-fill': meterFill(stats.foodDemand || 0, stats.foodProduced || 0),
     'meter-hospital-text': meterView(stats.patientDemand, stats.patientCapacity, false),
     'meter-hospital-fill': meterFill(stats.patientDemand, stats.patientCapacity),
     'meter-fuel-text': meterView(stats.fuelDemand || 0, stockpile.fuel || 0, true),
@@ -204,9 +211,12 @@ export function applyHudSnapshot(snapshot, changedKeys, documentRef) {
       if (!el) continue;
       const sep = value.indexOf('|');
       const width = sep >= 0 ? value.slice(0, sep) : value;
-      const color = sep >= 0 ? value.slice(sep + 1) : '';
+      const marker = sep >= 0 ? value.slice(sep + 1) : '';
+      const short = marker === 'short';
       if (el.style.width !== width) el.style.width = width;
-      el.style.backgroundColor = color;
+      // A short meter is styled by CSS so it can flash; anything else may carry an inline colour.
+      el.style.backgroundColor = short ? '' : marker;
+      if (el.classList) el.classList.toggle('meter-short', short);
       wrote += 1;
     } else {
       const el = documentRef.getElementById(key);

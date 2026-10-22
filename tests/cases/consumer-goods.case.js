@@ -44,4 +44,30 @@ import { DENSITY, HAPPINESS_CONFIG, TERRAIN, ZONE } from '../../src/config.js';
   assert.ok(full - zero >= HAPPINESS_CONFIG.CONSUMER_GOODS_MAX_BONUS - 0.01, 'Goods are a happiness bonus only');
 }
 
+// Food is the one shortage that empties a city on its own, so it raises a standing alert as soon as
+// the farms cannot keep up. Living off the stockpile and actually going hungry read differently.
+{
+  const grid = new Grid(8, 8, 1);
+  for (const row of grid.tiles) for (const tile of row) tile.terrain = TERRAIN.FLAT;
+  const sim = new Simulation(grid);
+  const foodAlert = () => sim.stats.alerts.find((alert) => alert.id === 'food');
+
+  sim.stats.foodDemand = 20;
+  sim.stats.foodProduced = 12;
+  sim.stats.foodShortfall = 0;
+  sim.computeStats();
+  assert.strictEqual(foodAlert()?.message, 'Food supply is below demand',
+    'Farms behind demand should warn before anyone goes hungry');
+
+  sim.stats.foodShortfall = 8;
+  sim.computeStats();
+  assert.strictEqual(foodAlert()?.message, 'Food shortage — citizens are going hungry',
+    'An unfed tick should escalate the wording');
+
+  sim.stats.foodProduced = 20;
+  sim.stats.foodShortfall = 0;
+  sim.computeStats();
+  assert.strictEqual(foodAlert(), undefined, 'Meeting demand should clear the alert');
+}
+
 console.log('Consumer goods tests passed.');

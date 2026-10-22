@@ -573,6 +573,14 @@ export class Simulation {
     if (stats.patientDemand > 0 && stats.patientCapacity / stats.patientDemand < 0.25) {
       addAlert('medical', 'Medical coverage is critically low');
     }
+    // Food is the one shortage that empties the city on its own, so it warns as soon as the farms
+    // cannot keep up — even while the stockpile is still covering the gap. The wording separates
+    // "living off stores" from the harder "people are already going hungry".
+    if (stats.foodDemand > 0 && stats.foodProduced < stats.foodDemand) {
+      addAlert('food', stats.foodShortfall > 0
+        ? 'Food shortage — citizens are going hungry'
+        : 'Food supply is below demand');
+    }
 
     const pensionRatio = Math.max(0, Math.min(SERVICE_GLOBAL_CONFIG.BUDGET_MAX_VALUE, this.pensionBudget ?? SERVICE_GLOBAL_CONFIG.BUDGET_MAX_VALUE)) / SERVICE_GLOBAL_CONFIG.BUDGET_MAX_VALUE;
     const taxPerWorker = TAX_REVENUE_CONFIG.MONEY_PER_TAX_UNIT * (this.taxRate / 100) / TAX_REVENUE_CONFIG.RESIDENTS_PER_TAX_UNIT;

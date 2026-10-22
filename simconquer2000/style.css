@@ -582,6 +582,24 @@ span.stat-icon {
 .fill.power { background: #f59e0b; }
 .fill.water { background: #38bdf8; }
 .fill.sewage { background: #a855f7; }
+.fill.food { background: #22c55e; }
+
+/* Demand has outstripped supply. The bar fills completely and flashes, because a plain
+   percentage would leave a zero-supply meter invisible exactly when it matters most. */
+.fill.meter-short {
+  background: #ef4444;
+  animation: meter-short-pulse 0.9s ease-in-out infinite;
+}
+
+@keyframes meter-short-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.25; }
+}
+
+/* Respect users who asked the OS for less movement: keep it red, drop the flashing. */
+@media (prefers-reduced-motion: reduce) {
+  .fill.meter-short { animation: none; }
+}
 
 /* Left Drawer */
 .tool-drawer {

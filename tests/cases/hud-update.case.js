@@ -21,10 +21,21 @@ function flatten(grid) {
 
 function fakeDocument() {
   const els = {};
+  const element = () => {
+    const classes = new Set();
+    return {
+      textContent: '',
+      style: { width: '', backgroundColor: '' },
+      classList: {
+        toggle(name, on) { if (on) classes.add(name); else classes.delete(name); },
+        contains(name) { return classes.has(name); },
+      },
+    };
+  };
   return {
     els,
     getElementById(id) {
-      if (!els[id]) els[id] = { textContent: '', style: { width: '', backgroundColor: '' } };
+      if (!els[id]) els[id] = element();
       return els[id];
     },
   };
@@ -39,6 +50,24 @@ function fakeDocument() {
   const second = buildHudSnapshot(simulation, 25000);
   assert.deepStrictEqual(second, first, 'Unchanged stats should produce an identical HUD snapshot');
   assert.deepStrictEqual(changedHudFields(first, second), [], 'Unchanged snapshots should report no dirty HUD fields');
+
+  // Food is a meter of its own: demand against what the farms grow this tick.
+  assert.strictEqual(first['meter-food-text'], '0.00 / 0.00', 'An empty city has no food demand');
+  assert.strictEqual(first['meter-food-fill'], '0%|', 'An empty city is not short of food');
+
+  simulation.stats.foodDemand = 20;
+  simulation.stats.foodProduced = 5;
+  const starving = buildHudSnapshot(simulation, 25000);
+  assert.strictEqual(starving['meter-food-text'], '20.00 / 5.00', 'The meter reads demand / production');
+  assert.strictEqual(starving['meter-food-fill'], '100%|short', 'Growing less than you eat flashes the bar');
+
+  simulation.stats.foodProduced = 20;
+  const fed = buildHudSnapshot(simulation, 25000);
+  assert.strictEqual(fed['meter-food-fill'], '100%|', 'Matching demand fills the bar without the flash');
+
+  simulation.stats.foodProduced = 40;
+  const surplus = buildHudSnapshot(simulation, 25000);
+  assert.strictEqual(surplus['meter-food-fill'], '50%|', 'A surplus leaves the bar half full');
 
   simulation.tickCount = 4;
   const afterTick = buildHudSnapshot(simulation, 25000);
@@ -152,6 +181,20 @@ function fakeDocument() {
   assert.strictEqual(doc.els['meter-power-fill'].style.backgroundColor, '#ef4444');
   writes.push(changedHudFields(snapshot, next));
   assert.deepStrictEqual(writes[0].sort(), ['meter-power-fill', 'stat-pop']);
+
+  // A short meter fills the bar and hands the appearance to CSS, which draws it red and flashing.
+  // The inline colour is cleared so the stylesheet owns it.
+  const short = { ...next, 'meter-power-fill': '100%|short' };
+  applyHudSnapshot(short, changedHudFields(next, short), doc);
+  assert.strictEqual(doc.els['meter-power-fill'].style.width, '100%');
+  assert.strictEqual(doc.els['meter-power-fill'].style.backgroundColor, '');
+  assert.strictEqual(doc.els['meter-power-fill'].classList.contains('meter-short'), true);
+
+  // Recovery clears the flash again.
+  const recovered = { ...short, 'meter-power-fill': '60%|' };
+  applyHudSnapshot(recovered, changedHudFields(short, recovered), doc);
+  assert.strictEqual(doc.els['meter-power-fill'].classList.contains('meter-short'), false);
+  assert.strictEqual(doc.els['meter-power-fill'].style.width, '60%');
 }
 
 {

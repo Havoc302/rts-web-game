@@ -9,7 +9,7 @@ Agent handoff protocol:
 
 Open handoff (2026-10-20):
 - Active task: none in progress; the next item is to pick up the Phase 1 follow-ups listed in `docs/DESIGN.md`.
-- Latest completed task: publish snapshot folder `simconquer2000/` (`0.4.10`); see the final task entry in this log.
+- Latest completed task: food meter and flashing shortage bars (`0.4.11`); see the final task entry in this log.
 - Verified baseline: `npm test` rebuilds `simconquer2000/` and passes 56 suites across 15 entry points.
 - Phase 1 follow-ups are tracked in `docs/DESIGN.md`; in particular, localStorage autosave and named tick-stage extraction are not implemented. Do not treat historical `Current task` headings below as active.
 
@@ -2149,4 +2149,19 @@ Validation:
 - Snapshot contents: 31 files, 4.67 MB total, no dev-only paths; `simconquer2000/src/version.js` reports `0.4.10`.
 - Drift check: appending one line to the published `style.css` fails the case with a clear "differs from the source; run npm run build:prod" message, and a rebuild clears it.
 
+
+Current task: Food meter and flashing shortages (`0.4.11`).
+
+Reported from a save review: fuel demand was invisible in practice and food had no services-panel readout at all.
+
+- [done] Food now has its own meter in the Services tab, measured demand against what the farms grow this tick (`meter-food-text` / `meter-food-fill`, green fill), with a tooltip explaining that it is production, not capacity.
+- [done] Every meter whose demand outstrips its supply now fills the bar and flashes red instead of just tinting it. `meterFill` returns `100%|short`, `applyHudSnapshot` toggles `.fill.meter-short` and clears the inline colour, and CSS pulses the bar (no animation under `prefers-reduced-motion`). This fixes the fuel bar, which used to be 0% wide with nothing to colour when the tank was empty.
+- [done] Food raises a standing alert: "Food supply is below demand" while the stockpile still covers the gap, "Food shortage — citizens are going hungry" once a tick goes unfed, cleared again when production meets demand.
+- [done] Fuel meter tooltip names the consequence (a shortfall halves every zone's tax) without turning it into an alert, since fuel is a bonus rather than a survival need.
+- [done] Tests: `hud-update.case.js` covers the food meter states and the short/recovered class transitions, `consumer-goods.case.js` covers both alert wordings and the clear. `docs/DESIGN.md` decision 45 and the HUD section record the rule. Versions bumped to `0.4.11`.
+
+Validation:
+- `npm test` rebuilds the snapshot and passes all 15 entry points in about 3.5 s.
+- Browser: forcing demand above supply turned the Food bar 100% wide, red (`rgb(239, 68, 68)`), animating `meter-short-pulse`, and the alerts panel showed "Food shortage — citizens are going hungry"; power short behaved the same; restoring supply cleared both classes and the alert. No page errors.
+- Snapshot rebuilt at `0.4.11` (31 files, 4780.8 KB).
 
