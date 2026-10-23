@@ -8,9 +8,9 @@ Agent handoff protocol:
 - Do not erase historical entries. `docs/DESIGN.md` is the architecture, product, and implementation-status source of truth; distinguish planned work from implemented behavior.
 
 Open handoff (2026-10-23):
-- Active task: none in progress; the next item is to run `npm test` to verify the lazy city-map generation change (Node.js was not available in the agent terminal), then pick up the Phase 1 follow-ups listed in `docs/DESIGN.md`.
-- Latest completed task: city `Grid`/`Simulation` are created only when a world-map hex is opened; see the final task entry in this log.
-- Verified baseline: `npm test` rebuilds `simconquer2000/` and passes 57 suites across 15 entry points (before this change).
+- Active task: none in progress; the next item is to pick up the Phase 1 follow-ups listed in `docs/DESIGN.md`.
+- Latest completed task: city `Grid`/`Simulation` are created only when a world-map hex is opened (`0.4.13`, verified); see the final task entries in this log.
+- Verified baseline: `npm test` rebuilds `simconquer2000/` and passes 57 suites across 15 entry points, including after `0.4.13`.
 - Phase 1 follow-ups are tracked in `docs/DESIGN.md`; in particular, localStorage autosave and named tick-stage extraction are not implemented. Do not treat historical `Current task` headings below as active.
 
 Current task: Add standalone JSON game save export/import.
@@ -2201,3 +2201,11 @@ Validation:
 - Runtime tests were not run in this session: Node.js/npm are not on the agent terminal PATH. `npm test` (which also rebuilds `simconquer2000/`) still needs to run before committing.
 
 
+
+Validation pass (`0.4.13`, verified by the next agent):
+- `npm test` passes all 15 entry points in about 3.3 s and rebuilds `simconquer2000/` with no diff, so the published snapshot is in sync with the source at `0.4.13`.
+- Browser, boot: `grid` and `simulation` are both `null`, the Save World button is disabled, and the notifications panel is hidden with the rest of the city chrome under `body.app-idle`.
+- Browser, `New Game`: the globe opens with `grid` still `null`, `simulation` null, `cityStates.size` 0 and Save World disabled, confirming no 200x200 map is built for the selected home hex.
+- Browser, selecting the unexplored home hex: the terrain rows read `—` and the status reads `Unexplored`, with no grid created.
+- Browser, `Open Map`: a 200x200 grid and simulation appear together, the globe closes, the tutorial advances to `Step 2: Lay a Road Network`, and Space resumes the paused clock. Opening the main menu then enables Save World, so the gating only reflects "no city yet" rather than a stuck disabled state.
+- Invariant for future work: `this.grid` being non-null is the single "a city is loaded" test; any new code touched during a tick, render, HUD, input handler or save path needs a null guard, and `serializeGame` throws "Open a city map before saving" otherwise.
