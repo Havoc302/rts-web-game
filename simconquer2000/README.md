@@ -12,5 +12,8 @@ Every build also mirrors this folder onto the Apache web root (`X:` by default, 
 the SIMCONQUER_DEPLOY_DIR environment variable). Hand-written dotfiles such as `.htaccess` on
 the server are left alone.
 
+`X:` is production: `npm run build:prod` and `npm test` only rebuild this folder, and
+`npm run deploy:prod` is what publishes it to the server.
+
 three.js and h3-js come from jsdelivr and the fonts from Google Fonts, so the page needs
 outbound network access but no other local files.

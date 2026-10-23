@@ -1,7 +1,7 @@
 // Rebuilds `simconquer2000/`, the snapshot that is published to the Apache server behind the
-// Cloudflare tunnel, then mirrors it onto the server's mounted web root so the hosted copy is
-// never stale. Run `npm run build:prod` (or just `npm test`, which rebuilds first) after changing
-// anything the browser loads.
+// Cloudflare tunnel. `npm run build:prod` only rebuilds the repo copy; `npm run deploy:prod`
+// rebuilds it and mirrors it onto the server, because `X:` is production and a test run must never
+// publish. Run one of those after changing anything the browser loads.
 import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -10,9 +10,11 @@ import { PROD_DIR, prodFileList } from './prod-manifest.mjs';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const outDir = join(root, PROD_DIR);
 
-// Where the local Apache server serves from. `X:` is the mounted `htdocs/simconquer2000` folder;
-// set SIMCONQUER_DEPLOY_DIR to point somewhere else (or to a path that does not exist to skip).
+// Where the local Apache server serves from. `X:` is the mounted `htdocs/simconquer2000` folder and
+// counts as production, so it is only written when a deploy is asked for explicitly.
+// `SIMCONQUER_DEPLOY_DIR` points somewhere else (or at a path that does not exist to skip).
 const deployDir = process.env.SIMCONQUER_DEPLOY_DIR || 'X:\\';
+const deployRequested = process.argv.includes('--deploy') || process.env.SIMCONQUER_DEPLOY === '1';
 
 // A guard so a typo can never wipe the repository itself.
 if (!outDir.endsWith(PROD_DIR)) throw new Error(`Refusing to clear ${outDir}`);
@@ -46,6 +48,9 @@ writeFileSync(join(outDir, 'README.md'), [
   'Every build also mirrors this folder onto the Apache web root (`X:` by default, override with',
   'the SIMCONQUER_DEPLOY_DIR environment variable). Hand-written dotfiles such as `.htaccess` on',
   'the server are left alone.',
+  '',
+  '`X:` is production: `npm run build:prod` and `npm test` only rebuild this folder, and',
+  '`npm run deploy:prod` is what publishes it to the server.',
   '',
   'three.js and h3-js come from jsdelivr and the fonts from Google Fonts, so the page needs',
   'outbound network access but no other local files.',
@@ -84,5 +89,5 @@ function deploy(target) {
   return `mirrored ${deployed} files`;
 }
 
-const deployResult = deploy(deployDir);
+const deployResult = deployRequested ? deploy(deployDir) : 'skipped, production only (`npm run deploy:prod`)';
 console.log(`Deploy ${deployDir}: ${deployResult}.`);

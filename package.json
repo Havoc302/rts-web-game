@@ -1,11 +1,12 @@
 {
   "name": "rts-web-game",
-  "version": "0.4.15",
+  "version": "0.4.16",
   "type": "module",
   "scripts": {
     "test": "node tests/run-all.js",
     "pretest": "node scripts/build-prod.mjs",
     "build:prod": "node scripts/build-prod.mjs",
+    "deploy:prod": "node scripts/build-prod.mjs --deploy",
     "serve:prod": "npx serve simconquer2000",
     "test:ore": "node tests/cases/ore-survey.case.js",
     "test:river": "node tests/cases/river-pollution.case.js",

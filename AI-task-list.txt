@@ -9,7 +9,7 @@ Agent handoff protocol:
 
 Open handoff (2026-10-23):
 - Active task: none in progress; the next item is to pick up the Phase 1 follow-ups listed in `docs/DESIGN.md`.
-- Latest completed task: every build mirrors the snapshot onto the Apache share `X:` (`0.4.15`); see the final task entries in this log.
+- Latest completed task: `X:` is production and only `npm run deploy:prod` publishes (`0.4.16`); see the final task entries in this log.
 - Verified baseline: `npm test` rebuilds `simconquer2000/` and passes 57 suites across 15 entry points, including after `0.4.13`.
 - Phase 1 follow-ups are tracked in `docs/DESIGN.md`; in particular, localStorage autosave and named tick-stage extraction are not implemented. Do not treat historical `Current task` headings below as active.
 
@@ -2236,4 +2236,17 @@ Validation:
 - `npm test` now prints `Deploy X:\: mirrored 33 files.` and passes all 15 entry points in about 3.4 s; `X:\src\version.js` reports `0.4.15` and the share holds 33 files.
 - Guard probes against `SIMCONQUER_DEPLOY_DIR`: a folder containing an unrelated `important.txt` was refused with "does not look like the game folder" and left untouched; a missing mount (`Z:\nope`) skipped; a real deploy left `.htaccess` in place while removing a stray handmade file and copying the 33 build files.
 - HTTP was not checked because the game is served from another machine (`X:` is a network share) and nothing on this host answered for it: `localhost:80` refuses connections and `localhost:8080` serves a different site.
+
+Current task: Treat `X:` as production; publishing is explicit (`0.4.16`).
+
+Corrects the `0.4.15` note: `npm test` no longer deploys. `X:` is the live server share, so a test run must never publish to it.
+
+- [done] `scripts/build-prod.mjs` only mirrors onto the web root when a deploy is asked for (`--deploy`, or `SIMCONQUER_DEPLOY=1`). Otherwise it rebuilds the repo snapshot and prints `Deploy X:\: skipped, production only (`npm run deploy:prod`)`.
+- [done] `npm run build:prod` and `npm test` (via `pretest`) rebuild `simconquer2000/` only; `npm run deploy:prod` rebuilds and mirrors onto `X:`. `npm run serve:prod` still previews the local snapshot.
+- [done] The generated snapshot README and `docs/DESIGN.md` decision 44 say which command publishes. Versions bumped to `0.4.16`.
+
+Validation:
+- `npm test`: builds, reports the deploy as skipped, and passes all 15 entry points in about 3.3 s.
+- `npm run build:prod`: builds, deploy skipped.
+- `npm run deploy:prod`: `Built simconquer2000/ with 32 files (4791.8 KB).` then `Deploy X:\: mirrored 33 files.`; `X:\src\version.js` reports `0.4.16`.
 
