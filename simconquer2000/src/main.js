@@ -194,12 +194,21 @@ class GameApp {
   }
 
   /**
+   * True once a world-map hex has been opened. `grid` and `simulation` are created together in
+   * `enterOverworldCellNow`, so both null means no city exists yet: boot and `New Game` leave
+   * them null on purpose, and every tick, render, input handler and save path must check this.
+   */
+  get hasCity() {
+    return Boolean(this.grid && this.simulation);
+  }
+
+  /**
    * Repaints the city canvas once the DOM has settled. Entering a city from the globe
    * or resizing while the world map covered the canvas can otherwise leave the first
    * frame stale until the next animation tick.
    */
   refreshCityCanvas() {
-    if (!this.grid || !this.simulation) return;
+    if (!this.hasCity) return;
     this.resizeCanvas();
     this.renderer.render(this.simulation);
   }
@@ -434,7 +443,7 @@ class GameApp {
   updateMainMenuState() {
     const saveButton = document.getElementById('btn-main-save-world');
     // There is no city map to serialize until a hex has been opened.
-    if (saveButton) saveButton.disabled = !this.worldActive || !this.grid;
+    if (saveButton) saveButton.disabled = !this.worldActive || !this.hasCity;
     const closeButton = document.getElementById('btn-main-close');
     if (closeButton) closeButton.disabled = !this.worldActive;
     const warning = document.getElementById('main-menu-warning');
@@ -786,7 +795,7 @@ class GameApp {
   }
 
   saveGameToFile() {
-    if (!this.grid || !this.simulation) {
+    if (!this.hasCity) {
       window.alert('Open a city map before saving.');
       return;
     }
@@ -798,7 +807,7 @@ class GameApp {
   }
 
   exportGameToFile() {
-    if (!this.grid || !this.simulation) {
+    if (!this.hasCity) {
       window.alert('Open a city map before exporting a save.');
       return;
     }
@@ -1239,7 +1248,9 @@ class GameApp {
     } catch {
       alerts = [];
     }
-    const added = this.notificationLog.record(alerts, this.simulation.tickCount);
+    // Stamps come from the city clock; with no city there is nothing to stamp, so the feed is
+    // rendered empty rather than reaching through a missing simulation.
+    const added = this.notificationLog.record(alerts, this.simulation?.tickCount ?? 0);
     this.renderNotificationRows();
     // Newest warnings sit at the bottom, so the list follows them up.
     if (added.length > 0) {
@@ -2132,7 +2143,7 @@ class GameApp {
 
   startRenderLoop() {
     const loop = () => {
-      if (this.worldActive && this.grid && this.simulation && !this.worldMapLoading && !this.overworldView?.isOpen) {
+      if (this.worldActive && this.hasCity && !this.worldMapLoading && !this.overworldView?.isOpen) {
         this.renderer.render(this.simulation);
       }
       if (this.worldActive && this._pendingHud) this.updateHUD();

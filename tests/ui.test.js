@@ -4,6 +4,7 @@ import { runCases } from './harness.js';
 
 await runCases(import.meta.url, [
   './cases/hud-update.case.js',
+  './cases/app-boot.case.js',
   './cases/inspector-status.case.js',
   './cases/hotkeys.case.js',
   './cases/notifications.case.js',

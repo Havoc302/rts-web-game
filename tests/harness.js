@@ -4,7 +4,7 @@
 //
 // Globals that a case installs for itself (a partial `document`, a fake `localStorage`) are
 // restored after it, so one case cannot leak its stubs into the next.
-const STUBBED_GLOBALS = ['document', 'localStorage', 'AbortController'];
+const STUBBED_GLOBALS = ['document', 'window', 'localStorage', 'AbortController'];
 
 export async function runCases(baseUrl, caseFiles) {
   const failures = [];

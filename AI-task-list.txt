@@ -9,7 +9,7 @@ Agent handoff protocol:
 
 Open handoff (2026-10-23):
 - Active task: none in progress; the next item is to pick up the Phase 1 follow-ups listed in `docs/DESIGN.md`.
-- Latest completed task: city `Grid`/`Simulation` are created only when a world-map hex is opened (`0.4.13`, verified); see the final task entries in this log.
+- Latest completed task: no-city state pinned by `tests/cases/app-boot.case.js` (`0.4.14`); see the final task entries in this log.
 - Verified baseline: `npm test` rebuilds `simconquer2000/` and passes 57 suites across 15 entry points, including after `0.4.13`.
 - Phase 1 follow-ups are tracked in `docs/DESIGN.md`; in particular, localStorage autosave and named tick-stage extraction are not implemented. Do not treat historical `Current task` headings below as active.
 
@@ -2209,3 +2209,17 @@ Validation pass (`0.4.13`, verified by the next agent):
 - Browser, selecting the unexplored home hex: the terrain rows read `—` and the status reads `Unexplored`, with no grid created.
 - Browser, `Open Map`: a 200x200 grid and simulation appear together, the globe closes, the tutorial advances to `Step 2: Lay a Road Network`, and Space resumes the paused clock. Opening the main menu then enables Save World, so the gating only reflects "no city yet" rather than a stuck disabled state.
 - Invariant for future work: `this.grid` being non-null is the single "a city is loaded" test; any new code touched during a tick, render, HUD, input handler or save path needs a null guard, and `serializeGame` throws "Open a city map before saving" otherwise.
+Current task: Pin the "no city yet" state with a boot regression test (`0.4.14`).
+
+Follow-on from `0.4.13`: with `grid`/`simulation` null until a hex is opened, a new line like `this.simulation.tickCount` breaks the title screen silently, with no test to catch it.
+
+- [done] `GameApp.hasCity` (`grid && simulation`) is now the documented single test for "a city is loaded", used by `refreshCityCanvas`, `saveGameToFile`, `exportGameToFile`, `updateMainMenuState` and the render loop instead of ad-hoc null checks.
+- [done] `tests/cases/app-boot.case.js` boots the real `GameApp` against a stub DOM (`document`, `window`, `localStorage`, canvas 2D context) and asserts the title-screen surface stays inert: population and progress helpers, tile picking, repaint, HUD refresh, a stray tick, an alert jump, the notifications feed, pause/resume refusal, and the save refusal in both the app and `serializeGame`. It then attaches a real `Grid`/`Simulation` and asserts the same calls come alive and serialize.
+- [done] The first run of the case found a genuine unguarded access: `renderNotifications` read `this.simulation.tickCount`, which is now `this.simulation?.tickCount ?? 0`. Nothing reached it in the shipped flow, but it was exactly the failure mode the case exists to catch.
+- [done] `tests/harness.js` also restores the `window` stub between cases, alongside `document` and `localStorage`, so the app-level stub cannot leak into the other UI cases.
+- [done] Added to the `ui` bundle. `docs/DESIGN.md` decision 47 records the invariant and the test (and fixed a missing space in decision 45). Versions bumped to `0.4.14`.
+
+Validation:
+- `npm test` rebuilds `simconquer2000/` (32 files) and passes all 15 entry points in about 3.3 s.
+- Browser at `0.4.13` + this change: boot sees `hasCity: false` and no grid; `New Game` opens the globe still with no city; `Open Map` sets `hasCity: true`; the HUD renders, the tutorial advances to Step 2 and Space resumes the clock. No page errors.
+
