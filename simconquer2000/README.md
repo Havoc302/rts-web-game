@@ -8,5 +8,9 @@ only what the browser loads: `index.html`, `style.css`, `src/` and `assets/audio
 The dev-only files (`tests/`, `docs/`, `AI-task-list.txt`, `scripts/`, `node_modules/`, `.git`)
 stay out of it on purpose.
 
+Every build also mirrors this folder onto the Apache web root (`X:` by default, override with
+the SIMCONQUER_DEPLOY_DIR environment variable). Hand-written dotfiles such as `.htaccess` on
+the server are left alone.
+
 three.js and h3-js come from jsdelivr and the fonts from Google Fonts, so the page needs
 outbound network access but no other local files.

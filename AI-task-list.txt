@@ -9,7 +9,7 @@ Agent handoff protocol:
 
 Open handoff (2026-10-23):
 - Active task: none in progress; the next item is to pick up the Phase 1 follow-ups listed in `docs/DESIGN.md`.
-- Latest completed task: no-city state pinned by `tests/cases/app-boot.case.js` (`0.4.14`); see the final task entries in this log.
+- Latest completed task: every build mirrors the snapshot onto the Apache share `X:` (`0.4.15`); see the final task entries in this log.
 - Verified baseline: `npm test` rebuilds `simconquer2000/` and passes 57 suites across 15 entry points, including after `0.4.13`.
 - Phase 1 follow-ups are tracked in `docs/DESIGN.md`; in particular, localStorage autosave and named tick-stage extraction are not implemented. Do not treat historical `Current task` headings below as active.
 
@@ -2222,4 +2222,18 @@ Follow-on from `0.4.13`: with `grid`/`simulation` null until a hex is opened, a 
 Validation:
 - `npm test` rebuilds `simconquer2000/` (32 files) and passes all 15 entry points in about 3.3 s.
 - Browser at `0.4.13` + this change: boot sees `hasCity: false` and no grid; `New Game` opens the globe still with no city; `Open Map` sets `hasCity: true`; the HUD renders, the tutorial advances to Step 2 and Space resumes the clock. No page errors.
+
+Current task: Deploy every build to the Apache web root (`0.4.15`).
+
+The local Apache server serves `htdocs/simconquer2000` from a mount, `X:` (`\\192.168.1.1\simconquer2000`).
+
+- [done] `scripts/build-prod.mjs` mirrors the finished snapshot onto the server after building the repo copy, so `npm run build:prod` and `npm test` (via `pretest`) both leave the hosted copy current.
+- [done] The target defaults to `X:\` and can be overridden with `SIMCONQUER_DEPLOY_DIR`; setting it to a path that does not exist skips the deploy, so the build still works away from the server.
+- [done] Safety guards: a missing mount is reported and skipped, and an existing folder that does not contain both `index.html` and `src/` is refused rather than wiped. Root dotfiles such as a hand-written `.htaccess` survive, because they are server config rather than build output; everything else is mirrored so removed files cannot linger.
+- [done] The generated snapshot README and `docs/DESIGN.md` decision 44 describe the deploy step and the override. Versions bumped to `0.4.15`.
+
+Validation:
+- `npm test` now prints `Deploy X:\: mirrored 33 files.` and passes all 15 entry points in about 3.4 s; `X:\src\version.js` reports `0.4.15` and the share holds 33 files.
+- Guard probes against `SIMCONQUER_DEPLOY_DIR`: a folder containing an unrelated `important.txt` was refused with "does not look like the game folder" and left untouched; a missing mount (`Z:\nope`) skipped; a real deploy left `.htaccess` in place while removing a stray handmade file and copying the 33 build files.
+- HTTP was not checked because the game is served from another machine (`X:` is a network share) and nothing on this host answered for it: `localhost:80` refuses connections and `localhost:8080` serves a different site.
 

@@ -1,13 +1,18 @@
 // Rebuilds `simconquer2000/`, the snapshot that is published to the Apache server behind the
-// Cloudflare tunnel. Run `npm run build:prod` (or just `npm test`, which rebuilds first) after
-// changing anything the browser loads.
-import { copyFileSync, existsSync, mkdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+// Cloudflare tunnel, then mirrors it onto the server's mounted web root so the hosted copy is
+// never stale. Run `npm run build:prod` (or just `npm test`, which rebuilds first) after changing
+// anything the browser loads.
+import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PROD_DIR, prodFileList } from './prod-manifest.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const outDir = join(root, PROD_DIR);
+
+// Where the local Apache server serves from. `X:` is the mounted `htdocs/simconquer2000` folder;
+// set SIMCONQUER_DEPLOY_DIR to point somewhere else (or to a path that does not exist to skip).
+const deployDir = process.env.SIMCONQUER_DEPLOY_DIR || 'X:\\';
 
 // A guard so a typo can never wipe the repository itself.
 if (!outDir.endsWith(PROD_DIR)) throw new Error(`Refusing to clear ${outDir}`);
@@ -38,6 +43,10 @@ writeFileSync(join(outDir, 'README.md'), [
   'The dev-only files (`tests/`, `docs/`, `AI-task-list.txt`, `scripts/`, `node_modules/`, `.git`)',
   'stay out of it on purpose.',
   '',
+  'Every build also mirrors this folder onto the Apache web root (`X:` by default, override with',
+  'the SIMCONQUER_DEPLOY_DIR environment variable). Hand-written dotfiles such as `.htaccess` on',
+  'the server are left alone.',
+  '',
   'three.js and h3-js come from jsdelivr and the fonts from Google Fonts, so the page needs',
   'outbound network access but no other local files.',
   '',
@@ -45,3 +54,35 @@ writeFileSync(join(outDir, 'README.md'), [
 
 const kb = (bytes / 1024).toFixed(1);
 console.log(`Built ${PROD_DIR}/ with ${files.length} files (${kb} KB).`);
+
+// --- Mirror onto the web server --------------------------------------------------------------
+// Only the snapshot's own files may be replaced: a folder that does not look like this game (or a
+// missing drive, on a machine without the server mounted) is reported and skipped rather than
+// guessed at, so a build never wipes something that is not ours.
+function deploy(target) {
+  if (!existsSync(target)) return `skipped, not mounted (${target})`;
+  if (resolve(target) === resolve(outDir)) return `skipped, same folder as ${PROD_DIR}`;
+
+  const entries = readdirSync(target, { withFileTypes: true });
+  const isOurs = entries.some((entry) => entry.isFile() && entry.name === 'index.html') &&
+    entries.some((entry) => entry.isDirectory() && entry.name === 'src');
+  if (entries.length > 0 && !isOurs) return `skipped, ${target} does not look like the game folder`;
+
+  for (const entry of entries) {
+    // Dotfiles at the root are the server's own config (`.htaccess`), so they survive a deploy.
+    if (entry.name.startsWith('.')) continue;
+    rmSync(join(target, entry.name), { recursive: true, force: true });
+  }
+
+  let deployed = 0;
+  for (const file of [...files, 'README.md']) {
+    const destination = join(target, file);
+    mkdirSync(dirname(destination), { recursive: true });
+    copyFileSync(join(outDir, file), destination);
+    deployed += 1;
+  }
+  return `mirrored ${deployed} files`;
+}
+
+const deployResult = deploy(deployDir);
+console.log(`Deploy ${deployDir}: ${deployResult}.`);
