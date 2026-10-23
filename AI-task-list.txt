@@ -7,10 +7,10 @@ Agent handoff protocol:
 - At the end of a generation, mark completed checklist items `[done]`, record validation, and leave unfinished work with enough context for another agent to continue.
 - Do not erase historical entries. `docs/DESIGN.md` is the architecture, product, and implementation-status source of truth; distinguish planned work from implemented behavior.
 
-Open handoff (2026-10-20):
-- Active task: none in progress; the next item is to pick up the Phase 1 follow-ups listed in `docs/DESIGN.md`.
-- Latest completed task: notifications panel with timestamps (`0.4.12`); see the final task entry in this log.
-- Verified baseline: `npm test` rebuilds `simconquer2000/` and passes 57 suites across 15 entry points.
+Open handoff (2026-10-23):
+- Active task: none in progress; the next item is to run `npm test` to verify the lazy city-map generation change (Node.js was not available in the agent terminal), then pick up the Phase 1 follow-ups listed in `docs/DESIGN.md`.
+- Latest completed task: city `Grid`/`Simulation` are created only when a world-map hex is opened; see the final task entry in this log.
+- Verified baseline: `npm test` rebuilds `simconquer2000/` and passes 57 suites across 15 entry points (before this change).
 - Phase 1 follow-ups are tracked in `docs/DESIGN.md`; in particular, localStorage autosave and named tick-stage extraction are not implemented. Do not treat historical `Current task` headings below as active.
 
 Current task: Add standalone JSON game save export/import.
@@ -2179,5 +2179,25 @@ Requested: a warnings panel next to the Services/Storage/Budgets/Finance tabs th
 Validation:
 - `npm test` rebuilds the snapshot (32 files) and passes all 15 entry points in about 3.5 s.
 - Browser: panel renders left of the utility HUD with no overlap (notification box 2089-2349 px, HUD 2361-2621 px at 2560 wide); three forced warnings appeared in order stamped D1 05:00 / D1 20:00 / D1 20:00, the fire row was clickable, the count read 3 and the list followed the newest entry; 17 entries made it scroll with the newest at the bottom; the X removed one and it did not return while the condition stayed active; clearing the log emptied the rows and showed `No warnings`. No page errors.
+
+Current task: Do not generate city terrain until a world-map hex is opened.
+
+Reported: pressing `New Game` appeared to load a 200x200 tile map in the background while the globe was loading.
+
+- [done] `this.grid` and `this.simulation` are `null` until a hex is opened. Boot and `New Game` resolve only the planet/home seeds, so no city `Grid`, terrain, rivers, or ore exist before `Open Map`.
+- [done] `Grid` stays unchanged: no placeholder and no deferred-generation mode. `enterOverworldCellNow()` creates the city `Grid` and `Simulation` from the selected hex, using `MAP_WIDTH`/`MAP_HEIGHT`.
+- [done] `worldMapLoading` gates the city render loop, which also requires a non-null `grid`/`simulation`; `refreshCityCanvas()` and `screenToTile()` no-op without a city, and `New Game` clears queued inspector/HUD work and the previous canvas pixels.
+- [done] `setSpeed`, `simTick`, `updateHUD`, the loan/happiness/population helpers, `logUiTimingIfNeeded`, and `jumpToAlert` tolerate the no-city state.
+- [done] Selecting an unexplored hex no longer builds a preview `Grid` for the water/forest/mountain percentages; those rows read `—` until `Open Map` generates the city. The unused `terrainPreviewCache` was removed.
+- [done] `Save World` and the export path require an open city (`serializeGame` also refuses a null grid/simulation), because the document always carries a map block. Importing world saves with a null active hex is unchanged.
+- [done] Documented the lazy generation and save rule in `docs/DESIGN.md`; bumped every version source to `0.4.13`.
+
+Notes:
+- The presence of `grid` is now the single "a city is loaded" state; the redundant `cityLoaded` flag was dropped.
+- Visited cities and the active city still report real terrain percentages; only unexplored hexes show `—`.
+
+Validation:
+- Editor diagnostics are clean for `main.js`, `OverworldView.js`, and `SaveGame.js`.
+- Runtime tests were not run in this session: Node.js/npm are not on the agent terminal PATH. `npm test` (which also rebuilds `simconquer2000/`) still needs to run before committing.
 
 

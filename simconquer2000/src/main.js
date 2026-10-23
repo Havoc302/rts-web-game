@@ -25,7 +25,7 @@ import { advanceWorldEconomy } from './engine/WorldFinance.js';
 import { TutorialManager } from './engine/TutorialManager.js';
 import { HOTKEY_ACTION, resolveHotkey } from './engine/Hotkeys.js';
 import { NotificationLog } from './engine/NotificationLog.js';
-import { APP_VERSION, ZONE, TERRAIN, PRODUCER_TYPE, PRODUCER_CONFIG, SERVICE_CONFIG, COSTS, TILE_SIZE, STARTING_TREASURY, RESIDENTIAL_CAPACITY, JOBS_PROVIDED, FOREST_POLLUTION_ABSORPTION, FOREST_DESIRABILITY_RADIUS, CRIME_CONFIG, MEDICAL_CONFIG, POWER_PRODUCER_TYPES, POLLUTION_CONFIG, COAL_CONFIG, BATTERY_CONFIG, RESOURCE_CONFIG, UTILITY_OPERATING_COST, DESALINATION_OPERATING_COST, DESALINATION_CONFIG, COAST_CONFIG, SURVEY_COST_PER_TICK, TICKS_PER_HOUR, DENSITY, RENDERER_CONFIG, TERRAIN_GENERATION_CONFIG, MAP_SEED_STORAGE_KEY, EDUCATION_CONFIG, LOAN_CONFIG, splitDemographics, getZoneUpgradeCost, isZoneAtCapacity, PRODUCER_TIER_MAX, isTieredService, isTieredProducer, getProducerTier, getServiceTierStat, getServiceUpgradeCost, getPowerUpgradeCost, getProducerUpgradeCost, getBatteryStorageForTier, getWindPeakForTier, getSolarPeakForTier, getWaterCapacityForTier, getSewageCapacityForTier } from './config.js';
+import { APP_VERSION, ZONE, TERRAIN, PRODUCER_TYPE, PRODUCER_CONFIG, SERVICE_CONFIG, COSTS, TILE_SIZE, MAP_WIDTH, MAP_HEIGHT, STARTING_TREASURY, RESIDENTIAL_CAPACITY, JOBS_PROVIDED, FOREST_POLLUTION_ABSORPTION, FOREST_DESIRABILITY_RADIUS, CRIME_CONFIG, MEDICAL_CONFIG, POWER_PRODUCER_TYPES, POLLUTION_CONFIG, COAL_CONFIG, BATTERY_CONFIG, RESOURCE_CONFIG, UTILITY_OPERATING_COST, DESALINATION_OPERATING_COST, DESALINATION_CONFIG, COAST_CONFIG, SURVEY_COST_PER_TICK, TICKS_PER_HOUR, DENSITY, RENDERER_CONFIG, TERRAIN_GENERATION_CONFIG, MAP_SEED_STORAGE_KEY, MAP_SEED_STORAGE_KEY_LEGACY, EDUCATION_CONFIG, LOAN_CONFIG, splitDemographics, getZoneUpgradeCost, isZoneAtCapacity, PRODUCER_TIER_MAX, isTieredService, isTieredProducer, getProducerTier, getServiceTierStat, getServiceUpgradeCost, getPowerUpgradeCost, getProducerUpgradeCost, getBatteryStorageForTier, getWindPeakForTier, getSolarPeakForTier, getWaterCapacityForTier, getSewageCapacityForTier } from './config.js';
 
 const nowMs = typeof performance !== 'undefined' ? () => performance.now() : () => Date.now();
 
@@ -54,22 +54,30 @@ function formatTerrainName(terrain) {
 class GameApp {
   constructor() {
     this.canvas = document.getElementById('game-canvas');
+    // No city exists until the player opens a world-map hex, so there is no Grid and
+    // no Simulation yet. Only the planet/home seeds are resolved up front.
     const urlSeed = parseInt(new URLSearchParams(window.location.search).get('seed'), 10);
-    const homeSeed = parseInt(localStorage.getItem('simconquer_home_seed'), 10);
-    this.grid = new Grid(undefined, undefined, urlSeed > 0 ? urlSeed : homeSeed > 0 ? homeSeed : null);
-    localStorage.setItem('simconquer_home_seed', this.grid.seed);
-    this.worldSeed = parseInt(localStorage.getItem('simconquer_world_seed'), 10) || this.grid.seed;
+    const storedHomeSeed = parseInt(localStorage.getItem('simconquer_home_seed'), 10);
+    const storedMapSeed = parseInt(localStorage.getItem(MAP_SEED_STORAGE_KEY), 10);
+    const legacyMapSeed = parseInt(localStorage.getItem(MAP_SEED_STORAGE_KEY_LEGACY), 10);
+    const { RANDOM_SEED_MIN, RANDOM_SEED_MAX } = TERRAIN_GENERATION_CONFIG;
+    this.homeSeed = urlSeed > 0 ? urlSeed
+      : storedHomeSeed > 0 ? storedHomeSeed
+      : storedMapSeed > 0 ? storedMapSeed
+      : legacyMapSeed > 0 ? legacyMapSeed
+      : Math.floor(Math.random() * (RANDOM_SEED_MAX - RANDOM_SEED_MIN)) + RANDOM_SEED_MIN;
+    localStorage.setItem('simconquer_home_seed', this.homeSeed);
+    this.worldSeed = parseInt(localStorage.getItem('simconquer_world_seed'), 10) || this.homeSeed;
     localStorage.setItem('simconquer_world_seed', this.worldSeed);
-    this.homeSeed = this.grid.seed;
+    this.grid = null;
+    this.simulation = null;
     this.currentCellId = null;
     this.selectedCellId = null;
     this.cityStates = new Map();
     this.overworldSeedOverrides = new Map();
     this.planet = null;
     this.overworldView = null;
-    this.terrainPreviewCache = new Map();
-    this.simulation = new Simulation(this.grid);
-    this.renderer = new Renderer(this.canvas, this.grid);
+    this.renderer = new Renderer(this.canvas, null);
     const versionEl = document.getElementById('app-version');
     if (versionEl) versionEl.textContent = `v${APP_VERSION}`;
     const overworldVersionEl = document.getElementById('overworld-version');
@@ -92,6 +100,9 @@ class GameApp {
     // The app boots with no world loaded: the main menu is the entry point, and the
     // city chrome stays hidden on a blank background until New Game or Load World.
     this.worldActive = false;
+    // True while the globe is being built, so the city canvas is never painted under
+    // the loading overlay. `grid` being non-null is what says a city actually exists.
+    this.worldMapLoading = false;
     this.activeTool = 'pan';
     this.autoSwitchToPan = false;
     // Warnings log shown next to the utility HUD. It keeps history, unlike the live alert list.
@@ -127,7 +138,7 @@ class GameApp {
     this.inspectorTiming = createUiTimingBucket();
     this.enableUiTiming = typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('debugTiming');
     if (this.enableUiTiming) {
-      this.simulation.enableTiming = true;
+      if (this.simulation) this.simulation.enableTiming = true;
       this.renderer.enableTiming = true;
     }
 
@@ -188,6 +199,7 @@ class GameApp {
    * frame stale until the next animation tick.
    */
   refreshCityCanvas() {
+    if (!this.grid || !this.simulation) return;
     this.resizeCanvas();
     this.renderer.render(this.simulation);
   }
@@ -276,9 +288,10 @@ class GameApp {
 
     document.querySelectorAll('[data-service-budget]').forEach((slider) => {
       slider.addEventListener('input', (e) => {
+        if (!this.simulation) return;
         const budget = parseInt(e.target.value, 10);
         const type = e.target.dataset.serviceBudget;
-        this.grid.producers
+        (this.grid?.producers ?? [])
           .filter((producer) => producer.type === type)
           .forEach((producer) => { producer.budget = budget; });
         const value = document.getElementById(`${type}-budget-value`);
@@ -291,6 +304,7 @@ class GameApp {
     const roadBudgetSlider = document.getElementById('road-maintenance-budget-slider');
     if (roadBudgetSlider) {
       roadBudgetSlider.addEventListener('input', (e) => {
+        if (!this.simulation) return;
         this.simulation.roadMaintenanceBudget = parseInt(e.target.value, 10);
         const value = document.getElementById('road-maintenance-budget-value');
         if (value) value.textContent = `${this.simulation.roadMaintenanceBudget}%`;
@@ -302,6 +316,7 @@ class GameApp {
     const pensionSlider = document.getElementById('pension-budget-slider');
     if (pensionSlider) {
       pensionSlider.addEventListener('input', (e) => {
+        if (!this.simulation) return;
         const budget = parseInt(e.target.value, 10);
         this.simulation.pensionBudget = budget;
         const value = document.getElementById('pension-budget-value');
@@ -314,6 +329,7 @@ class GameApp {
     const taxSlider = document.getElementById('tax-slider');
     if (taxSlider) {
       taxSlider.addEventListener('input', (e) => {
+        if (!this.simulation) return;
         const val = parseInt(e.target.value, 10);
         this.simulation.taxRate = val;
         document.getElementById('tax-rate-val').textContent = val;
@@ -324,7 +340,7 @@ class GameApp {
 
     const seedInput = document.getElementById('seed-input');
     if (seedInput) {
-      seedInput.value = this.grid.seed;
+      seedInput.value = this.grid?.seed ?? '';
       const triggerSeedReset = () => {
         const rawVal = seedInput.value;
         let val = parseInt(rawVal, 10);
@@ -343,7 +359,7 @@ class GameApp {
         if (!window.confirm('Reset the map? All unsaved progress will be lost.')) return;
         const inputEl = document.getElementById('seed-input');
         let val = parseInt(inputEl?.value, 10);
-        if (isNaN(val) || val <= 0) val = this.grid.seed;
+        if (isNaN(val) || val <= 0) val = this.grid?.seed ?? 0;
         this.resetMapWithSeed(val);
       });
     }
@@ -417,7 +433,8 @@ class GameApp {
 
   updateMainMenuState() {
     const saveButton = document.getElementById('btn-main-save-world');
-    if (saveButton) saveButton.disabled = !this.worldActive;
+    // There is no city map to serialize until a hex has been opened.
+    if (saveButton) saveButton.disabled = !this.worldActive || !this.grid;
     const closeButton = document.getElementById('btn-main-close');
     if (closeButton) closeButton.disabled = !this.worldActive;
     const warning = document.getElementById('main-menu-warning');
@@ -464,7 +481,6 @@ class GameApp {
     this.cityStates.clear();
     this.notificationLog.clear();
     this._notificationSignature = '';
-    this.terrainPreviewCache.clear();
     this.overworldSeedOverrides.clear();
     this.currentCellId = null;
     this.selectedCellId = null;
@@ -479,16 +495,27 @@ class GameApp {
     const insolvencyModal = document.getElementById('insolvency-modal');
     if (insolvencyModal) insolvencyModal.hidden = true;
 
-    this.grid = new Grid(undefined, undefined, this.homeSeed);
-    this.simulation = new Simulation(this.grid);
-    this.renderer.grid = this.grid;
+    // No city exists yet. The world map opens first, and the Grid/Simulation are
+    // created only when the player selects a hex and chooses Open Map.
+    this.grid = null;
+    this.simulation = null;
+    this.renderer.grid = null;
     this.renderer.terrainChunks = [];
     this.renderer.terrainChunksVersion = -1;
     this.renderer.selectedTile = null;
     this.renderer.hoverTile = null;
-    this.renderer.trafficManager.grid = this.grid;
+    this.renderer.trafficManager.grid = null;
     this.renderer.trafficManager.cars = [];
     this.renderer.trafficManager.lastCoverageVersion = -1;
+    // Drop any queued inspector work that still points at the discarded city.
+    this._pendingInspectorTile = null;
+    this._inspectorTile = null;
+    this._inspectorSignature = '';
+    this._hudSnapshot = null;
+    this._hudAppliedAt = null;
+    this._pendingHud = false;
+    document.getElementById('inspector-panel')?.classList.remove('visible');
+    document.getElementById('build-info-panel')?.classList.remove('visible');
 
     if (this.tutorialManager) {
       // The Guided Tutorial toggle decides whether the new world shows instructions.
@@ -502,6 +529,9 @@ class GameApp {
     this.overworldView = null;
     this.planet = null;
     this.setIdleState(false);
+    // Discard the previous city's pixels so nothing shows behind the globe.
+    this.resizeCanvas();
+    this.renderer.ctx?.clearRect(0, 0, this.canvas.width, this.canvas.height);
     await this.openOverworld();
     this.updateHUD({ force: true });
   }
@@ -537,7 +567,6 @@ class GameApp {
     if (!cell || cell.ocean) return;
     const validSeed = parseInt(seed, 10) || cell.seed;
     cell.seed = validSeed;
-    this.terrainPreviewCache.delete(cellId);
     const isCurrentCity = cellId === this.currentCellId;
     if (isCurrentCity) {
       this.grid.randomizeGrid(validSeed);
@@ -599,6 +628,7 @@ class GameApp {
     // The first open imports Three.js and builds the whole planet synchronously; give
     // the player feedback instead of what looks like a frozen screen.
     const buildingGlobe = !this.overworldView;
+    this.worldMapLoading = true;
     if (buildingGlobe) this.showMapLoading('Loading world map…');
     this.setSpeed(0);
     try {
@@ -644,6 +674,7 @@ class GameApp {
       window.alert('Unable to open the world map. Check your connection to the map libraries.');
     } finally {
       button.disabled = false;
+      this.worldMapLoading = false;
       if (buildingGlobe) this.hideMapLoading();
     }
   }
@@ -652,24 +683,21 @@ class GameApp {
     const cell = this.planet?.getCell(id);
     if (!cell || cell.ocean) return { water: 0, forest: 0, mountain: 0 };
     const cityGrid = id === this.currentCellId ? this.grid : this.cityStates.get(id)?.grid;
-    if (cityGrid) return cityGrid.getTerrainPercentages();
-    if (!this.terrainPreviewCache.has(id)) {
-      const coast = this.planet?.getOceanFacingDirections(id) || [];
-      const previewGrid = new Grid(undefined, undefined, cell.seed, cell.biome, undefined, undefined, coast);
-      this.terrainPreviewCache.set(id, previewGrid.getTerrainPercentages());
-    }
-    return this.terrainPreviewCache.get(id);
+    // Unexplored hexes have no city map yet, and generating a preview here would build
+    // all 40,000 tiles (terrain, rivers, ore) just to print three percentages. Stats
+    // appear once the player actually opens the map.
+    return cityGrid ? cityGrid.getTerrainPercentages() : { water: null, forest: null, mountain: null };
   }
 
   async regenerateOverworld(seed) {
     if (seed === this.worldSeed) return;
     if (!window.confirm('Generate a new planet? Your current city will move to its new home hex. Other visited cities will be removed.')) return;
     this.worldSeed = seed;
-    this.homeSeed = this.grid.seed;
+    // With an open city, that city's map seed becomes the home seed for the new planet.
+    if (this.grid) this.homeSeed = this.grid.seed;
     localStorage.setItem('simconquer_world_seed', seed);
     localStorage.setItem('simconquer_home_seed', this.homeSeed);
     this.cityStates.clear();
-    this.terrainPreviewCache.clear();
     this.overworldSeedOverrides.clear();
     if (this.currentCellId) {
       const { OverworldMap } = await import('./engine/OverworldMap.js');
@@ -717,7 +745,7 @@ class GameApp {
       const saved = this.cityStates.get(id);
       const city = saved || (() => {
         const coast = this.planet?.getOceanFacingDirections(id) || [];
-        const grid = new Grid(this.grid.width, this.grid.height, cell.seed, cell.biome, undefined, undefined, coast);
+        const grid = new Grid(MAP_WIDTH, MAP_HEIGHT, cell.seed, cell.biome, undefined, undefined, coast);
         const simulation = new Simulation(grid, cell.climate);
         simulation.isPaused = true;
         return { grid, simulation, camera: { x: 0, y: 0, zoom: 1 }, activeTool: 'pan', overlayMode: 'normal' };
@@ -733,6 +761,9 @@ class GameApp {
       this.renderer.terrainChunksVersion = -1;
       this.renderer.selectedTile = null;
       this.renderer.hoverTile = null;
+      this._pendingInspectorTile = null;
+      this._inspectorTile = null;
+      this._inspectorSignature = '';
       this.renderer.trafficManager.grid = city.grid;
       this.renderer.trafficManager.cars = [];
       this.renderer.trafficManager.lastCoverageVersion = -1;
@@ -755,6 +786,10 @@ class GameApp {
   }
 
   saveGameToFile() {
+    if (!this.grid || !this.simulation) {
+      window.alert('Open a city map before saving.');
+      return;
+    }
     if (!this.simulation.isPaused) {
       window.alert('Pause the game before saving.');
       return;
@@ -763,6 +798,10 @@ class GameApp {
   }
 
   exportGameToFile() {
+    if (!this.grid || !this.simulation) {
+      window.alert('Open a city map before exporting a save.');
+      return;
+    }
     if (!this.simulation.isPaused) {
       window.alert('Pause the game before exporting a save.');
       return;
@@ -795,7 +834,6 @@ class GameApp {
       localStorage.setItem('simconquer_world_seed', this.worldSeed);
       localStorage.setItem('simconquer_home_seed', this.homeSeed);
       this.cityStates = new Map();
-      this.terrainPreviewCache.clear();
       this.notificationLog.clear();
       this._notificationSignature = '';
       for (const visited of imported.overworld?.visited || []) {
@@ -815,6 +853,11 @@ class GameApp {
       this.renderer.grid = this.grid;
       this.renderer.terrainChunks = [];
       this.renderer.terrainChunksVersion = -1;
+      this.renderer.selectedTile = null;
+      this.renderer.hoverTile = null;
+      this._pendingInspectorTile = null;
+      this._inspectorTile = null;
+      this._inspectorSignature = '';
       this.renderer.trafficManager.grid = this.grid;
       this.renderer.trafficManager.cars = [];
       this.renderer.trafficManager.lastCoverageVersion = -1;
@@ -905,11 +948,15 @@ class GameApp {
     // Insolvency is a hard stop: the player must borrow or declare bankruptcy first.
     if (this.insolvent && speed !== 0) return false;
     if (!this.worldActive && speed !== 0) return false;
+    // Nothing can run until a city map exists.
+    if (speed !== 0 && !this.simulation) return false;
     document.querySelectorAll('.speed-controls .btn-icon').forEach((b) => b.classList.remove('active'));
     if (speed === 0) {
       document.getElementById('btn-pause').classList.add('active');
-      this.simulation.isPaused = true;
-      this.simulation.speed = 0;
+      if (this.simulation) {
+        this.simulation.isPaused = true;
+        this.simulation.speed = 0;
+      }
       if (this.simInterval) clearInterval(this.simInterval);
       this.simInterval = null;
     } else {
@@ -925,7 +972,7 @@ class GameApp {
   }
 
   simTick() {
-    if (this.simulation.isPaused) return;
+    if (!this.simulation || this.simulation.isPaused) return;
     if (this.getCombinedPopulation() > 0) this.hasEverHadPopulation = true;
     const economy = advanceWorldEconomy(this.getWorldSimulations(), this.treasury, this.loanManager);
     this.treasury = economy.treasury;
@@ -941,6 +988,11 @@ class GameApp {
 
   updateHUD({ force = false } = {}) {
     this.updateFinancePanel();
+    // The header treasury is enough on the globe; the city HUD needs a live city.
+    if (!this.simulation) {
+      this._pendingHud = false;
+      return false;
+    }
     this.tutorialManager?.update(this.grid, this.simulation.stats);
     const started = this.enableUiTiming ? nowMs() : 0;
     const snapshot = buildHudSnapshot(this.simulation, this.treasury);
@@ -965,11 +1017,12 @@ class GameApp {
   }
 
   getAverageCityHappiness() {
-    const happiness = [this.simulation.stats.happiness ?? 50];
+    const happiness = this.simulation ? [this.simulation.stats.happiness ?? 50] : [];
     for (const [cellId, city] of this.cityStates) {
       if (cellId === this.currentCellId) continue;
       happiness.push(city.simulation.stats.happiness ?? 50);
     }
+    if (happiness.length === 0) return 50;
     return happiness.reduce((sum, value) => sum + value, 0) / happiness.length;
   }
 
@@ -1006,12 +1059,12 @@ class GameApp {
     for (const [cellId, city] of this.cityStates) {
       if (cellId !== this.currentCellId) simulations.push(city.simulation);
     }
-    simulations.push(this.simulation);
+    if (this.simulation) simulations.push(this.simulation);
     return simulations;
   }
 
   getCombinedPopulation() {
-    let population = this.simulation.stats.population || 0;
+    let population = this.simulation ? this.simulation.stats.population || 0 : 0;
     for (const [cellId, city] of this.cityStates) {
       if (cellId === this.currentCellId) continue;
       population += city.simulation.stats.population || 0;
@@ -1245,7 +1298,7 @@ class GameApp {
   }
 
   jumpToAlert(alert) {
-    const tile = this.grid.getTile(alert.x, alert.y);
+    const tile = this.grid?.getTile(alert.x, alert.y);
     if (!tile) return;
     const worldX = -this.grid.width * TILE_SIZE / 2 + (tile.x + 0.5) * TILE_SIZE;
     const worldY = -this.grid.height * TILE_SIZE / 2 + (tile.y + 0.5) * TILE_SIZE;
@@ -1484,6 +1537,7 @@ class GameApp {
   }
 
   screenToTile(screenX, screenY) {
+    if (!this.grid) return null;
     const mapPixelWidth = this.grid.width * TILE_SIZE;
     const mapPixelHeight = this.grid.height * TILE_SIZE;
     const startX = -mapPixelWidth / 2;
@@ -2065,7 +2119,7 @@ class GameApp {
   }
 
   logUiTimingIfNeeded() {
-    if (!this.enableUiTiming) return;
+    if (!this.enableUiTiming || !this.simulation) return;
     const frames = this.renderer.renderFrameCount;
     if (frames === 0 || frames % 120 !== 0) return;
     console.log('[debugTiming]', {
@@ -2078,7 +2132,9 @@ class GameApp {
 
   startRenderLoop() {
     const loop = () => {
-      if (this.worldActive && !this.overworldView?.isOpen) this.renderer.render(this.simulation);
+      if (this.worldActive && this.grid && this.simulation && !this.worldMapLoading && !this.overworldView?.isOpen) {
+        this.renderer.render(this.simulation);
+      }
       if (this.worldActive && this._pendingHud) this.updateHUD();
       if (this._pendingInspectorTile) this.updateInspector(this._pendingInspectorTile);
       this.logUiTimingIfNeeded();

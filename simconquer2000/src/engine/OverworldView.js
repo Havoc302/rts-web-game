@@ -203,9 +203,11 @@ export class OverworldView {
       this.element.querySelector('#overworld-biome').textContent = this.selected.biome;
       this.element.querySelector('#overworld-seed').textContent = this.selected.seed.toLocaleString();
       const terrainStats = this.getTerrainStats(this.selected.id);
-      this.element.querySelector('#overworld-water-percent').textContent = `${terrainStats.water.toFixed(1)}%`;
-      this.element.querySelector('#overworld-forest-percent').textContent = `${terrainStats.forest.toFixed(1)}%`;
-      this.element.querySelector('#overworld-mountain-percent').textContent = `${terrainStats.mountain.toFixed(1)}%`;
+      // Unexplored hexes report null: their city map has not been generated yet.
+      const percent = (value) => (typeof value === 'number' ? `${value.toFixed(1)}%` : '—');
+      this.element.querySelector('#overworld-water-percent').textContent = percent(terrainStats.water);
+      this.element.querySelector('#overworld-forest-percent').textContent = percent(terrainStats.forest);
+      this.element.querySelector('#overworld-mountain-percent').textContent = percent(terrainStats.mountain);
       this.element.querySelector('#overworld-status').textContent = this.selected.id === this.currentId
         ? 'Current city' : this.isVisited(this.selected.id) ? 'Visited city' : 'Unexplored';
       this.element.querySelector('#btn-enter-hex').textContent = 'Open Map';

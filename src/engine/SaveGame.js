@@ -271,6 +271,7 @@ function finishGridRestore(grid, producers, nextProducerId) {
 }
 
 export function serializeGame(app, { includeFinance = true } = {}) {
+  if (!app.grid || !app.simulation) throw new Error('Open a city map before saving');
   if (!app.simulation.isPaused) throw new Error('Pause the game before saving');
   return {
     saveVersion: SAVE_VERSION,
