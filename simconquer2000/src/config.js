@@ -75,7 +75,8 @@ export const RIVER_FORD_CONFIG = {
   MIN_SPACING: 24,     // River path steps between two fords
   EDGE_MARGIN: 8,      // Keep fords away from the spring and the mouth
   MIN_SEA_DISTANCE: 6, // Fords belong inland of the beach, not in the estuary
-  MAX_SPAN: 6,         // Widest a ford may grow while reaching for both banks
+  MAX_SPAN: 6,         // How far a ford line may walk across before giving up on that bank
+  MAX_TILES: 18,       // A ford may not grow past this, so it stays a gravel bar, not a lagoon
 };
 
 /** Flat and beach ground accept roads, zones, and buildings. */

@@ -9,8 +9,8 @@ Agent handoff protocol:
 
 Open handoff (2026-10-23):
 - Active task: none in progress; the next item is to pick up the Phase 1 follow-ups listed in `docs/DESIGN.md`.
-- Latest completed task: fords always reach both banks (`0.4.18`); see the final task entries in this log.
-- Verified baseline: `npm test` rebuilds `simconquer2000/` and passes 58 suites across 15 entry points (`0.4.18`).
+- Latest completed task: fords always reach both banks (`0.4.19`); see the final task entries in this log.
+- Verified baseline: `npm test` rebuilds `simconquer2000/` and passes 58 suites across 15 entry points (`0.4.19`).
 - Phase 1 follow-ups are tracked in `docs/DESIGN.md`; in particular, localStorage autosave and named tick-stage extraction are not implemented. Do not treat historical `Current task` headings below as active.
 
 Current task: Add standalone JSON game save export/import.
@@ -2280,3 +2280,18 @@ Validation:
 - Checked 480 maps across plains/tundra/forest with and without coast before the band rewrite: every ford crossable under the compass test, which also showed the flood-fill version wrapping around bends — the reason for the straight-line band.
 - ASCII footprint of seed `1018167` shows the shallow band running across the channel from bank to bank with deep water on either side along the flow.
 
+Current task: Give fords an organic shape instead of a straight causeway (`0.4.19`).
+
+Feedback: the `0.4.18` band read as a straight line between two banks, which looked artificial. It only has to be wide enough that at least one cell touches each side.
+
+- [done] Replaced the straight-line walk with `Grid.layFordBand`: two or three gravel lanes beside the chosen path step, each walking across the channel with a 35% sideways wobble per step, then a random share of neighbouring water joined to the bar so the edge fades instead of stepping.
+- [done] The guarantee is unchanged in spirit and now cheaper: every lane starts on river water in the middle of the channel and ends on land, so the shallow water joins both shores, and a lane that meets the sea (or needs more than `MAX_SPAN` 6 steps, or a band past `MAX_TILES` 18) rejects the ford entirely.
+- [done] `RIVER_FORD_CONFIG.MAX_TILES` added; `MAX_SPAN` is once again the walk length per side. The plus-shaped seed stamp is no longer used for the ford itself, so fords stop sharing one silhouette.
+- [done] `tests/cases/river-fords.case.js`: the bank check is now the relaxed rule the request asked for (patch touches the shore on both sides of the channel, sea never counts), plus a new silhouette fingerprint across 20 seeds that fails if the shapes stop varying. Sample seeds moved to `471756` (one ford in plains and tundra) and `535108` (two fords).
+- [done] `docs/DESIGN.md` river-depth paragraph and decision 49 rewritten for the lane-based band. Versions bumped to `0.4.19`.
+
+Validation:
+- `npm test` rebuilds the snapshot and passes all 15 entry points in about 4.1 s.
+- Measured over 800 maps (200 each for plains with a north coast, plains without coast, tundra, forest): 85% none, 14% one, 1-3% two; all 135 fords touch the shore on both sides; patches are 5-18 tiles with a median of 13.
+- Silhouettes: the first 20 sample seeds produce 5 fords and 5 distinct shapes (the previous stamp produced exactly 1 shape across the same seeds).
+- Browser preview of seeds `471756`, `535108` and `543027` rendered through the real `Renderer`: each ford is an irregular pale bar with riffles that jogs sideways as it crosses the channel and meets the land on both banks.

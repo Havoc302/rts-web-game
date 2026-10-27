@@ -1,6 +1,6 @@
 // River depth is a two-step property: DEEP everywhere, LOW inside a natural ford. Fords are meant to
-// be rare (most maps have none), inland, and wide enough to reach both banks so a future vehicle can
-// actually cross there.
+// be rare (most maps have none), inland, shaped by the seed rather than by a ruler, and wide enough
+// that the shallow water reaches the far bank so a future vehicle can actually drive across.
 import assert from 'assert';
 import { Grid } from '../../src/engine/Grid.js';
 import { BIOME_TYPES, RIVER_DEPTH, RIVER_FORD_CONFIG, TERRAIN } from '../../src/config.js';
@@ -9,12 +9,11 @@ console.log('=== river-fords.case.js ===');
 
 const MAP = 200;
 const COAST = ['N'];
-// Seeds picked from the measured distribution: 519270 rolls one ford, 1018167 rolls two.
-const ONE_FORD_SEED = 519270;
-const TWO_FORD_SEED = 1018167;
-const AXES = [[1, 0], [0, 1]];
-// A ford is a gravel bar, not a lagoon: the widest band measured over 200 seeds was 29 tiles.
-const MAX_FORD_TILES = 40;
+// Seeds picked from the measured distribution: 471756 rolls one ford in plains and tundra,
+// 535108 rolls two.
+const ONE_FORD_SEED = 471756;
+const TWO_FORD_SEED = 535108;
+const CARDINALS = [[0, -1, 'n'], [1, 0, 'e'], [0, 1, 's'], [-1, 0, 'w']];
 
 const cityMap = (seed, biome = BIOME_TYPES.PLAINS) => new Grid(MAP, MAP, seed, biome, 2, 4, COAST);
 const key = (x, y) => `${x},${y}`;
@@ -41,30 +40,21 @@ const fordPatch = (grid, ford) => {
   return patch;
 };
 
-/**
- * True when the patch contains a straight line of shallow water that starts and ends on dry land:
- * the shape a vehicle could actually drive across without ever touching deep water.
- */
-const hasStraightCrossing = (grid, patch) => AXES.some(([dx, dy]) => [...patch.values()].some((tile) => {
-  for (const sign of [1, -1]) {
-    let current = tile;
-    let banked = false;
-    for (let step = 1; step <= RIVER_FORD_CONFIG.MAX_SPAN + 1; step++) {
-      const next = grid.getTile(current.x + dx * sign, current.y + dy * sign);
-      if (!next) return false;
-      if (patch.has(key(next.x, next.y))) {
-        current = next;
-        continue;
-      }
-      // The line has to end on land; deep river water or the sea stops it mid-channel.
-      if (next.terrain === TERRAIN.WATER || next.terrain === TERRAIN.SALT_WATER) return false;
-      banked = true;
-      break;
+/** The shores a patch touches, ignoring the sea: only dry land counts as a bank. */
+const bankSides = (grid, patch) => {
+  const sides = new Set();
+  for (const tile of patch.values()) {
+    for (const [dx, dy, side] of CARDINALS) {
+      const neighbour = grid.getTile(tile.x + dx, tile.y + dy);
+      if (!neighbour || neighbour.terrain === TERRAIN.WATER || neighbour.terrain === TERRAIN.SALT_WATER) continue;
+      sides.add(side);
     }
-    if (!banked) return false;
   }
-  return true;
-}));
+  return sides;
+};
+
+/** A ford is usable when the shallow patch itself joins one shore to the shore opposite it. */
+const touchesOppositeBanks = (sides) => (sides.has('n') && sides.has('s')) || (sides.has('e') && sides.has('w'));
 
 // --- Two steps, and only a river is ever shallow -------------------------------------------
 {
@@ -103,7 +93,7 @@ const hasStraightCrossing = (grid, patch) => AXES.some(([dx, dy]) => [...patch.v
     `Fords should get rarer the more a map has: ${JSON.stringify(tally)}`);
 }
 
-// --- Every ford reaches both banks, so a vehicle could cross -------------------------------
+// --- Every ford joins one bank to the one opposite, so a vehicle could cross -----------------
 {
   const SEEDS = 20;
   let checked = 0;
@@ -111,15 +101,36 @@ const hasStraightCrossing = (grid, patch) => AXES.some(([dx, dy]) => [...patch.v
     const grid = cityMap(424242 + index * 7919);
     for (const ford of grid.riverFords) {
       const patch = fordPatch(grid, ford);
+      const sides = bankSides(grid, patch);
       checked++;
       assert.ok(patch.size > 0, `Ford at (${ford.x},${ford.y}) should sit on shallow water`);
-      assert.ok(hasStraightCrossing(grid, patch),
-        `Ford at (${ford.x},${ford.y}) never reaches a bank on both sides, so nothing could drive it`);
+      assert.ok(touchesOppositeBanks(sides),
+        `Ford at (${ford.x},${ford.y}) only touches banks ${[...sides].sort().join('') || 'none'}, so it never crosses`);
       assert.ok(patch.size >= 4, `A ford spans the channel, saw only ${patch.size} tiles`);
-      assert.ok(patch.size <= MAX_FORD_TILES, `A ford stays a gravel bar, saw ${patch.size} tiles`);
+      assert.ok(patch.size <= RIVER_FORD_CONFIG.MAX_TILES,
+        `A ford stays a gravel bar, saw ${patch.size} tiles`);
     }
   }
   assert.ok(checked > 0, 'The sampled seeds should produce at least one ford to check');
+}
+
+// --- The shape comes from the seed, so no two fords share one silhouette ---------------------
+{
+  const shapes = new Set();
+  // The first 20 sample seeds produce 5 fords between them.
+  for (let index = 0; index < 20; index++) {
+    const grid = cityMap(424242 + index * 7919);
+    for (const ford of grid.riverFords) {
+      // Fingerprint the patch relative to its own ford centre: a fixed stamp would repeat.
+      const shape = [...fordPatch(grid, ford).values()]
+        .map((tile) => `${tile.x - ford.x}:${tile.y - ford.y}`)
+        .sort()
+        .join('|');
+      shapes.add(shape);
+    }
+  }
+  assert.ok(shapes.size >= 3, `Fords should not all share one silhouette, saw ${shapes.size} shapes`);
+  assert.ok([...shapes].every((shape) => shape.split('|').length >= 4), 'Every ford covers several tiles');
 }
 
 // --- A ford is a short run of shallow water, kept inland -----------------------------------

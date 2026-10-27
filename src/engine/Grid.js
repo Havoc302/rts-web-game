@@ -5,6 +5,7 @@ const TIER_DENSITY = [DENSITY.LIGHT, DENSITY.MEDIUM, DENSITY.HIGH];
 // A river is painted as a plus-shaped stamp per path step, which makes a three-tile-wide channel.
 // Fords reuse the same offsets so their shallow band covers the whole width at that point.
 const RIVER_SEGMENT_OFFSETS = [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]];
+const CARDINAL_STEPS = [[0, -1], [1, 0], [0, 1], [-1, 0]];
 
 // One anchor + outward normal per ocean-facing hex edge, in tile-map space. Side edges use
 // the middle of that map side; diagonal edges use the matching corner, so a hex that faces
@@ -1000,9 +1001,9 @@ export class Grid {
 
     for (const start of starts) {
       const runLength = config.RUN_MIN + Math.floor(rng() * (config.RUN_MAX - config.RUN_MIN + 1));
-      // The plus-shaped stamp only covers the middle of the channel, so the band is stretched out to
-      // dry land on both sides. A band that cannot reach a bank is not a crossing, so it is dropped.
-      const band = this.layFordBand(spine, start, runLength);
+      // The plus-shaped stamp only covers the middle of the channel, so it is grown out to the banks.
+      // A band that cannot reach both banks is not a crossing, so it is dropped.
+      const band = this.layFordBand(spine, start, runLength, rng);
       if (!band) continue;
       for (const tile of band) tile.riverDepth = RIVER_DEPTH.LOW;
       this.riverFords.push({ x: spine[start].x, y: spine[start].y, length: runLength });
@@ -1011,52 +1012,70 @@ export class Grid {
   }
 
   /**
-   * Lays the gravel band of a ford from bank to bank, so a vehicle can always walk it end to end.
-   * Each tile of the run is walked outward across the channel until it meets dry land, and the band
-   * is the union of those lines. Crossing the flow at right angles is preferred, with the other axis
-   * as a fallback for bends where the local flow and the run direction disagree.
-   * Returns the tiles to shallow out, or null when the channel is too wide (or too close to the sea).
+   * Shapes the gravel bar of a ford by walking across the channel from the middle out to each bank.
+   * Two or three lanes are laid along the flow, each wandering sideways as it crosses, and a random
+   * share of the surrounding water becomes gravel too, so no two fords share a silhouette and none
+   * of them look like a ruled line. A lane that runs into the sea or cannot reach land within
+   * MAX_SPAN steps rejects the whole ford, so every ford that is recorded joins both banks.
+   * Returns the tiles to shallow out, or null when this spot cannot be forded.
    */
-  layFordBand(spine, start, runLength) {
+  layFordBand(spine, start, runLength, rng) {
     const config = RIVER_FORD_CONFIG;
-    const seeds = [];
-    for (let step = 0; step < runLength; step++) {
-      const point = spine[start + step];
-      for (const [dx, dy] of RIVER_SEGMENT_OFFSETS) {
-        const tile = this.getTile(point.x + dx, point.y + dy);
-        if (tile && tile.terrain === TERRAIN_TYPE.RIVER) seeds.push(tile);
-      }
-    }
-    if (seeds.length === 0) return null;
-
     const head = spine[start];
     const tail = spine[Math.min(start + runLength - 1, spine.length - 1)];
     const across = Math.abs(tail.y - head.y) >= Math.abs(tail.x - head.x) ? [1, 0] : [0, 1];
     const along = [across[1], across[0]];
-    return this.walkFordBand(seeds, across) ?? this.walkFordBand(seeds, along);
-  }
 
-  /** Walks every run tile along one axis until it hits land; null if any line fails to get there. */
-  walkFordBand(seeds, [stepX, stepY]) {
-    const config = RIVER_FORD_CONFIG;
     const band = new Map();
-    for (const seed of seeds) {
-      band.set(`${seed.x},${seed.y}`, seed);
+    const add = (tile) => {
+      if (!tile || tile.terrain !== TERRAIN_TYPE.RIVER) return;
+      band.set(`${tile.x},${tile.y}`, tile);
+    };
+
+    // Lanes sit next to each other along the flow, so the bar is a couple of tiles thick.
+    const lanes = [0];
+    if (rng() < 0.75) lanes.push(rng() < 0.5 ? -1 : 1);
+    if (rng() < 0.35) lanes.push(lanes[1] === 1 ? -1 : 1);
+
+    for (const lane of lanes) {
+      const origin = this.getTile(head.x + along[0] * lane, head.y + along[1] * lane);
+      if (!origin || origin.terrain !== TERRAIN_TYPE.RIVER) continue;
       for (const sign of [1, -1]) {
-        let current = seed;
+        let current = origin;
         let reachedBank = false;
-        for (let step = 1; step <= config.MAX_SPAN; step++) {
-          const next = this.getTile(current.x + stepX * sign, current.y + stepY * sign);
+        for (let step = 0; step <= config.MAX_SPAN; step++) {
+          add(current);
+          if (band.size > config.MAX_TILES) return null;
+          // A natural bar wanders sideways instead of running straight across.
+          if (rng() < 0.35) {
+            const drift = this.getTile(
+              current.x + along[0] * (rng() < 0.5 ? 1 : -1),
+              current.y + along[1] * (rng() < 0.5 ? 1 : -1),
+            );
+            if (drift && drift.terrain === TERRAIN_TYPE.RIVER) {
+              add(drift);
+              current = drift;
+            }
+          }
+          const next = this.getTile(current.x + across[0] * sign, current.y + across[1] * sign);
           // A ford runs from dry land to dry land: the sea and the edge of the map are dead ends.
           if (!next || next.terrain === TERRAIN_TYPE.SALT_WATER) return null;
           if (next.terrain !== TERRAIN_TYPE.RIVER) {
             reachedBank = true;
             break;
           }
-          band.set(`${next.x},${next.y}`, next);
           current = next;
         }
         if (!reachedBank) return null;
+      }
+    }
+    if (band.size === 0) return null;
+
+    // Blur the edge of the bar so the shallow water fades into the channel instead of stepping.
+    for (const tile of [...band.values()]) {
+      for (const [dx, dy] of CARDINAL_STEPS) {
+        if (rng() >= 0.3 || band.size >= config.MAX_TILES) continue;
+        add(this.getTile(tile.x + dx, tile.y + dy));
       }
     }
     return [...band.values()];
