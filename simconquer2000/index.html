@@ -14,6 +14,26 @@
 </head>
 <body>
   <svg xmlns="http://www.w3.org/2000/svg" class="hud-sprite" aria-hidden="true" focusable="false">
+    <defs>
+      <linearGradient id="logo-gold-grad" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0%" stop-color="#f59e0b" />
+        <stop offset="45%" stop-color="#fde68a" />
+        <stop offset="100%" stop-color="#f59e0b" />
+      </linearGradient>
+    </defs>
+    <!-- Compact brand mark: the title-screen city block, reused by both headers. -->
+    <symbol id="brand-mark" viewBox="167 4 86 58">
+      <polygon fill="#7dd3fc" points="188,20 204,28 188,36 172,28" />
+      <polygon fill="#1d4ed8" points="172,28 188,36 188,52 172,44" />
+      <polygon fill="#0f2f52" points="188,36 204,28 204,44 188,52" />
+      <polygon fill="#7dd3fc" points="232,24 247,31.5 232,39 217,31.5" />
+      <polygon fill="#1d4ed8" points="217,31.5 232,39 232,51 217,43.5" />
+      <polygon fill="#0f2f52" points="232,39 247,31.5 247,43.5 232,51" />
+      <polygon fill="url(#logo-gold-grad)" points="210,8 228,17 210,26 192,17" />
+      <polygon fill="#1d4ed8" points="192,17 210,26 210,56 192,47" />
+      <polygon fill="#0f2f52" points="210,26 228,17 228,47 210,56" />
+      <ellipse cx="210" cy="58" rx="44" ry="4.5" fill="none" stroke="#38bdf8" stroke-opacity="0.45" />
+    </symbol>
     <symbol id="hud-population" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
       <circle cx="12" cy="7.5" r="3.6"/>
       <path d="M5 20.5c.7-4.6 3.4-7 7-7s6.3 2.4 7 7"/>
@@ -95,8 +115,12 @@
     <!-- Top Header Bar -->
     <header class="header-bar glass">
       <div class="brand">
-        <span class="icon">🏙️</span>
-        <h1>SimConquer 2000 <span class="badge" id="app-version"></span></h1>
+        <svg class="brand-mark" aria-hidden="true" focusable="false"><use href="#brand-mark" /></svg>
+        <h1>
+          <span class="brand-word"><span class="brand-word-thin">Sim</span><span class="brand-word-strong">Conquer</span></span>
+          <span class="brand-year">2000</span>
+          <span class="badge" id="app-version"></span>
+        </h1>
       </div>
       
       <div class="stats-counter">
@@ -585,7 +609,12 @@
       <button id="btn-main-menu" class="overworld-main-menu" type="button" title="Main menu" aria-label="Open main menu">☰</button>
       <div class="overworld-title">
         <h2>WORLD MAP</h2>
-        <span class="overworld-brand">SimConquer 2000 <span id="overworld-version"></span></span>
+        <span class="overworld-brand">
+          <svg class="brand-mark" aria-hidden="true" focusable="false"><use href="#brand-mark" /></svg>
+          <span class="brand-word"><span class="brand-word-thin">Sim</span><span class="brand-word-strong">Conquer</span></span>
+          <span class="brand-year">2000</span>
+          <span id="overworld-version"></span>
+        </span>
       </div>
       <div class="overworld-treasury">Treasury <strong id="overworld-treasury">$25,000</strong></div>
       <details class="overworld-options" id="overworld-options">
@@ -677,11 +706,6 @@
               <stop offset="0%" stop-color="#f8fafc" />
               <stop offset="58%" stop-color="#93e2fd" />
               <stop offset="100%" stop-color="#38bdf8" />
-            </linearGradient>
-            <linearGradient id="logo-gold-grad" x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0%" stop-color="#f59e0b" />
-              <stop offset="45%" stop-color="#fde68a" />
-              <stop offset="100%" stop-color="#f59e0b" />
             </linearGradient>
             <radialGradient id="logo-halo-grad" cx="50%" cy="50%" r="50%">
               <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.32" />

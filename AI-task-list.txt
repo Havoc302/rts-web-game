@@ -9,8 +9,8 @@ Agent handoff protocol:
 
 Open handoff (2026-10-23):
 - Active task: none in progress; the next item is to pick up the Phase 1 follow-ups listed in `docs/DESIGN.md`.
-- Latest completed task: title-screen logo lockup (`0.4.20`); see the final task entries in this log.
-- Verified baseline: `npm test` rebuilds `simconquer2000/` and passes 58 suites across 15 entry points (`0.4.20`).
+- Latest completed task: header brand year sized to the wordmark (`0.4.22`); see the final task entries in this log.
+- Verified baseline: `npm test` rebuilds `simconquer2000/` and passes 58 suites across 15 entry points (`0.4.22`).
 - Phase 1 follow-ups are tracked in `docs/DESIGN.md`; in particular, localStorage autosave and named tick-stage extraction are not implemented. Do not treat historical `Current task` headings below as active.
 
 Current task: Add standalone JSON game save export/import.
@@ -2310,3 +2310,28 @@ Validation:
 - `npm test` rebuilds the snapshot and passes all 15 entry points in about 4.5 s.
 - Browser (Playwright, 3002): the title screen renders the block, wordmark, gold `2000`, rules and tagline at 400x150 px with no console errors; the accessibility tree still exposes a level-2 heading named `SimConquer 2000`.
 - The city header and the world-map brand keep their existing text + version badge, as requested.
+
+Current task: Reuse the logo in the city and world-map headers (`0.4.21`).
+
+Requested: use some version of the same logo on the map tile view and world map view.
+
+- [done] Extracted the city block into a `#brand-mark` symbol in the existing HUD sprite (one definition) and moved `logo-gold-grad` into that sprite's `<defs>`, so the title screen and both headers share one gradient.
+- [done] City header: dropped the 🏙️ emoji and rebuilt the brand as the mark + a two-weight `SIM`/`CONQUER` wordmark (gradient text clip) + gold mono `2000` + the version badge. The `<h1>` still reads `SimConquer 2000 v0.4.x` for assistive tech.
+- [done] World-map header: the same mark and wordmark inside `.overworld-brand`, keeping `#overworld-version` and the `WORLD MAP` title ordering the existing markup test checks.
+- [done] Responsive: the mark shrinks to 24x16 at the small-screen breakpoint that already hides the version badge.
+- [done] `renderer-cache.case.js` asserts the shared symbol exists, that both headers reference it, and that the emoji icon is gone. `docs/DESIGN.md` header paragraphs updated.
+
+Validation:
+- `npm test` rebuilds the snapshot and passes all 15 entry points in about 5.0 s.
+- Browser: city header shows the mark plus `SIMCONQUER 2000` and the badge without disturbing the stats strip; world-map header shows the mark beside `WORLD MAP` and the treasury. The accessibility tree exposes the world-map brand as `Sim`, `Conquer`, `2000`, `v0.4.x` and the city `<h1>` as `SimConquer 2000 v0.4.x`.
+
+Current task: Size the header `2000` to match the wordmark (`0.4.22`).
+
+Requested: the `2000` in the map-page headers should be the same font size as `SIMCONQUER`; the main menu is fine as-is.
+
+- [done] `.brand-year` is now `font-size: 1em` with slightly tighter tracking, so it inherits the header size (`0.95rem` in the city bar, `0.75rem` in the globe bar) instead of a fixed `0.7rem`. The small-screen `0.62rem` override is gone, so the year keeps matching the wordmark at every breakpoint.
+- [done] The main-menu logo (`2000` between the gold rules) is untouched.
+
+Validation:
+- `npm test` passes all 15 entry points.
+- Browser: computed `font-size` is identical for the wordmark and the year in both headers (`15.2px` city, `12px` globe); screenshots show `SIMCONQUER 2000 v0.4.x` sitting on one line in both bars.

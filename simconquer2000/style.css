@@ -84,6 +84,44 @@ body.app-idle #app {
   white-space: nowrap;
 }
 
+/* Compact brand lockup: the title-screen city mark beside a two-weight wordmark and
+   a gold year, shared by the city header and the world-map header. */
+.brand-mark {
+  width: 32px;
+  height: 21px;
+  flex-shrink: 0;
+}
+
+.brand-word {
+  display: inline-flex;
+  align-items: baseline;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.brand-word-thin {
+  font-weight: 300;
+  color: #cbd5e1;
+}
+
+.brand-word-strong {
+  font-weight: 800;
+  background: linear-gradient(180deg, #f8fafc 0%, #7dd3fc 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+}
+
+/* The year tracks the wordmark size so the lockup reads as one line. */
+.brand-year {
+  font-family: var(--font-mono);
+  font-size: 1em;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #fbbf24;
+}
+
 .badge {
   font-size: 0.62rem;
   font-family: var(--font-mono);
@@ -937,9 +975,17 @@ h4 {
 }
 
 .overworld-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   color: #afc9c6;
   font-size: 0.75rem;
   line-height: 1.2;
+}
+
+.overworld-brand .brand-mark {
+  width: 26px;
+  height: 17px;
 }
 
 #overworld-version {
@@ -1190,6 +1236,7 @@ h4 {
 
   .brand h1 { font-size: 0.9rem; }
   .brand .badge { display: none; }
+  .brand-mark { width: 24px; height: 16px; }
 
   .stats-counter {
     flex: 0 0 auto;
