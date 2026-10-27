@@ -1475,6 +1475,18 @@ h4 {
 .main-menu-actions .btn-secondary {
   flex: 1 1 auto;
 }
+
+/* Build stamp at the foot of the title screen: the top margin matches the modal's 24px
+   bottom padding so the gap above and below the stamp is identical. Scoped through
+   .modal-box to out-specify the generic `.modal-box p` rule. */
+.modal-box .main-menu-version {
+  margin: 24px 0 0 0;
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.1em;
+  color: #5c6b80;
+  text-align: center;
+}
 .game-over-panel h2 {
   margin: 0;
   color: #fecaca;

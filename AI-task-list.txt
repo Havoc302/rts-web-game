@@ -9,8 +9,8 @@ Agent handoff protocol:
 
 Open handoff (2026-10-23):
 - Active task: none in progress; the next item is to pick up the Phase 1 follow-ups listed in `docs/DESIGN.md`.
-- Latest completed task: header brand year sized to the wordmark (`0.4.22`); see the final task entries in this log.
-- Verified baseline: `npm test` rebuilds `simconquer2000/` and passes 58 suites across 15 entry points (`0.4.22`).
+- Latest completed task: build stamp on the title screen (`0.4.23`); see the final task entries in this log.
+- Verified baseline: `npm test` rebuilds `simconquer2000/` and passes 58 suites across 15 entry points (`0.4.23`).
 - Phase 1 follow-ups are tracked in `docs/DESIGN.md`; in particular, localStorage autosave and named tick-stage extraction are not implemented. Do not treat historical `Current task` headings below as active.
 
 Current task: Add standalone JSON game save export/import.
@@ -2335,3 +2335,15 @@ Requested: the `2000` in the map-page headers should be the same font size as `S
 Validation:
 - `npm test` passes all 15 entry points.
 - Browser: computed `font-size` is identical for the wordmark and the year in both headers (`15.2px` city, `12px` globe); screenshots show `SIMCONQUER 2000 v0.4.x` sitting on one line in both bars.
+
+Current task: Show the build version on the title screen (`0.4.23`).
+
+Requested: put the version in small writing at the bottom of the main menu, evenly spaced between the bottom buttons and the panel edge.
+
+- [done] Added `#main-menu-version`, a mono build stamp under the main-menu action buttons, filled from `APP_VERSION` in the GameApp constructor next to the city-header and world-map badges.
+- [done] Styled as 0.66rem JetBrains Mono, 0.1em tracking, muted `#5c6b80`, with a 24px top margin matching the modal's 24px bottom padding so the gaps above and below are equal.
+- [done] `renderer-cache.case.js` asserts the stamp lives inside `#main-menu`; `docs/DESIGN.md` main-menu paragraph mentions it. Versions bumped to `0.4.23`.
+
+Validation:
+- `npm test` rebuilds the snapshot and passes all 15 entry points.
+- Browser (Playwright): the title screen shows `v0.4.23` centred under the Close button with 24px clearance above and below.

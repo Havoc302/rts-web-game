@@ -108,6 +108,8 @@ function makeRenderer(grid, width = 800, height = 600) {
   assert.match(markup, /class="overworld-brand"[\s\S]*?href="#brand-mark"/,
     'The world-map header should use the shared brand mark');
   assert.ok(!markup.includes('🏙️'), 'The old emoji brand icon should be gone');
+  assert.match(markup, /id="main-menu"[\s\S]*?id="main-menu-version"/,
+    'The title screen should show the build version under its buttons');
   assert.ok(!markup.includes('id="audio-prompt-modal"'), 'The main menu should replace the standalone audio prompt');
   assert.match(markup, /id="btn-main-menu"[\s\S]*?class="overworld-title"/, 'World-map Main Menu button should sit left of the WORLD MAP title');
   assert.ok(markup.indexOf('id="overworld-options"') < markup.indexOf('id="btn-overworld-audio"'), 'Music toggle should sit at the far right, after Edit World');

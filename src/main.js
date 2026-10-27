@@ -82,6 +82,8 @@ class GameApp {
     if (versionEl) versionEl.textContent = `v${APP_VERSION}`;
     const overworldVersionEl = document.getElementById('overworld-version');
     if (overworldVersionEl) overworldVersionEl.textContent = `v${APP_VERSION}`;
+    const mainMenuVersionEl = document.getElementById('main-menu-version');
+    if (mainMenuVersionEl) mainMenuVersionEl.textContent = `v${APP_VERSION}`;
     const stylesheet = document.querySelector('link[rel="stylesheet"]');
     if (stylesheet) {
       const href = new URL(stylesheet.href, window.location.href);
