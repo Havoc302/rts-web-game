@@ -1317,6 +1317,94 @@ h4 {
   max-width: 520px;
 }
 
+/* Title-screen logo: an isometric city block over a gradient wordmark, gold "2000",
+   and a rule/gem divider. Everything is inline SVG so it needs no extra asset and
+   scales with the modal. */
+.main-menu-logo {
+  margin: 0 0 16px 0;
+}
+
+.logo-svg {
+  display: block;
+  width: 100%;
+  max-width: 400px;
+  height: auto;
+  margin: 0 auto;
+  overflow: visible;
+}
+
+.logo-face-top {
+  fill: #7dd3fc;
+}
+
+.logo-face-left {
+  fill: #1d4ed8;
+}
+
+.logo-face-right {
+  fill: #0f2f52;
+}
+
+.logo-face-roof {
+  fill: url(#logo-gold-grad);
+}
+
+.logo-window {
+  fill: rgba(224, 242, 254, 0.75);
+}
+
+.logo-ground {
+  fill: none;
+  stroke: rgba(56, 189, 248, 0.45);
+  stroke-width: 1;
+}
+
+.logo-wordmark {
+  font-family: var(--font-main);
+  font-size: 43px;
+  letter-spacing: 2.2px;
+  paint-order: stroke;
+  stroke: rgba(2, 6, 23, 0.55);
+  stroke-width: 1.4px;
+  filter: drop-shadow(0 3px 8px rgba(56, 189, 248, 0.35));
+}
+
+/* Two weights make the wordmark read as a mark rather than a heading. */
+.logo-wordmark-thin {
+  font-weight: 300;
+  fill: #e2e8f0;
+}
+
+.logo-wordmark-bold {
+  font-weight: 800;
+  fill: url(#logo-word-grad);
+}
+
+.logo-year {
+  font-family: var(--font-mono);
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: 4px;
+  fill: url(#logo-gold-grad);
+}
+
+/* A zero-height <line> cannot paint an object-bounding-box gradient, so the rules
+   use a solid stroke instead of url(#logo-gold-grad). */
+.logo-rule-line {
+  stroke: #f59e0b;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  opacity: 0.8;
+}
+
+.logo-tagline {
+  font-family: var(--font-main);
+  font-size: 8.5px;
+  font-weight: 600;
+  letter-spacing: 3.4px;
+  fill: #7c8ea6;
+}
+
 .main-menu .modal-body {
   max-height: 46vh;
   overflow-y: auto;

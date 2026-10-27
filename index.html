@@ -670,7 +670,58 @@
   <!-- Main Menu Overlay (shown on load and reopened from the world-map Main Menu button) -->
   <div id="main-menu" class="modal-overlay main-menu">
     <div class="modal-box">
-      <h2>SimConquer 2000</h2>
+      <h2 class="main-menu-logo">
+        <svg class="logo-svg" viewBox="0 0 420 158" role="img" aria-label="SimConquer 2000">
+          <defs>
+            <linearGradient id="logo-word-grad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#f8fafc" />
+              <stop offset="58%" stop-color="#93e2fd" />
+              <stop offset="100%" stop-color="#38bdf8" />
+            </linearGradient>
+            <linearGradient id="logo-gold-grad" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%" stop-color="#f59e0b" />
+              <stop offset="45%" stop-color="#fde68a" />
+              <stop offset="100%" stop-color="#f59e0b" />
+            </linearGradient>
+            <radialGradient id="logo-halo-grad" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.32" />
+              <stop offset="100%" stop-color="#38bdf8" stop-opacity="0" />
+            </radialGradient>
+          </defs>
+
+          <ellipse cx="210" cy="40" rx="152" ry="40" fill="url(#logo-halo-grad)" />
+
+          <!-- Isometric city block: the tallest tower wears a gold roof. -->
+          <g class="logo-campus" transform="translate(210 58) scale(1.14) translate(-210 -58)">
+            <polygon class="logo-face-top" points="188,20 204,28 188,36 172,28" />
+            <polygon class="logo-face-left" points="172,28 188,36 188,52 172,44" />
+            <polygon class="logo-face-right" points="188,36 204,28 204,44 188,52" />
+            <polygon class="logo-face-top" points="232,24 247,31.5 232,39 217,31.5" />
+            <polygon class="logo-face-left" points="217,31.5 232,39 232,51 217,43.5" />
+            <polygon class="logo-face-right" points="232,39 247,31.5 247,43.5 232,51" />
+            <polygon class="logo-face-roof" points="210,8 228,17 210,26 192,17" />
+            <polygon class="logo-face-left" points="192,17 210,26 210,56 192,47" />
+            <polygon class="logo-face-right" points="210,26 228,17 228,47 210,56" />
+            <rect class="logo-window" x="197" y="31" width="3" height="4" />
+            <rect class="logo-window" x="203" y="35" width="3" height="4" />
+            <rect class="logo-window" x="197" y="41" width="3" height="4" />
+            <rect class="logo-window" x="214" y="31" width="3" height="4" />
+            <rect class="logo-window" x="219" y="38" width="3" height="4" />
+            <rect class="logo-window" x="214" y="45" width="3" height="4" />
+            <rect class="logo-window" x="176" y="35" width="2" height="3" />
+            <rect class="logo-window" x="221" y="37" width="2" height="3" />
+          </g>
+          <ellipse class="logo-ground" cx="210" cy="59" rx="90" ry="7" />
+
+          <text class="logo-wordmark" x="210" y="104" text-anchor="middle"><tspan class="logo-wordmark-thin">SIM</tspan><tspan class="logo-wordmark-bold">CONQUER</tspan></text>
+
+          <line class="logo-rule-line" x1="86" y1="121" x2="164" y2="121" />
+          <line class="logo-rule-line" x1="256" y1="121" x2="334" y2="121" />
+          <text class="logo-year" x="210" y="131" text-anchor="middle">2000</text>
+
+          <text class="logo-tagline" x="210" y="150" text-anchor="middle">BUILD &middot; GROW &middot; CONQUER</text>
+        </svg>
+      </h2>
       <div class="modal-body">
         <p>Build a thriving metropolis. Balance utility networks, food production, employment, civic services, and taxes to keep your citizens happy and treasury afloat, then build an army to destroy others cities.</p>
 

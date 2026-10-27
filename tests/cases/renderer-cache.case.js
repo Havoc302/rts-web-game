@@ -95,6 +95,12 @@ function makeRenderer(grid, width = 800, height = 600) {
   assert.ok(!markup.includes('id="btn-save-game"'), 'Save World should no longer sit in the city or world-map header');
   assert.ok(!markup.includes('id="btn-load-game"'), 'Load World should no longer sit in the city or world-map header');
   assert.ok(!markup.includes('id="welcome-modal"'), 'The main menu should replace the old welcome modal');
+  assert.match(markup, /class="main-menu-logo"[\s\S]*?<svg[^>]*aria-label="SimConquer 2000"/,
+    'The title screen should show the logo lockup inside its heading');
+  assert.ok(!/<h2>\s*SimConquer 2000\s*<\/h2>/.test(markup),
+    'The title screen heading should be the logo, not plain text');
+  assert.match(css, /\.logo-wordmark \{[\s\S]*?font-family: var\(--font-main\)/,
+    'The logo wordmark should follow the app font stack');
   assert.ok(!markup.includes('id="audio-prompt-modal"'), 'The main menu should replace the standalone audio prompt');
   assert.match(markup, /id="btn-main-menu"[\s\S]*?class="overworld-title"/, 'World-map Main Menu button should sit left of the WORLD MAP title');
   assert.ok(markup.indexOf('id="overworld-options"') < markup.indexOf('id="btn-overworld-audio"'), 'Music toggle should sit at the far right, after Edit World');

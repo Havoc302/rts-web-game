@@ -9,8 +9,8 @@ Agent handoff protocol:
 
 Open handoff (2026-10-23):
 - Active task: none in progress; the next item is to pick up the Phase 1 follow-ups listed in `docs/DESIGN.md`.
-- Latest completed task: fords always reach both banks (`0.4.19`); see the final task entries in this log.
-- Verified baseline: `npm test` rebuilds `simconquer2000/` and passes 58 suites across 15 entry points (`0.4.19`).
+- Latest completed task: title-screen logo lockup (`0.4.20`); see the final task entries in this log.
+- Verified baseline: `npm test` rebuilds `simconquer2000/` and passes 58 suites across 15 entry points (`0.4.20`).
 - Phase 1 follow-ups are tracked in `docs/DESIGN.md`; in particular, localStorage autosave and named tick-stage extraction are not implemented. Do not treat historical `Current task` headings below as active.
 
 Current task: Add standalone JSON game save export/import.
@@ -2295,3 +2295,18 @@ Validation:
 - Measured over 800 maps (200 each for plains with a north coast, plains without coast, tundra, forest): 85% none, 14% one, 1-3% two; all 135 fords touch the shore on both sides; patches are 5-18 tiles with a median of 13.
 - Silhouettes: the first 20 sample seeds produce 5 fords and 5 distinct shapes (the previous stamp produced exactly 1 shape across the same seeds).
 - Browser preview of seeds `471756`, `535108` and `543027` rendered through the real `Renderer`: each ford is an irregular pale bar with riffles that jogs sideways as it crosses the channel and meets the land on both banks.
+
+Current task: Replace the title-screen heading with a SimConquer 2000 logo (`0.4.20`).
+
+Requested: the intro screen (New Game / Save World / instructions) still shows the plain text `SimConquer 2000`; design a logo instead.
+
+- [done] Drafted the mark as inline SVG in `#main-menu`: an isometric city block (three towers, gold roof on the tallest, lit windows, ground ellipse, radial halo) over a two-weight `SIM`/`CONQUER` wordmark, a gold `2000` between rules, and a `BUILD · GROW · CONQUER` tagline.
+- [done] Inline SVG rather than a new asset file: it needs no `scripts/prod-manifest.mjs` entry, no extra request, and restyles from `style.css` with the existing `Inter`/`JetBrains Mono` stack.
+- [done] Kept the semantics: the `<h2>` now wraps an `svg` with `role="img"` and `aria-label="SimConquer 2000"`, so screen readers still announce the title.
+- [done] Fixed two rendering traps found on the first pass: a horizontal `<line>` cannot paint an object-bounding-box gradient (rules are now solid gold), and the plain wordmark was replaced by `tspan` weights so the name reads as a mark.
+- [done] `renderer-cache.case.js` asserts the logo lockup replaces the plain-text heading and that the wordmark uses the app font stack. `docs/DESIGN.md` main-menu paragraph documents the lockup.
+
+Validation:
+- `npm test` rebuilds the snapshot and passes all 15 entry points in about 4.5 s.
+- Browser (Playwright, 3002): the title screen renders the block, wordmark, gold `2000`, rules and tagline at 400x150 px with no console errors; the accessibility tree still exposes a level-2 heading named `SimConquer 2000`.
+- The city header and the world-map brand keep their existing text + version badge, as requested.
