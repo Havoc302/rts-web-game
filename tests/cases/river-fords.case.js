@@ -1,5 +1,6 @@
 // River depth is a two-step property: DEEP everywhere, LOW inside a natural ford. Fords are meant to
-// be rare (most maps have none), small, inland and usable as a future vehicle crossing.
+// be rare (most maps have none), inland, and wide enough to reach both banks so a future vehicle can
+// actually cross there.
 import assert from 'assert';
 import { Grid } from '../../src/engine/Grid.js';
 import { BIOME_TYPES, RIVER_DEPTH, RIVER_FORD_CONFIG, TERRAIN } from '../../src/config.js';
@@ -8,12 +9,62 @@ console.log('=== river-fords.case.js ===');
 
 const MAP = 200;
 const COAST = ['N'];
-// Seeds picked from the measured distribution: 471756 rolls one ford, 535108 rolls two.
-const ONE_FORD_SEED = 471756;
-const TWO_FORD_SEED = 535108;
+// Seeds picked from the measured distribution: 519270 rolls one ford, 1018167 rolls two.
+const ONE_FORD_SEED = 519270;
+const TWO_FORD_SEED = 1018167;
+const AXES = [[1, 0], [0, 1]];
+// A ford is a gravel bar, not a lagoon: the widest band measured over 200 seeds was 29 tiles.
+const MAX_FORD_TILES = 40;
 
 const cityMap = (seed, biome = BIOME_TYPES.PLAINS) => new Grid(MAP, MAP, seed, biome, 2, 4, COAST);
+const key = (x, y) => `${x},${y}`;
 const shallowTiles = (grid) => grid.tiles.flat().filter((tile) => tile.riverDepth === RIVER_DEPTH.LOW);
+
+/** The 4-connected shallow patch a ford belongs to, keyed by "x,y". */
+const fordPatch = (grid, ford) => {
+  const patch = new Map();
+  const start = grid.getTile(ford.x, ford.y);
+  if (!start || start.riverDepth !== RIVER_DEPTH.LOW) return patch;
+  patch.set(key(ford.x, ford.y), start);
+  const queue = [[ford.x, ford.y]];
+  while (queue.length > 0) {
+    const [x, y] = queue.shift();
+    for (const [dx, dy] of [[0, -1], [1, 0], [0, 1], [-1, 0]]) {
+      const neighbour = grid.getTile(x + dx, y + dy);
+      if (!neighbour || neighbour.riverDepth !== RIVER_DEPTH.LOW) continue;
+      const neighbourKey = key(neighbour.x, neighbour.y);
+      if (patch.has(neighbourKey)) continue;
+      patch.set(neighbourKey, neighbour);
+      queue.push([neighbour.x, neighbour.y]);
+    }
+  }
+  return patch;
+};
+
+/**
+ * True when the patch contains a straight line of shallow water that starts and ends on dry land:
+ * the shape a vehicle could actually drive across without ever touching deep water.
+ */
+const hasStraightCrossing = (grid, patch) => AXES.some(([dx, dy]) => [...patch.values()].some((tile) => {
+  for (const sign of [1, -1]) {
+    let current = tile;
+    let banked = false;
+    for (let step = 1; step <= RIVER_FORD_CONFIG.MAX_SPAN + 1; step++) {
+      const next = grid.getTile(current.x + dx * sign, current.y + dy * sign);
+      if (!next) return false;
+      if (patch.has(key(next.x, next.y))) {
+        current = next;
+        continue;
+      }
+      // The line has to end on land; deep river water or the sea stops it mid-channel.
+      if (next.terrain === TERRAIN.WATER || next.terrain === TERRAIN.SALT_WATER) return false;
+      banked = true;
+      break;
+    }
+    if (!banked) return false;
+  }
+  return true;
+}));
 
 // --- Two steps, and only a river is ever shallow -------------------------------------------
 {
@@ -50,6 +101,25 @@ const shallowTiles = (grid) => grid.tiles.flat().filter((tile) => tile.riverDept
   assert.ok(tally[0] / SEEDS >= 0.6, `Most maps should have no ford at all, saw ${tally[0]}/${SEEDS}`);
   assert.ok(tally[0] > tally[1] && tally[1] >= tally[2],
     `Fords should get rarer the more a map has: ${JSON.stringify(tally)}`);
+}
+
+// --- Every ford reaches both banks, so a vehicle could cross -------------------------------
+{
+  const SEEDS = 20;
+  let checked = 0;
+  for (let index = 0; index < SEEDS; index++) {
+    const grid = cityMap(424242 + index * 7919);
+    for (const ford of grid.riverFords) {
+      const patch = fordPatch(grid, ford);
+      checked++;
+      assert.ok(patch.size > 0, `Ford at (${ford.x},${ford.y}) should sit on shallow water`);
+      assert.ok(hasStraightCrossing(grid, patch),
+        `Ford at (${ford.x},${ford.y}) never reaches a bank on both sides, so nothing could drive it`);
+      assert.ok(patch.size >= 4, `A ford spans the channel, saw only ${patch.size} tiles`);
+      assert.ok(patch.size <= MAX_FORD_TILES, `A ford stays a gravel bar, saw ${patch.size} tiles`);
+    }
+  }
+  assert.ok(checked > 0, 'The sampled seeds should produce at least one ford to check');
 }
 
 // --- A ford is a short run of shallow water, kept inland -----------------------------------

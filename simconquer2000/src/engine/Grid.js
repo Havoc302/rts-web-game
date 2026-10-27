@@ -1000,20 +1000,66 @@ export class Grid {
 
     for (const start of starts) {
       const runLength = config.RUN_MIN + Math.floor(rng() * (config.RUN_MAX - config.RUN_MIN + 1));
-      let marked = 0;
-      for (let step = 0; step < runLength; step++) {
-        const point = spine[start + step];
-        for (const [dx, dy] of RIVER_SEGMENT_OFFSETS) {
-          const tile = this.getTile(point.x + dx, point.y + dy);
-          if (!tile || tile.terrain !== TERRAIN_TYPE.RIVER) continue;
-          tile.riverDepth = RIVER_DEPTH.LOW;
-          marked++;
-        }
-      }
-      // A run that falls entirely under the sea or the beach is not a crossing; drop it.
-      if (marked > 0) this.riverFords.push({ x: spine[start].x, y: spine[start].y, length: runLength });
+      // The plus-shaped stamp only covers the middle of the channel, so the band is stretched out to
+      // dry land on both sides. A band that cannot reach a bank is not a crossing, so it is dropped.
+      const band = this.layFordBand(spine, start, runLength);
+      if (!band) continue;
+      for (const tile of band) tile.riverDepth = RIVER_DEPTH.LOW;
+      this.riverFords.push({ x: spine[start].x, y: spine[start].y, length: runLength });
     }
     return this.riverFords.length;
+  }
+
+  /**
+   * Lays the gravel band of a ford from bank to bank, so a vehicle can always walk it end to end.
+   * Each tile of the run is walked outward across the channel until it meets dry land, and the band
+   * is the union of those lines. Crossing the flow at right angles is preferred, with the other axis
+   * as a fallback for bends where the local flow and the run direction disagree.
+   * Returns the tiles to shallow out, or null when the channel is too wide (or too close to the sea).
+   */
+  layFordBand(spine, start, runLength) {
+    const config = RIVER_FORD_CONFIG;
+    const seeds = [];
+    for (let step = 0; step < runLength; step++) {
+      const point = spine[start + step];
+      for (const [dx, dy] of RIVER_SEGMENT_OFFSETS) {
+        const tile = this.getTile(point.x + dx, point.y + dy);
+        if (tile && tile.terrain === TERRAIN_TYPE.RIVER) seeds.push(tile);
+      }
+    }
+    if (seeds.length === 0) return null;
+
+    const head = spine[start];
+    const tail = spine[Math.min(start + runLength - 1, spine.length - 1)];
+    const across = Math.abs(tail.y - head.y) >= Math.abs(tail.x - head.x) ? [1, 0] : [0, 1];
+    const along = [across[1], across[0]];
+    return this.walkFordBand(seeds, across) ?? this.walkFordBand(seeds, along);
+  }
+
+  /** Walks every run tile along one axis until it hits land; null if any line fails to get there. */
+  walkFordBand(seeds, [stepX, stepY]) {
+    const config = RIVER_FORD_CONFIG;
+    const band = new Map();
+    for (const seed of seeds) {
+      band.set(`${seed.x},${seed.y}`, seed);
+      for (const sign of [1, -1]) {
+        let current = seed;
+        let reachedBank = false;
+        for (let step = 1; step <= config.MAX_SPAN; step++) {
+          const next = this.getTile(current.x + stepX * sign, current.y + stepY * sign);
+          // A ford runs from dry land to dry land: the sea and the edge of the map are dead ends.
+          if (!next || next.terrain === TERRAIN_TYPE.SALT_WATER) return null;
+          if (next.terrain !== TERRAIN_TYPE.RIVER) {
+            reachedBank = true;
+            break;
+          }
+          band.set(`${next.x},${next.y}`, next);
+          current = next;
+        }
+        if (!reachedBank) return null;
+      }
+    }
+    return [...band.values()];
   }
 
   /** True where the river bed is shallow enough for a vehicle to cross without a bridge. */

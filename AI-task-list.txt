@@ -9,8 +9,8 @@ Agent handoff protocol:
 
 Open handoff (2026-10-23):
 - Active task: none in progress; the next item is to pick up the Phase 1 follow-ups listed in `docs/DESIGN.md`.
-- Latest completed task: two-step river depth with rare fords (`0.4.17`); see the final task entries in this log.
-- Verified baseline: `npm test` rebuilds `simconquer2000/` and passes 58 suites across 15 entry points (`0.4.17`).
+- Latest completed task: fords always reach both banks (`0.4.18`); see the final task entries in this log.
+- Verified baseline: `npm test` rebuilds `simconquer2000/` and passes 58 suites across 15 entry points (`0.4.18`).
 - Phase 1 follow-ups are tracked in `docs/DESIGN.md`; in particular, localStorage autosave and named tick-stage extraction are not implemented. Do not treat historical `Current task` headings below as active.
 
 Current task: Add standalone JSON game save export/import.
@@ -2265,4 +2265,18 @@ Validation:
 - Measured distribution over 60 seeds at 200x200 with a north coast: 50 maps none, 9 one, 1 two. Every shallow tile is river water on all seeds checked; no map records a ford without shallow tiles.
 - Browser: the two-ford seed (535108) renders a lighter teal band with riffles across the channel, the inspector reads `Fresh Water — shallow ford`, and no page errors. Tundra fords stay liquid while the rest of the river banks freeze.
 
+Current task: Make every ford wide enough to span the river (`0.4.18`).
+
+Requested: the shallow band has to reach the far bank every time, otherwise a future vehicle could not actually use it.
+
+- [done] Measured the `0.4.17` shape first: over 60 seeds only 2 of 11 fords reached both banks, because the plus-shaped stamp only covers the middle of the channel and bends push the far bank out of reach.
+- [done] Replaced the stamp with `Grid.layFordBand` + `walkFordBand`: every run tile is walked in a straight line across the flow until it meets dry land, trying the perpendicular axis first and the other axis as a bend fallback, capped at `RIVER_FORD_CONFIG.MAX_SPAN` (6) tiles per side. A straight line from bank to bank is a crossing by construction, which a flood fill was not.
+- [done] A band that hits the sea, the map edge or the span cap is dropped and its tiles stay `DEEP`, so the recorded `riverFords` only ever contains drivable crossings.
+- [done] `tests/cases/river-fords.case.js` now asserts that every sampled ford contains a straight shallow line bounded by land at both ends (deep water or sea at either end fails), plus the existing rarity, length, clearance, spacing, determinism, desert and polar checks; new sample seeds `519270` (one ford) and `1018167` (two fords). `docs/DESIGN.md` rewrites the river-depth paragraph and adds decision 49. Versions bumped to `0.4.18`.
+
+Validation:
+- `npm test` rebuilds the snapshot and passes all 15 entry points in about 4.9 s.
+- Measured over 200 seeds at 200x200 with a north coast: 82% none, 17% one, 1% two; all 38 fords contain a straight bank-to-bank shallow line; widest band 29 tiles. A `MAX_SPAN` of 4 was rejected because it removed the two-ford case entirely (93% none, no twos).
+- Checked 480 maps across plains/tundra/forest with and without coast before the band rewrite: every ford crossable under the compass test, which also showed the flood-fill version wrapping around bends — the reason for the straight-line band.
+- ASCII footprint of seed `1018167` shows the shallow band running across the channel from bank to bank with deep water on either side along the flow.
 
