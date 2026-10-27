@@ -4,6 +4,7 @@ import { runCases } from './harness.js';
 
 await runCases(import.meta.url, [
   './cases/river-pollution.case.js',
+  './cases/river-fords.case.js',
   './cases/weather-manager.case.js',
   './cases/weather-overlay.case.js',
   './cases/temperature-load.case.js',

@@ -9,8 +9,8 @@ Agent handoff protocol:
 
 Open handoff (2026-10-23):
 - Active task: none in progress; the next item is to pick up the Phase 1 follow-ups listed in `docs/DESIGN.md`.
-- Latest completed task: `X:` is production and only `npm run deploy:prod` publishes (`0.4.16`); see the final task entries in this log.
-- Verified baseline: `npm test` rebuilds `simconquer2000/` and passes 57 suites across 15 entry points, including after `0.4.13`.
+- Latest completed task: two-step river depth with rare fords (`0.4.17`); see the final task entries in this log.
+- Verified baseline: `npm test` rebuilds `simconquer2000/` and passes 58 suites across 15 entry points (`0.4.17`).
 - Phase 1 follow-ups are tracked in `docs/DESIGN.md`; in particular, localStorage autosave and named tick-stage extraction are not implemented. Do not treat historical `Current task` headings below as active.
 
 Current task: Add standalone JSON game save export/import.
@@ -2249,4 +2249,20 @@ Validation:
 - `npm test`: builds, reports the deploy as skipped, and passes all 15 entry points in about 3.3 s.
 - `npm run build:prod`: builds, deploy skipped.
 - `npm run deploy:prod`: `Built simconquer2000/ with 32 files (4791.8 KB).` then `Deploy X:\: mirrored 33 files.`; `X:\src\version.js` reports `0.4.16`.
+
+Current task: Two-step river depth with rare natural fords (`0.4.17`).
+
+Requested: rivers should have a low-depth variant that is very rare, with most maps having none, some having one and fewer having two, so vehicles can eventually cross there.
+
+- [done] `RIVER_DEPTH` (`DEEP` 2 / `LOW` 1) and `RIVER_FORD_CONFIG` in `config.js`: 82% of maps none, 15% one, 3% two; a ford is 2-3 path steps long, keeps 24 steps from another ford, 8 steps from the spring/mouth and 6 tiles inland of the sea.
+- [done] `Grid.placeRiverFords` runs after the channel is painted and stamps the shallow band with the same plus-shaped offsets that paint the river, so it spans the full width. Fords roll on their own salted PRNG, so no existing seed's river shape moved. `riverFords` and `isFordTile()` expose the result; `randomizeGrid` resets it.
+- [done] Invariants: only river water can be LOW — `generateCoast` resets drowned tiles and `carveRiverMouths` resets a carved mouth to DEEP — and `freezeRiverBanks` skips fords so a polar river keeps its crossing open.
+- [done] Renderer draws fords as lighter water with a gravel bed and riffles instead of deep-water chevrons; the inspector names them `Fresh Water — shallow ford`.
+- [done] `tests/cases/river-fords.case.js` (in the `environment` bundle) covers the two-step invariant, the distribution across 20 seeds, ford length and sea clearance, one contiguous patch per ford, spacing between two fords, seed determinism, no-river biomes and unfrozen polar fords. `docs/DESIGN.md` gains a river-depth paragraph and decision 48. Versions bumped to `0.4.17`.
+
+Validation:
+- `npm test` rebuilds the snapshot and passes all 15 entry points in about 4.4 s.
+- Measured distribution over 60 seeds at 200x200 with a north coast: 50 maps none, 9 one, 1 two. Every shallow tile is river water on all seeds checked; no map records a ford without shallow tiles.
+- Browser: the two-ford seed (535108) renders a lighter teal band with riffles across the channel, the inspector reads `Fresh Water — shallow ford`, and no page errors. Tundra fords stay liquid while the rest of the river banks freeze.
+
 

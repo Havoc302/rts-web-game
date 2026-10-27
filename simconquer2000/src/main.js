@@ -25,7 +25,7 @@ import { advanceWorldEconomy } from './engine/WorldFinance.js';
 import { TutorialManager } from './engine/TutorialManager.js';
 import { HOTKEY_ACTION, resolveHotkey } from './engine/Hotkeys.js';
 import { NotificationLog } from './engine/NotificationLog.js';
-import { APP_VERSION, ZONE, TERRAIN, PRODUCER_TYPE, PRODUCER_CONFIG, SERVICE_CONFIG, COSTS, TILE_SIZE, MAP_WIDTH, MAP_HEIGHT, STARTING_TREASURY, RESIDENTIAL_CAPACITY, JOBS_PROVIDED, FOREST_POLLUTION_ABSORPTION, FOREST_DESIRABILITY_RADIUS, CRIME_CONFIG, MEDICAL_CONFIG, POWER_PRODUCER_TYPES, POLLUTION_CONFIG, COAL_CONFIG, BATTERY_CONFIG, RESOURCE_CONFIG, UTILITY_OPERATING_COST, DESALINATION_OPERATING_COST, DESALINATION_CONFIG, COAST_CONFIG, SURVEY_COST_PER_TICK, TICKS_PER_HOUR, DENSITY, RENDERER_CONFIG, TERRAIN_GENERATION_CONFIG, MAP_SEED_STORAGE_KEY, MAP_SEED_STORAGE_KEY_LEGACY, EDUCATION_CONFIG, LOAN_CONFIG, splitDemographics, getZoneUpgradeCost, isZoneAtCapacity, PRODUCER_TIER_MAX, isTieredService, isTieredProducer, getProducerTier, getServiceTierStat, getServiceUpgradeCost, getPowerUpgradeCost, getProducerUpgradeCost, getBatteryStorageForTier, getWindPeakForTier, getSolarPeakForTier, getWaterCapacityForTier, getSewageCapacityForTier } from './config.js';
+import { APP_VERSION, ZONE, TERRAIN, PRODUCER_TYPE, PRODUCER_CONFIG, SERVICE_CONFIG, COSTS, TILE_SIZE, MAP_WIDTH, MAP_HEIGHT, STARTING_TREASURY, RESIDENTIAL_CAPACITY, JOBS_PROVIDED, FOREST_POLLUTION_ABSORPTION, FOREST_DESIRABILITY_RADIUS, CRIME_CONFIG, MEDICAL_CONFIG, POWER_PRODUCER_TYPES, POLLUTION_CONFIG, COAL_CONFIG, BATTERY_CONFIG, RESOURCE_CONFIG, UTILITY_OPERATING_COST, DESALINATION_OPERATING_COST, DESALINATION_CONFIG, COAST_CONFIG, RIVER_DEPTH, SURVEY_COST_PER_TICK, TICKS_PER_HOUR, DENSITY, RENDERER_CONFIG, TERRAIN_GENERATION_CONFIG, MAP_SEED_STORAGE_KEY, MAP_SEED_STORAGE_KEY_LEGACY, EDUCATION_CONFIG, LOAN_CONFIG, splitDemographics, getZoneUpgradeCost, isZoneAtCapacity, PRODUCER_TIER_MAX, isTieredService, isTieredProducer, getProducerTier, getServiceTierStat, getServiceUpgradeCost, getPowerUpgradeCost, getProducerUpgradeCost, getBatteryStorageForTier, getWindPeakForTier, getSolarPeakForTier, getWaterCapacityForTier, getSewageCapacityForTier } from './config.js';
 
 const nowMs = typeof performance !== 'undefined' ? () => performance.now() : () => Date.now();
 
@@ -1870,7 +1870,9 @@ class GameApp {
     }
 
     document.getElementById('inspect-coord').textContent = `(${tile.x}, ${tile.y})`;
-    document.getElementById('inspect-terrain').textContent = formatTerrainName(tile.terrain);
+    // A ford is the one river tile a vehicle will be able to cross, so it is worth naming.
+    const fordLabel = tile.terrain === TERRAIN.WATER && tile.riverDepth === RIVER_DEPTH.LOW ? ' — shallow ford' : '';
+    document.getElementById('inspect-terrain').textContent = `${formatTerrainName(tile.terrain)}${fordLabel}`;
 
     const effectRow = document.getElementById('terrain-effect-row');
     const effectVal = document.getElementById('inspect-terrain-effect');

@@ -1,4 +1,4 @@
-import { TERRAIN, ZONE, DENSITY, PRODUCER_TYPE, PRODUCER_CONFIG, TILE_SIZE, ORE_CONFIG, NIGHT_TINT_ALPHA, RENDERER_CONFIG, POLLUTION_CONFIG, BIOME_TYPES, ICE_CONFIG, isZoneAtCapacity, isTieredProducer, getProducerTier } from '../config.js';
+import { TERRAIN, ZONE, DENSITY, PRODUCER_TYPE, PRODUCER_CONFIG, TILE_SIZE, ORE_CONFIG, NIGHT_TINT_ALPHA, RENDERER_CONFIG, POLLUTION_CONFIG, BIOME_TYPES, ICE_CONFIG, isZoneAtCapacity, isTieredProducer, getProducerTier, RIVER_DEPTH } from '../config.js';
 import { UtilityManager } from './UtilityManager.js';
 import { TrafficManager } from './TrafficManager.js';
 import { WeatherOverlay } from './WeatherOverlay.js';
@@ -538,6 +538,8 @@ export class Renderer {
       ctx.fill();
     } else if (tile.terrain === TERRAIN.WATER) {
       const isPollutedWater = tile.isPolluted === true;
+      // A ford is a two-step depth change: the bed rises, the water thins out and gravel shows through.
+      const isFord = tile.riverDepth === RIVER_DEPTH.LOW;
       const dir = tile.riverFlowDir || { x: 0, y: 1 };
       const flowPos = tile.x * dir.x + tile.y * dir.y;
       const wave = animateWater ? Math.sin(this.animTime * 3 - flowPos * 1.5) * 0.1 : 0;
@@ -547,10 +549,33 @@ export class Renderer {
         ctx.fillStyle = pollutionLevel > POLLUTION_CONFIG.POLLUTION_DISPLAY_THRESHOLD
           ? (wave > 0 ? '#4d7c0f' : '#3f6212')
           : (wave > 0 ? '#65a30d' : '#4d7c0f');
+      } else if (isFord) {
+        ctx.fillStyle = wave > 0 ? '#63c9e6' : '#4fb6d6';
       } else {
         ctx.fillStyle = wave > 0 ? '#0284c7' : '#0369a1';
       }
       ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+
+      if (isFord) {
+        // Shallow water reads as a rocky bed: gravel patches and riffles across the flow, no
+        // deep-water chevrons.
+        ctx.fillStyle = 'rgba(206, 184, 140, 0.7)';
+        for (const [ox, oy, rx, ry] of [[6, 7, 2.6, 1.7], [19, 12, 2.1, 1.4], [9, 21, 2.8, 1.6], [23, 24, 1.9, 1.3]]) {
+          ctx.beginPath();
+          ctx.ellipse(px + ox, py + oy, rx, ry, 0, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.strokeStyle = isPollutedWater ? 'rgba(163, 230, 53, 0.55)' : 'rgba(255, 255, 255, 0.55)';
+        ctx.lineWidth = 1;
+        for (let band = 0; band < 2; band++) {
+          const y = py + 11 + band * 12;
+          ctx.beginPath();
+          ctx.moveTo(px + 3, y);
+          ctx.quadraticCurveTo(px + 16, y - 3, px + 29, y);
+          ctx.stroke();
+        }
+        return;
+      }
 
       // Directional flow animation using tile.riverFlowDir
       const cx = px + TILE_SIZE / 2;

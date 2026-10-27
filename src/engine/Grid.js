@@ -1,6 +1,10 @@
-import { TERRAIN, TERRAIN_TYPE, ZONE, DENSITY, GROWTH_CONFIG, RESIDENTIAL_CAPACITY, MAP_WIDTH, MAP_HEIGHT, PRODUCER_CONFIG, PRODUCER_TYPE, ORE_CONFIG, ORE_GENERATION, SERVICE_GLOBAL_CONFIG, TERRAIN_GENERATION_CONFIG, ICE_CONFIG, COAST_CONFIG, COAST_DIRECTIONS, MAP_SEED_STORAGE_KEY, MAP_SEED_STORAGE_KEY_LEGACY, BIOME_CONFIG, BIOME_TERRAIN_CONFIG, BIOME_LAKE_CONFIG, BIOME_GENERATION_VERSION, BIOME_TYPES, PRODUCER_TIER_MAX, clampTier, getProducerTier, isTieredService, isTieredProducer, isBuildableTerrain, getBatteryStorageForTier, getWindPeakForTier, getSolarPeakForTier, getWaterCapacityForTier, getSewageCapacityForTier, getServiceTierStat } from '../config.js';
+import { TERRAIN, TERRAIN_TYPE, ZONE, DENSITY, GROWTH_CONFIG, RESIDENTIAL_CAPACITY, MAP_WIDTH, MAP_HEIGHT, PRODUCER_CONFIG, PRODUCER_TYPE, ORE_CONFIG, ORE_GENERATION, SERVICE_GLOBAL_CONFIG, TERRAIN_GENERATION_CONFIG, ICE_CONFIG, COAST_CONFIG, COAST_DIRECTIONS, MAP_SEED_STORAGE_KEY, MAP_SEED_STORAGE_KEY_LEGACY, BIOME_CONFIG, BIOME_TERRAIN_CONFIG, BIOME_LAKE_CONFIG, BIOME_GENERATION_VERSION, BIOME_TYPES, PRODUCER_TIER_MAX, clampTier, getProducerTier, isTieredService, isTieredProducer, isBuildableTerrain, getBatteryStorageForTier, getWindPeakForTier, getSolarPeakForTier, getWaterCapacityForTier, getSewageCapacityForTier, getServiceTierStat, RIVER_DEPTH, RIVER_FORD_CONFIG } from '../config.js';
 
 const TIER_DENSITY = [DENSITY.LIGHT, DENSITY.MEDIUM, DENSITY.HIGH];
+
+// A river is painted as a plus-shaped stamp per path step, which makes a three-tile-wide channel.
+// Fords reuse the same offsets so their shallow band covers the whole width at that point.
+const RIVER_SEGMENT_OFFSETS = [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]];
 
 // One anchor + outward normal per ocean-facing hex edge, in tile-map space. Side edges use
 // the middle of that map side; diagonal edges use the matching corner, so a hex that faces
@@ -186,6 +190,7 @@ export class Grid {
     this.tiles = [];
     this.producers = [];
     this.riverSources = [];
+    this.riverFords = [];
     this.mountainSprings = null;
     this.coastWater = null;
     this.seaDistance = null;
@@ -264,6 +269,8 @@ export class Grid {
       surveyProgress: 0,
       surveyRequired: 0,
       riverFlowDir: null,
+      // River tiles are two steps deep: DEEP everywhere, LOW inside a natural ford.
+      riverDepth: RIVER_DEPTH.DEEP,
       isPolluted: false,
       riverPollution: 0,
       crime: 0,
@@ -488,6 +495,8 @@ export class Grid {
         const tile = this.tiles[y][x];
         tile.terrain = TERRAIN_TYPE.SALT_WATER;
         tile.riverFlowDir = null;
+        // The sea swallows a river mouth: nothing in open water is a shallow crossing.
+        tile.riverDepth = RIVER_DEPTH.DEEP;
         painted++;
       }
     }
@@ -651,6 +660,8 @@ export class Grid {
       }
       for (const tile of targets) {
         tile.terrain = TERRAIN_TYPE.RIVER;
+        // A mouth is where the river meets the sea: deep water, never a shallow crossing.
+        tile.riverDepth = RIVER_DEPTH.DEEP;
         carved++;
       }
       if (targets.length === 0) break;
@@ -739,6 +750,8 @@ export class Grid {
       for (let x = 0; x < this.width; x++) {
         const tile = this.tiles[y][x];
         if (tile.terrain !== TERRAIN_TYPE.RIVER) continue;
+        // A ford stays open water: a frozen crossing would defeat the point of having one.
+        if (tile.riverDepth === RIVER_DEPTH.LOW) continue;
         const openNeighbors = [[0, -1], [1, 0], [0, 1], [-1, 0]]
           .filter(([dx, dy]) => isOpenWater(x + dx, y + dy)).length;
         if (openNeighbors > maxBankNeighbors) continue;
@@ -881,18 +894,23 @@ export class Grid {
     // 30% Merge (2 starts -> 1 end, with junction)
     const mode = this.random();
     const forceForkMerge = riverMode === 'fork_merge';
+    // Every painted centreline, in order, so fords can be placed on the finished channel.
+    const spines = [];
 
     if (!forceForkMerge && mode < TERRAIN_GENERATION_CONFIG.RIVER_SIMPLE_PROBABILITY) {
       // SIMPLE: Direct path from Start1 to End1
       const path = this.traceRiverPath(startPos1, endPos1);
       this.paintRiverPath(path);
+      spines.push(path);
     } else if (mode < TERRAIN_GENERATION_CONFIG.RIVER_SIMPLE_PROBABILITY + TERRAIN_GENERATION_CONFIG.RIVER_FORK_PROBABILITY) {
       // FORK: 1 Start, 2 Ends meeting at Junction
       const path1 = this.traceRiverPath(startPos1, junction);
       this.paintRiverPath(path1);
+      spines.push(path1);
 
       const path2 = this.traceRiverPath(junction, endPos1);
       this.paintRiverPath(path2);
+      spines.push(path2);
 
       // 2nd End point: another coastal mouth when the hex has one, otherwise a remaining edge.
       const mouth2 = pickMouth(endEdge1);
@@ -902,10 +920,12 @@ export class Grid {
 
       const path3 = this.traceRiverPath(junction, endPos2);
       this.paintRiverPath(path3);
+      spines.push(path3);
     } else {
       // MERGE: 2 Starts, 1 End meeting at Junction
       const path1 = this.traceRiverPath(startPos1, junction);
       this.paintRiverPath(path1);
+      spines.push(path1);
 
       // 2nd Start point, preferring land so the source is not in the sea.
       const source2 = pickSource(endEdge1);
@@ -915,9 +935,11 @@ export class Grid {
 
       const path2 = this.traceRiverPath(startPos2, junction);
       this.paintRiverPath(path2);
+      spines.push(path2);
 
       const path3 = this.traceRiverPath(junction, endPos1);
       this.paintRiverPath(path3);
+      spines.push(path3);
     }
 
     if (forceForkMerge) {
@@ -928,9 +950,76 @@ export class Grid {
       const extraMouth = pickMouth();
       const extraEdge = extraMouth ? extraMouth.edge : edges[Math.floor(this.random() * 4)];
       const extraEnd = extraMouth ? extraMouth.point : this.getRandomEdgePoint(extraEdge);
-      this.paintRiverPath(this.traceRiverPath(junction, extraJunction));
-      this.paintRiverPath(this.traceRiverPath(extraJunction, extraEnd));
+      const path4 = this.traceRiverPath(junction, extraJunction);
+      this.paintRiverPath(path4);
+      spines.push(path4);
+      const path5 = this.traceRiverPath(extraJunction, extraEnd);
+      this.paintRiverPath(path5);
+      spines.push(path5);
     }
+
+    this.placeRiverFords(spines);
+  }
+
+  /**
+   * Natural fords: a short run of the main channel where the bed rises and the water thins out.
+   * Most maps get none, some get one, a very few get two. They are the only future crossing points
+   * that will not need a bridge, so they are kept clear of the spring, the mouth and each other.
+   * Fords roll from their own PRNG stream, which keeps every existing seed's river shape untouched.
+   */
+  placeRiverFords(spines) {
+    this.riverFords = [];
+    if (!Array.isArray(spines) || spines.length === 0) return 0;
+    const spine = spines.reduce((longest, path) => (path.length > longest.length ? path : longest), spines[0]);
+    const config = RIVER_FORD_CONFIG;
+    const margin = config.EDGE_MARGIN;
+    const lowIndex = margin;
+    const highIndex = spine.length - 1 - margin - config.RUN_MAX;
+    if (highIndex <= lowIndex) return 0;
+
+    const rng = createPRNG((this.seed ^ config.SEED_SALT) >>> 0);
+    const roll = rng();
+    let wanted = 0;
+    if (roll < config.CHANCE_TWO) wanted = 2;
+    else if (roll < config.CHANCE_TWO + config.CHANCE_ONE) wanted = 1;
+    if (wanted === 0) return 0;
+
+    const starts = [];
+    const clearance = (point) => (this.seaDistance ? this.seaDistance[this.terrainKey(point.x, point.y)] ?? 0 : Infinity);
+    // A handful of attempts is plenty: a second ford only lands if the channel is long enough to
+    // keep the two apart, otherwise the map simply keeps the one.
+    for (let attempt = 0; attempt < 32 && starts.length < wanted; attempt++) {
+      const start = lowIndex + Math.floor(rng() * (highIndex - lowIndex + 1));
+      const head = spine[start];
+      const tail = spine[start + config.RUN_MAX - 1];
+      // Fords belong on the inland channel: the estuary is deep water, not a crossing.
+      if (clearance(head) < config.MIN_SEA_DISTANCE || clearance(tail) < config.MIN_SEA_DISTANCE) continue;
+      if (starts.some((other) => Math.abs(other - start) < config.MIN_SPACING)) continue;
+      starts.push(start);
+    }
+
+    for (const start of starts) {
+      const runLength = config.RUN_MIN + Math.floor(rng() * (config.RUN_MAX - config.RUN_MIN + 1));
+      let marked = 0;
+      for (let step = 0; step < runLength; step++) {
+        const point = spine[start + step];
+        for (const [dx, dy] of RIVER_SEGMENT_OFFSETS) {
+          const tile = this.getTile(point.x + dx, point.y + dy);
+          if (!tile || tile.terrain !== TERRAIN_TYPE.RIVER) continue;
+          tile.riverDepth = RIVER_DEPTH.LOW;
+          marked++;
+        }
+      }
+      // A run that falls entirely under the sea or the beach is not a crossing; drop it.
+      if (marked > 0) this.riverFords.push({ x: spine[start].x, y: spine[start].y, length: runLength });
+    }
+    return this.riverFords.length;
+  }
+
+  /** True where the river bed is shallow enough for a vehicle to cross without a bridge. */
+  isFordTile(x, y) {
+    const tile = this.getTile(x, y);
+    return Boolean(tile) && tile.terrain === TERRAIN_TYPE.RIVER && tile.riverDepth === RIVER_DEPTH.LOW;
   }
 
   getRandomEdgePoint(edge) {
@@ -997,8 +1086,7 @@ export class Grid {
   }
 
   paintRiverSegment(cx, cy, dir) {
-    const offsets = [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]];
-    for (const [dx, dy] of offsets) {
+    for (const [dx, dy] of RIVER_SEGMENT_OFFSETS) {
       const nx = cx + dx;
       const ny = cy + dy;
       if (this.isInBounds(nx, ny)) {

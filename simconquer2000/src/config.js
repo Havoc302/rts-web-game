@@ -54,6 +54,29 @@ export const TERRAIN_TYPE = {
   SAND: TERRAIN.SAND,
 };
 
+// Water is two steps deep. Every river tile is DEEP unless it sits in a natural ford, a short run
+// where the bed rises and the water thins out. Fords are the only places a vehicle will be able to
+// cross a river without a bridge.
+export const RIVER_DEPTH = {
+  DEEP: 2,
+  LOW: 1,
+};
+
+// How often a city map gets fords, and how big they are. Most maps have none at all; the rest have
+// one, and only a few have two. `SEED_SALT` gives fords their own PRNG stream so adding them cannot
+// shift the river shape of an existing seed.
+export const RIVER_FORD_CONFIG = {
+  SEED_SALT: 0x51f0d,
+  CHANCE_NONE: 0.82,
+  CHANCE_ONE: 0.15,
+  CHANCE_TWO: 0.03,
+  RUN_MIN: 2,          // River path steps covered by one ford
+  RUN_MAX: 3,
+  MIN_SPACING: 24,     // River path steps between two fords
+  EDGE_MARGIN: 8,      // Keep fords away from the spring and the mouth
+  MIN_SEA_DISTANCE: 6, // Fords belong inland of the beach, not in the estuary
+};
+
 /** Flat and beach ground accept roads, zones, and buildings. */
 export function isBuildableTerrain(terrain) {
   return terrain === TERRAIN.FLAT || terrain === TERRAIN.SAND;
