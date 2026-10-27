@@ -4,7 +4,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>SimConquer 2000</title>
-  <link rel="stylesheet" href="style.css">
+  <!-- The stylesheet is edge-cached for hours, so its URL carries the build version. The key lives
+       here rather than in src/main.js because index.html is served fresh, while the modules it
+       loads can still be cached: a key read from a cached version.js would keep pointing at stale
+       CSS during a deploy. tests/cases/version-sync.case.js fails if this drifts from APP_VERSION. -->
+  <link rel="stylesheet" href="style.css?v=0.4.24">
   <script type="importmap">
     {"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/","h3-js":"https://cdn.jsdelivr.net/npm/h3-js@4.3.0/dist/h3-js.es.js"}}
   </script>

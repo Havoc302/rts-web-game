@@ -9,8 +9,8 @@ Agent handoff protocol:
 
 Open handoff (2026-10-23):
 - Active task: none in progress; the next item is to pick up the Phase 1 follow-ups listed in `docs/DESIGN.md`.
-- Latest completed task: build stamp on the title screen (`0.4.23`); see the final task entries in this log.
-- Verified baseline: `npm test` rebuilds `simconquer2000/` and passes 58 suites across 15 entry points (`0.4.23`).
+- Latest completed task: cache-keyed stylesheet in `index.html` (`0.4.24`); see the final task entries in this log.
+- Verified baseline: `npm test` rebuilds `simconquer2000/` and passes 58 suites across 15 entry points (`0.4.24`).
 - Phase 1 follow-ups are tracked in `docs/DESIGN.md`; in particular, localStorage autosave and named tick-stage extraction are not implemented. Do not treat historical `Current task` headings below as active.
 
 Current task: Add standalone JSON game save export/import.
@@ -2347,3 +2347,16 @@ Requested: put the version in small writing at the bottom of the main menu, even
 Validation:
 - `npm test` rebuilds the snapshot and passes all 15 entry points.
 - Browser (Playwright): the title screen shows `v0.4.23` centred under the Close button with 24px clearance above and below.
+
+Current task: Move the stylesheet cache key into `index.html` (`0.4.24`).
+
+Requested after a deploy showed fresh HTML with a previous `style.css`: implement the build-time key so the page can never pair new markup with old CSS.
+
+- [done] `<link rel="stylesheet" href="style.css?v=0.4.24">` in `index.html`. The tag is served `DYNAMIC`, so its key always matches the document that references it, unlike the old runtime key read from the cached `version.js`.
+- [done] Removed the `main.js` rewrite that set `?v=` from `APP_VERSION`: it would have re-keyed the URL to whatever stale `version.js` the session loaded, which is the trap being fixed.
+- [done] `tests/cases/version-sync.case.js` now parses `index.html` and fails if the stylesheet key drifts from `APP_VERSION`, so a version bump cannot forget it. The snapshot still copies the file verbatim, so `prod-build.case.js` keeps passing.
+- [done] `docs/DESIGN.md` decision 50 records the failure mode (new markup + old CSS = black logo and a 300x150 brand mark), the fix, and the residual limitation that `/src/**` still rides the 4h edge TTL until purged.
+
+Validation:
+- `npm test` rebuilds the snapshot and passes all 15 entry points in about 5.2 s.
+- Verified that a wrong key fails the suite (temporarily mismatched, assertion tripped), so the guard is real rather than decorative.

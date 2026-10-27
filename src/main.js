@@ -84,12 +84,9 @@ class GameApp {
     if (overworldVersionEl) overworldVersionEl.textContent = `v${APP_VERSION}`;
     const mainMenuVersionEl = document.getElementById('main-menu-version');
     if (mainMenuVersionEl) mainMenuVersionEl.textContent = `v${APP_VERSION}`;
-    const stylesheet = document.querySelector('link[rel="stylesheet"]');
-    if (stylesheet) {
-      const href = new URL(stylesheet.href, window.location.href);
-      href.searchParams.set('v', APP_VERSION);
-      stylesheet.href = href.toString();
-    }
+    // The stylesheet's cache key is baked into index.html (see version-sync test); rewriting it here
+    // would re-key it to whatever version.js this session was cached with, which is exactly the
+    // stale-CSS trap the baked key avoids.
 
     this.treasury = STARTING_TREASURY;
     this.loanManager = new LoanManager();
